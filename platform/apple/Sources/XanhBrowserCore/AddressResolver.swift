@@ -31,15 +31,22 @@ public enum AddressResolver {
         return (scheme == "http" || scheme == "https") && url.host?.isEmpty == false
     }
 
+    public static func isAllowedExternalURL(_ url: URL) -> Bool {
+        switch url.scheme?.lowercased() {
+        case "mailto", "tel", "sms", "maps":
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func classify(_ url: URL) -> NavigationTarget? {
         if isAllowedWebURL(url) { return .web(url) }
 
-        switch url.scheme?.lowercased() {
-        case "mailto", "tel", "sms", "maps":
+        if isAllowedExternalURL(url) {
             return .external(url)
-        default:
-            return nil
         }
+        return nil
     }
 
     private static func looksLikeHost(_ value: String) -> Bool {

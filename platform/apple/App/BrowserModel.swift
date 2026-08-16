@@ -3,13 +3,19 @@ import Observation
 import WebKit
 
 @available(iOS 26.0, macOS 26.0, *)
-struct BrowserNavigationPolicy: WebPage.NavigationDeciding {
+final class BrowserNavigationPolicy: WebPage.NavigationDeciding {
+    var onOpenExternalURL: ((URL) -> Void)?
+
     func decidePolicy(
         for action: WebPage.NavigationAction,
         preferences: inout WebPage.NavigationPreferences
     ) async -> WKNavigationActionPolicy {
         guard let url = action.request.url else { return .cancel }
         preferences.preferredHTTPSNavigationPolicy = .keepAsRequested
+        if AddressResolver.isAllowedExternalURL(url), action.navigationType == .linkActivated {
+            onOpenExternalURL?(url)
+            return .cancel
+        }
         guard AddressResolver.isAllowedWebURL(url) else { return .cancel }
         return action.shouldPerformDownload ? .download : .allow
     }
@@ -31,6 +37,7 @@ final class BrowserTab: Identifiable {
     let isPrivate: Bool
     var address: String
     var errorMessage: String?
+    var externalURL: URL?
 
     init(isPrivate: Bool = false, initialURL: URL = AddressResolver.defaultHomePage) {
         self.isPrivate = isPrivate
@@ -41,10 +48,14 @@ final class BrowserTab: Identifiable {
         configuration.deviceSensorAuthorization = .init(decision: .prompt)
         configuration.applicationNameForUserAgent = "XanhBrowser/1.0"
         configuration.upgradeKnownHostsToHTTPS = true
+        let navigationPolicy = BrowserNavigationPolicy()
         self.page = WebPage(
             configuration: configuration,
-            navigationDecider: BrowserNavigationPolicy()
+            navigationDecider: navigationPolicy
         )
+        navigationPolicy.onOpenExternalURL = { [weak self] url in
+            self?.externalURL = url
+        }
         page.load(initialURL)
     }
 
@@ -77,13 +88,21 @@ final class BrowserTab: Identifiable {
 @MainActor
 @Observable
 final class BrowserWorkspace {
+    private static let sessionKey = "XanhBrowserSessionV1"
+
+    @ObservationIgnored
+    private let defaults: UserDefaults
+
     var tabs: [BrowserTab]
     var selectedTabID: BrowserTab.ID
 
-    init() {
-        let initial = BrowserTab()
-        self.tabs = [initial]
-        self.selectedTabID = initial.id
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let session = BrowserSession.decode(defaults.data(forKey: Self.sessionKey))
+            ?? BrowserSession(urls: [AddressResolver.defaultHomePage], selectedIndex: 0)
+        let restoredTabs = session.urls.map { BrowserTab(initialURL: $0) }
+        self.tabs = restoredTabs
+        self.selectedTabID = restoredTabs[session.selectedIndex].id
     }
 
     var selectedTab: BrowserTab {
@@ -94,11 +113,27 @@ final class BrowserWorkspace {
         let tab = BrowserTab(isPrivate: isPrivate)
         tabs.append(tab)
         selectedTabID = tab.id
+        persistSession()
     }
 
     func closeSelectedTab() {
         guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == selectedTabID }) else { return }
         tabs.remove(at: index)
         selectedTabID = tabs[min(index, tabs.count - 1)].id
+        persistSession()
+    }
+
+    func persistSession() {
+        let regularTabs = tabs.filter { !$0.isPrivate }
+        let urls = regularTabs.compactMap { tab -> URL? in
+            if let currentURL = tab.page.url, AddressResolver.isAllowedWebURL(currentURL) {
+                return currentURL
+            }
+            guard case let .web(url)? = AddressResolver.resolve(tab.address) else { return nil }
+            return url
+        }
+        let selectedIndex = regularTabs.firstIndex(where: { $0.id == selectedTabID }) ?? 0
+        let session = BrowserSession(urls: urls, selectedIndex: selectedIndex)
+        defaults.set(session.encoded(), forKey: Self.sessionKey)
     }
 }

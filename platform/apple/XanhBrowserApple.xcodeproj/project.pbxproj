@@ -11,6 +11,7 @@
 		1DB62C900352197CF302FB45 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594809F854069BC05EA45F9 /* BrowserView.swift */; };
 		1F5953A3DD1213A6B78BC097 /* BrowserModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */; };
 		48E13B975F096A9D87FFCC38 /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */; };
+		4DC0E34E124A7AE833A79C6D /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B540C8EF970CC11135804394 /* BrowserSession.swift */; };
 		52BFFF6AE82166622BFAEB29 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594809F854069BC05EA45F9 /* BrowserView.swift */; };
 		686761EC979A9C397C116114 /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB98C73205558CF4F34E1412 /* Bookmark.swift */; };
 		6A514225E7C89C76D8F1E60B /* BrowserModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */; };
@@ -18,6 +19,7 @@
 		81932F2A89EA18BC106D6A7A /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
 		E542001C874AB4BD17586767 /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */; };
 		EF3559F5A7A3CDD36DE59870 /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
+		F027B1CBBE9EE01FB40E30B4 /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B540C8EF970CC11135804394 /* BrowserSession.swift */; };
 		FF0B71A4D695C1537C30C25B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C5707A9D15C10A864537D41 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -29,6 +31,7 @@
 		7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolver.swift; sourceTree = "<group>"; };
 		A33C392942764CA582BA6818 /* XanhBrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XanhBrowserApp.swift; sourceTree = "<group>"; };
 		A594809F854069BC05EA45F9 /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserView.swift; sourceTree = "<group>"; };
+		B540C8EF970CC11135804394 /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserSession.swift; sourceTree = "<group>"; };
 		EB98C73205558CF4F34E1412 /* Bookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bookmark.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -56,6 +59,7 @@
 			children = (
 				7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */,
 				EB98C73205558CF4F34E1412 /* Bookmark.swift */,
+				B540C8EF970CC11135804394 /* BrowserSession.swift */,
 			);
 			name = XanhBrowserCore;
 			path = Sources/XanhBrowserCore;
@@ -169,6 +173,7 @@
 				48E13B975F096A9D87FFCC38 /* AddressResolver.swift in Sources */,
 				0DB09CF4B38B4F131D49EC0B /* Bookmark.swift in Sources */,
 				6A514225E7C89C76D8F1E60B /* BrowserModel.swift in Sources */,
+				4DC0E34E124A7AE833A79C6D /* BrowserSession.swift in Sources */,
 				52BFFF6AE82166622BFAEB29 /* BrowserView.swift in Sources */,
 				EF3559F5A7A3CDD36DE59870 /* XanhBrowserApp.swift in Sources */,
 			);
@@ -181,6 +186,7 @@
 				E542001C874AB4BD17586767 /* AddressResolver.swift in Sources */,
 				686761EC979A9C397C116114 /* Bookmark.swift in Sources */,
 				1F5953A3DD1213A6B78BC097 /* BrowserModel.swift in Sources */,
+				F027B1CBBE9EE01FB40E30B4 /* BrowserSession.swift in Sources */,
 				1DB62C900352197CF302FB45 /* BrowserView.swift in Sources */,
 				81932F2A89EA18BC106D6A7A /* XanhBrowserApp.swift in Sources */,
 			);

@@ -9,6 +9,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "Xanh Browser";
+        Closed += MainWindow_Closed;
         AddTab(isPrivate: false);
     }
 
@@ -23,7 +24,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        sender.TabItems.Remove(args.Tab);
+        if (args.Tab is TabViewItem tab)
+        {
+            (tab.Content as BrowserTab)?.Dispose();
+            sender.TabItems.Remove(tab);
+        }
     }
 
     private void AddTab(bool isPrivate)
@@ -39,11 +44,31 @@ public sealed partial class MainWindow : Window
             Content = browser,
         };
 
-        browser.TitleChanged += (_, title) => tab.Header = string.IsNullOrWhiteSpace(title)
-            ? (isPrivate ? "Private tab" : "New tab")
-            : title;
+        AttachBrowser(tab, browser);
 
         BrowserTabs.TabItems.Add(tab);
         BrowserTabs.SelectedItem = tab;
+    }
+
+    private static void AttachBrowser(TabViewItem tab, BrowserTab browser)
+    {
+        browser.TitleChanged += (_, title) => tab.Header = string.IsNullOrWhiteSpace(title)
+            ? (browser.IsPrivate ? "Private tab" : "New tab")
+            : title;
+        browser.BrowserProcessExited += (_, _) =>
+        {
+            var replacement = new BrowserTab(browser.IsPrivate, browser.CurrentUri);
+            browser.Dispose();
+            tab.Content = replacement;
+            AttachBrowser(tab, replacement);
+        };
+    }
+
+    private void MainWindow_Closed(object sender, WindowEventArgs args)
+    {
+        foreach (var item in BrowserTabs.TabItems.OfType<TabViewItem>())
+        {
+            (item.Content as BrowserTab)?.Dispose();
+        }
     }
 }

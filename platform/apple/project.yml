@@ -43,7 +43,10 @@ targets:
       path: Config/XanhBrowserMac.entitlements
       properties:
         com.apple.security.app-sandbox: true
+        com.apple.security.device.camera: true
+        com.apple.security.device.microphone: true
         com.apple.security.network.client: true
+        com.apple.security.personal-information.location: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.lamppkk.xanhbrowser.macos

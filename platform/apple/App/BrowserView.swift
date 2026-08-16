@@ -26,7 +26,14 @@ struct BrowserView: View {
         .onChange(of: tab.page.url) { _, newURL in
             if let newURL, AddressResolver.isAllowedWebURL(newURL) {
                 tab.address = newURL.absoluteString
+                workspace.persistSession()
             }
+        }
+        .onChange(of: workspace.selectedTabID) { _, _ in workspace.persistSession() }
+        .onChange(of: tab.externalURL) { _, externalURL in
+            guard let externalURL else { return }
+            openURL(externalURL)
+            tab.externalURL = nil
         }
         .task(id: tab.id) {
             do {

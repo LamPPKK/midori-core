@@ -34,6 +34,8 @@ final class AddressResolverTests: XCTestCase {
             AddressResolver.resolve("mailto:hello@example.com"),
             .external(URL(string: "mailto:hello@example.com")!)
         )
+        XCTAssertTrue(AddressResolver.isAllowedExternalURL(URL(string: "tel:+84123456789")!))
+        XCTAssertFalse(AddressResolver.isAllowedExternalURL(URL(string: "javascript:alert(1)")!))
     }
 
     func testRejectsUnsafeInput() {

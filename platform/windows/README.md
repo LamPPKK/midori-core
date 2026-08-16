@@ -42,5 +42,9 @@ against both x64 and ARM64 Evergreen WebView2 channels before distribution.
   native bridge to pages.
 - Autofill and password saving are disabled for the 1.0 privacy baseline.
 - Private tabs use WebView2 InPrivate controller options.
+- WebView2 data lives under the user's local application-data directory, so an
+  unpackaged install remains writable under protected application locations.
+- Closed tabs close their controller; renderer crashes reload and browser
+  process crashes recreate the affected tab at its last safe web address.
 - The app uses an Evergreen runtime so WebView2 security fixes arrive through
   the Microsoft Edge update channel independently of the app release.

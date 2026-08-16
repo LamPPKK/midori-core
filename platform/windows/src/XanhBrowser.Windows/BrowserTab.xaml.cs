@@ -7,16 +7,27 @@ using XanhBrowser.Core;
 
 namespace XanhBrowser.Windows;
 
-public sealed partial class BrowserTab : UserControl
+public sealed partial class BrowserTab : UserControl, IDisposable
 {
     private readonly bool _isPrivate;
+    private readonly Uri _initialUri;
+    private bool _disposed;
     private bool _permissionDialogOpen;
+    private Uri _currentUri;
 
     public event EventHandler<string>? TitleChanged;
+    public event EventHandler? BrowserProcessExited;
 
-    public BrowserTab(bool isPrivate)
+    public bool IsPrivate => _isPrivate;
+    public Uri CurrentUri => _currentUri;
+
+    public BrowserTab(bool isPrivate, Uri? initialUri = null)
     {
         _isPrivate = isPrivate;
+        _initialUri = initialUri is not null && AddressResolver.IsAllowedWebUri(initialUri)
+            ? initialUri
+            : AddressResolver.DefaultHomePage;
+        _currentUri = _initialUri;
         InitializeComponent();
         Loaded += BrowserTab_Loaded;
     }
@@ -27,11 +38,25 @@ public sealed partial class BrowserTab : UserControl
 
         try
         {
-            var environment = await CoreWebView2Environment.CreateAsync();
+            var userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Xanh Browser",
+                "WebView2");
+            var environment = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: userDataFolder);
+            if (_disposed)
+            {
+                return;
+            }
             var controllerOptions = environment.CreateCoreWebView2ControllerOptions();
             controllerOptions.IsInPrivateModeEnabled = _isPrivate;
             await BrowserWebView.EnsureCoreWebView2Async(environment, controllerOptions);
-            Navigate(AddressResolver.DefaultHomePage);
+            if (_disposed)
+            {
+                BrowserWebView.Close();
+                return;
+            }
+            Navigate(_initialUri);
         }
         catch (Exception error)
         {
@@ -58,12 +83,40 @@ public sealed partial class BrowserTab : UserControl
 
         sender.CoreWebView2.Profile.PreferredTrackingPreventionLevel =
             CoreWebView2TrackingPreventionLevel.Balanced;
-        sender.CoreWebView2.DocumentTitleChanged += (_, _) =>
-            TitleChanged?.Invoke(this, sender.CoreWebView2.DocumentTitle);
-        sender.CoreWebView2.HistoryChanged += (_, _) => UpdateNavigationButtons();
+        sender.CoreWebView2.DocumentTitleChanged += CoreWebView2_DocumentTitleChanged;
+        sender.CoreWebView2.HistoryChanged += CoreWebView2_HistoryChanged;
         sender.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
         sender.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
+        sender.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
         sender.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
+    }
+
+    private void CoreWebView2_DocumentTitleChanged(object? sender, object args)
+    {
+        if (sender is CoreWebView2 core)
+        {
+            TitleChanged?.Invoke(this, core.DocumentTitle);
+        }
+    }
+
+    private void CoreWebView2_HistoryChanged(object? sender, object args) => UpdateNavigationButtons();
+
+    private void CoreWebView2_ProcessFailed(
+        object? sender,
+        CoreWebView2ProcessFailedEventArgs args)
+    {
+        switch (args.ProcessFailedKind)
+        {
+            case CoreWebView2ProcessFailedKind.RenderProcessExited:
+                BrowserWebView.Reload();
+                break;
+            case CoreWebView2ProcessFailedKind.BrowserProcessExited:
+                BrowserProcessExited?.Invoke(this, EventArgs.Empty);
+                break;
+            case CoreWebView2ProcessFailedKind.RenderProcessUnresponsive:
+                TitleChanged?.Invoke(this, "Page unresponsive");
+                break;
+        }
     }
 
     private async void CoreWebView2_NewWindowRequested(
@@ -187,6 +240,7 @@ public sealed partial class BrowserTab : UserControl
         if (Uri.TryCreate(sender.Source, UriKind.Absolute, out var uri)
             && AddressResolver.IsAllowedWebUri(uri))
         {
+            _currentUri = uri;
             AddressBox.Text = uri.AbsoluteUri;
         }
     }
@@ -246,5 +300,29 @@ public sealed partial class BrowserTab : UserControl
     {
         BackButton.IsEnabled = BrowserWebView.CanGoBack;
         ForwardButton.IsEnabled = BrowserWebView.CanGoForward;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        Loaded -= BrowserTab_Loaded;
+        if (BrowserWebView.CoreWebView2 is not null)
+        {
+            BrowserWebView.CoreWebView2.DocumentTitleChanged -= CoreWebView2_DocumentTitleChanged;
+            BrowserWebView.CoreWebView2.HistoryChanged -= CoreWebView2_HistoryChanged;
+            BrowserWebView.CoreWebView2.NewWindowRequested -= CoreWebView2_NewWindowRequested;
+            BrowserWebView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
+            BrowserWebView.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
+            BrowserWebView.CoreWebView2.SourceChanged -= CoreWebView2_SourceChanged;
+        }
+        BrowserWebView.Close();
+        TitleChanged = null;
+        BrowserProcessExited = null;
+        GC.SuppressFinalize(this);
     }
 }

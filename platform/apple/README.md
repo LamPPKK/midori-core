@@ -9,7 +9,9 @@ The application uses the system WebKit engine through `WebPage` and `WebView`.
 It does not bundle a browser engine. Regular tabs use the default website data
 store; private tabs use a nonpersistent store. Navigation entered by the user
 accepts HTTP(S), upgrades bare hosts to HTTPS, turns other text into a
-DuckDuckGo search and hands a small allowlist of external schemes to the OS.
+DuckDuckGo search and hands a small allowlist of user-activated external
+schemes to the OS. Regular tabs are restored after process termination;
+private tabs are deliberately excluded from the saved session.
 
 Generate the Xcode project and run tests with Xcode 26 or newer:
 

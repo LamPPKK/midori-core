@@ -18,8 +18,16 @@ jobs:
           xcodebuild -version
           sdk_major="$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)"
           test "$sdk_major" -ge 26
-          test "$(plutil -extract com.apple.security.app-sandbox raw platform/apple/Config/XanhBrowserMac.entitlements)" = true
-          test "$(plutil -extract com.apple.security.network.client raw platform/apple/Config/XanhBrowserMac.entitlements)" = true
+          entitlements='platform/apple/Config/XanhBrowserMac.entitlements'
+          for key in \
+            com.apple.security.app-sandbox \
+            com.apple.security.device.camera \
+            com.apple.security.device.microphone \
+            com.apple.security.network.client \
+            com.apple.security.personal-information.location
+          do
+            test "$(/usr/libexec/PlistBuddy -c "Print :$key" "$entitlements")" = true
+          done
       - name: Test shared Apple core
         run: swift test --package-path platform/apple
       - name: Build macOS application

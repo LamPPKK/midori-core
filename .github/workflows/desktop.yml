@@ -27,7 +27,8 @@ jobs:
           sleep 2
           dbus-run-session -- env XDG_RUNTIME_DIR=/tmp/xanh-runtime WAYLAND_DISPLAY=xanh-wayland GDK_BACKEND=wayland WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 ctest --test-dir _build --output-on-failure -R application-smoke
       - run: cmake --build _build --target validate-metadata
-      - run: for file in ui/*.ui; do gtk4-builder-tool validate "$file"; done
+      - name: Validate GTK4 UI definitions
+        run: xvfb-run -a sh -c 'for file in ui/*.ui; do gtk4-builder-tool validate "$file"; done'
       - name: Verify modern runtime linkage
         run: |
           if ldd _build/xanh-browser | grep -E 'libgtk-3|libwebkit2gtk-4\.0|libsoup-2'; then

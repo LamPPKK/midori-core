@@ -36,10 +36,9 @@ set(XANH_VALA_OPTIONS
     --fatal-warnings
     --enable-checking)
 set(XANH_PLUGIN_DIR "${CMAKE_INSTALL_FULL_LIBDIR}/xanh-browser")
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
 configure_file(
     desktop/config.vala.in
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/config.vala"
+    "${CMAKE_CURRENT_BINARY_DIR}/config.vala"
     @ONLY)
 
 add_compile_options(
@@ -50,13 +49,19 @@ add_compile_options(
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wno-tautological-pointer-compare)
 endif()
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    # Vala 0.56 emits these constructs for automatic string properties and
+    # sqlite3_exec's optional error-message out parameter. Keep every other
+    # compiler warning fatal.
+    add_compile_options(-Wno-discarded-qualifiers -Wno-address)
+endif()
 include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}/desktop"
     "${CMAKE_CURRENT_BINARY_DIR}/desktop"
     ${XANH_INCLUDE_DIRS})
 
 vala_precompile(XANH_CORE_C xanh-browser-core
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/config.vala"
+    "${CMAKE_CURRENT_BINARY_DIR}/config.vala"
     desktop/database.vala
     desktop/plugin-api.vala
 PACKAGES ${XANH_VALA_PACKAGES}

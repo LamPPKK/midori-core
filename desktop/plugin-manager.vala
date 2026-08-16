@@ -10,7 +10,7 @@ namespace Xanh {
             if (development_path != null) {
                 engine.add_search_path (development_path, development_path);
             }
-            engine.add_search_path (Config.PLUGINDIR, Config.PLUGINDIR);
+            engine.add_search_path (Config.plugin_dir (), Config.plugin_dir ());
             engine.add_search_path ("/app/lib/xanh-browser", "/app/lib/xanh-browser");
 
             Value host_value = Value (typeof (PluginHost));

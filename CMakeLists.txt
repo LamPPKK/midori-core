@@ -36,11 +36,6 @@ set(XANH_VALA_OPTIONS
     --fatal-warnings
     --enable-checking)
 set(XANH_PLUGIN_DIR "${CMAKE_INSTALL_FULL_LIBDIR}/xanh-browser")
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/desktop")
-configure_file(
-    desktop/plugin-api.vala.in
-    "${CMAKE_CURRENT_BINARY_DIR}/desktop/plugin-api.vala"
-    @ONLY)
 
 add_compile_options(
     -Wall -Wextra -Werror
@@ -62,7 +57,7 @@ include_directories(
     ${XANH_INCLUDE_DIRS})
 
 vala_precompile(XANH_CORE_C xanh-browser-core
-    "${CMAKE_CURRENT_BINARY_DIR}/desktop/plugin-api.vala"
+    desktop/plugin-api.vala
     desktop/database.vala
 PACKAGES ${XANH_VALA_PACKAGES}
 OPTIONS ${XANH_VALA_OPTIONS}
@@ -70,11 +65,13 @@ DIRECTORY desktop
 GENERATE_VAPI xanh-browser-core
 GENERATE_HEADER xanh-browser-core)
 
-add_library(xanh-browser-core SHARED ${XANH_CORE_C})
+add_library(xanh-browser-core SHARED ${XANH_CORE_C} desktop/xanh-config.c)
 set_target_properties(xanh-browser-core PROPERTIES
     VERSION 2.0.0
     SOVERSION 2
     OUTPUT_NAME xanh-browser-core)
+target_compile_definitions(xanh-browser-core PRIVATE
+    XANH_PLUGIN_DIR="${XANH_PLUGIN_DIR}")
 target_link_libraries(xanh-browser-core PRIVATE PkgConfig::XANH)
 
 vala_precompile(XANH_APP_C xanh-browser

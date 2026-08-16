@@ -71,7 +71,7 @@ namespace Xanh {
         }
 
         public void load_default_locations (bool run_backgrounds = true) {
-            load_folder (Path.build_filename (Config.PLUGINDIR, "web-extensions"), run_backgrounds);
+            load_folder (Path.build_filename (Config.plugin_dir (), "web-extensions"), run_backgrounds);
             load_folder (Path.build_filename (
                 Environment.get_user_data_dir (), "xanh-browser", "extensions"), run_backgrounds);
         }

@@ -5,7 +5,9 @@ namespace Xanh.Config {
     public const string APP_NAME = "Xanh Browser";
     public const string VERSION = "1.0.0";
     public const string USER_AGENT_TOKEN = "XanhBrowser/1.0";
-    public const string PLUGINDIR = "@XANH_PLUGIN_DIR@";
+
+    [CCode (cname = "xanh_config_plugin_dir", cheader_filename = "xanh-config.h")]
+    public extern unowned string plugin_dir ();
 }
 
 namespace Xanh {

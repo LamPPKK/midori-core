@@ -15,5 +15,6 @@ prime
 /build
 **/bin/
 **/obj/
+**/.build/
 /captures
 .externalNativeBuild

@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify Xcode and WebKit SDK baseline
         run: |
           xcodebuild -version
@@ -70,7 +70,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high

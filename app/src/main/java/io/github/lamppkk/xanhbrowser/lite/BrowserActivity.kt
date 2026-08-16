@@ -45,6 +45,7 @@ class BrowserActivity : AppCompatActivity() {
     private var geolocationRequest: Pair<String, GeolocationPermissions.Callback>? = null
     private var geolocationDialog: AlertDialog? = null
     private var desktopSite = false
+    private var currentNavigationUrl: String? = null
 
     private val filePicker = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -72,12 +73,18 @@ class BrowserActivity : AppCompatActivity() {
 
         desktopSite = savedInstanceState?.getBoolean(STATE_DESKTOP_SITE) ?: false
         if (desktopSite) requestDesktopSite(true, reload = false)
+        val savedUrl = savedInstanceState?.getString(STATE_CURRENT_URL)
         val restored = savedInstanceState?.getBundle(STATE_WEB_VIEW)?.let(binding.webView::restoreState)
-        if (restored == null) {
+        val restoredUrl = restored?.currentItem?.url
+        if (savedUrl != null && savedUrl != restoredUrl) {
+            loadUrlOrSearch(savedUrl)
+        } else if (restored == null) {
             val restoredUrl = AddressResolver.resolveWebIntent(intent.dataString)
                 ?: preferences.getString(LAST_URL, null)
                 ?: getString(R.string.app_website)
             loadUrlOrSearch(restoredUrl.orEmpty())
+        } else {
+            currentNavigationUrl = restoredUrl
         }
     }
 
@@ -91,6 +98,7 @@ class BrowserActivity : AppCompatActivity() {
         val webViewState = Bundle()
         binding.webView.saveState(webViewState)
         outState.putBundle(STATE_WEB_VIEW, webViewState)
+        outState.putString(STATE_CURRENT_URL, currentNavigationUrl ?: binding.webView.url)
         outState.putBoolean(STATE_DESKTOP_SITE, desktopSite)
         super.onSaveInstanceState(outState)
     }
@@ -172,11 +180,17 @@ class BrowserActivity : AppCompatActivity() {
     private fun loadUrlOrSearch(input: String) {
         val resolved = AddressResolver.resolve(input)
         val uri = resolved.toUri()
-        if (AddressResolver.isExternal(resolved)) openExternal(uri) else binding.webView.loadUrl(resolved)
+        if (AddressResolver.isExternal(resolved)) {
+            openExternal(uri)
+        } else {
+            currentNavigationUrl = resolved
+            binding.webView.loadUrl(resolved)
+        }
     }
 
     internal fun onPageChanged(url: String?, title: String?) {
         if (!url.isNullOrBlank() && url != "about:blank") {
+            currentNavigationUrl = url
             binding.urlBar.setText(url)
             preferences.edit { putString(LAST_URL, url) }
         }
@@ -189,7 +203,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     @VisibleForTesting
-    internal fun loadWebUrlForTest(url: String) = binding.webView.loadUrl(url)
+    internal fun loadWebUrlForTest(url: String) = loadUrlOrSearch(url)
 
     @VisibleForTesting
     internal fun currentWebUrlForTest(): String? = binding.webView.url
@@ -400,6 +414,7 @@ class BrowserActivity : AppCompatActivity() {
         private const val PREFERENCES = "xanh_browser_lite"
         private const val LAST_URL = "last_url"
         private const val STATE_WEB_VIEW = "state_web_view"
+        private const val STATE_CURRENT_URL = "state_current_url"
         private const val STATE_DESKTOP_SITE = "state_desktop_site"
     }
 }

@@ -22,10 +22,17 @@ struct BrowserView: View {
                 .webViewTextSelection(.enabled)
                 .webViewElementFullscreenBehavior(.enabled)
         }
-        .frame(minWidth: 640, minHeight: 480)
+        .browserWindowMinimumSize()
         .onChange(of: tab.page.url) { _, newURL in
             if let newURL, AddressResolver.isAllowedWebURL(newURL) {
                 tab.address = newURL.absoluteString
+            }
+        }
+        .task(id: tab.id) {
+            do {
+                for try await _ in tab.page.navigations {}
+            } catch {
+                tab.errorMessage = error.localizedDescription
             }
         }
         .alert(
@@ -76,12 +83,29 @@ struct BrowserView: View {
                 Label("Tabs", systemImage: tab.isPrivate ? "hand.raised.fill" : "square.on.square")
             }
 
-            ShareLink(item: tab.page) {
-                Label("Share", systemImage: "square.and.arrow.up")
+            if let currentURL = tab.page.url {
+                ShareLink(item: currentURL) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .labelStyle(.iconOnly)
+            } else {
+                Button("Share", systemImage: "square.and.arrow.up") {}
+                    .labelStyle(.iconOnly)
+                    .disabled(true)
             }
-            .labelStyle(.iconOnly)
         }
         .padding(10)
         .background(.bar)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func browserWindowMinimumSize() -> some View {
+#if os(macOS)
+        frame(minWidth: 640, minHeight: 480)
+#else
+        self
+#endif
     }
 }

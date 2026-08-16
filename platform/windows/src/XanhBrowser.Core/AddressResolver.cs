@@ -35,6 +35,12 @@ public static class AddressResolver
             return Classify(explicitUri);
         }
 
+        var colonIndex = value.IndexOf(':');
+        if (colonIndex > 0 && Uri.CheckSchemeName(value[..colonIndex]))
+        {
+            return null;
+        }
+
         if (LooksLikeHost(value)
             && Uri.TryCreate($"https://{value}", UriKind.Absolute, out var hostUri))
         {

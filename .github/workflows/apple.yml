@@ -1,0 +1,58 @@
+name: Apple platforms
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Xcode and WebKit SDK baseline
+        run: |
+          xcodebuild -version
+          sdk_major="$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)"
+          test "$sdk_major" -ge 26
+      - name: Test shared Apple core
+        run: swift test --package-path platform/apple
+      - name: Build macOS application
+        run: |
+          xcodebuild \
+            -project platform/apple/XanhBrowserApple.xcodeproj \
+            -scheme XanhBrowser-macOS \
+            -configuration Release \
+            -derivedDataPath _build/apple-macos \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Build universal iOS and iPadOS application
+        run: |
+          xcodebuild \
+            -project platform/apple/XanhBrowserApple.xcodeproj \
+            -scheme XanhBrowser-iOS \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath _build/apple-ios \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-browser-apple-unsigned
+          if-no-files-found: error
+          path: |
+            _build/apple-macos/Build/Products/Release/*.app
+            _build/apple-ios/Build/Products/Release-iphonesimulator/*.app
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

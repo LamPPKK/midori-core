@@ -1,0 +1,248 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.Web.WebView2.Core;
+using Windows.System;
+using XanhBrowser.Core;
+
+namespace XanhBrowser.Windows;
+
+public sealed partial class BrowserTab : UserControl
+{
+    private readonly bool _isPrivate;
+    private bool _permissionDialogOpen;
+
+    public event EventHandler<string>? TitleChanged;
+
+    public BrowserTab(bool isPrivate)
+    {
+        _isPrivate = isPrivate;
+        InitializeComponent();
+        Loaded += BrowserTab_Loaded;
+    }
+
+    private async void BrowserTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= BrowserTab_Loaded;
+
+        try
+        {
+            var environment = await CoreWebView2Environment.CreateAsync();
+            var controllerOptions = environment.CreateCoreWebView2ControllerOptions();
+            controllerOptions.IsInPrivateModeEnabled = _isPrivate;
+            await BrowserWebView.EnsureCoreWebView2Async(environment, controllerOptions);
+            Navigate(AddressResolver.DefaultHomePage);
+        }
+        catch (Exception error)
+        {
+            AddressBox.Text = $"WebView2 failed to initialize: {error.Message}";
+        }
+    }
+
+    private void BrowserWebView_CoreWebView2Initialized(
+        WebView2 sender,
+        CoreWebView2InitializedEventArgs args)
+    {
+        if (args.Exception is not null || sender.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var settings = sender.CoreWebView2.Settings;
+        settings.AreHostObjectsAllowed = false;
+        settings.IsWebMessageEnabled = false;
+        settings.IsScriptEnabled = true;
+        settings.AreDefaultScriptDialogsEnabled = true;
+        settings.IsGeneralAutofillEnabled = false;
+        settings.IsPasswordAutosaveEnabled = false;
+
+        sender.CoreWebView2.Profile.PreferredTrackingPreventionLevel =
+            CoreWebView2TrackingPreventionLevel.Balanced;
+        sender.CoreWebView2.DocumentTitleChanged += (_, _) =>
+            TitleChanged?.Invoke(this, sender.CoreWebView2.DocumentTitle);
+        sender.CoreWebView2.HistoryChanged += (_, _) => UpdateNavigationButtons();
+        sender.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
+        sender.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
+    }
+
+    private async void CoreWebView2_NewWindowRequested(
+        CoreWebView2 sender,
+        CoreWebView2NewWindowRequestedEventArgs args)
+    {
+        args.Handled = true;
+        if (!args.IsUserInitiated)
+        {
+            return;
+        }
+
+        if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri))
+        {
+            return;
+        }
+
+        if (AddressResolver.IsAllowedWebUri(uri))
+        {
+            Navigate(uri);
+        }
+        else if (AddressResolver.IsAllowedExternalUri(uri))
+        {
+            await Launcher.LaunchUriAsync(uri);
+        }
+    }
+
+    private async void CoreWebView2_PermissionRequested(
+        CoreWebView2 sender,
+        CoreWebView2PermissionRequestedEventArgs args)
+    {
+        var deferral = args.GetDeferral();
+        var ownsDialog = false;
+        try
+        {
+            args.Handled = true;
+            args.SavesInProfile = false;
+            if (_permissionDialogOpen
+                || !args.IsUserInitiated
+                || !Uri.TryCreate(args.Uri, UriKind.Absolute, out var origin)
+                || !origin.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                args.State = CoreWebView2PermissionState.Deny;
+                return;
+            }
+
+            _permissionDialogOpen = true;
+            ownsDialog = true;
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Website permission",
+                Content = $"{origin.Host} requests {args.PermissionKind} access.",
+                PrimaryButtonText = "Allow once",
+                CloseButtonText = "Deny",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            var result = await dialog.ShowAsync();
+            args.State = result == ContentDialogResult.Primary
+                ? CoreWebView2PermissionState.Allow
+                : CoreWebView2PermissionState.Deny;
+        }
+        finally
+        {
+            if (ownsDialog)
+            {
+                _permissionDialogOpen = false;
+            }
+            deferral.Complete();
+        }
+    }
+
+    private async void AddressBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var target = AddressResolver.Resolve(AddressBox.Text);
+        if (target?.Kind == NavigationTargetKind.Web)
+        {
+            Navigate(target.Uri);
+        }
+        else if (target?.Kind == NavigationTargetKind.External)
+        {
+            await Launcher.LaunchUriAsync(target.Uri);
+        }
+    }
+
+    private async void BrowserWebView_NavigationStarting(
+        WebView2 sender,
+        CoreWebView2NavigationStartingEventArgs args)
+    {
+        LoadProgress.Visibility = Visibility.Visible;
+        if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri)
+            && AddressResolver.IsAllowedWebUri(uri))
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        LoadProgress.Visibility = Visibility.Collapsed;
+        if (args.IsUserInitiated && AddressResolver.IsAllowedExternalUri(uri))
+        {
+            await Launcher.LaunchUriAsync(uri);
+        }
+    }
+
+    private void BrowserWebView_NavigationCompleted(
+        WebView2 sender,
+        CoreWebView2NavigationCompletedEventArgs args)
+    {
+        LoadProgress.Visibility = Visibility.Collapsed;
+        UpdateNavigationButtons();
+    }
+
+    private void BrowserWebView_SourceChanged(WebView2 sender, CoreWebView2SourceChangedEventArgs args)
+    {
+        if (AddressResolver.IsAllowedWebUri(sender.Source))
+        {
+            AddressBox.Text = sender.Source.AbsoluteUri;
+        }
+    }
+
+    private void BackButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (BrowserWebView.CanGoBack)
+        {
+            BrowserWebView.GoBack();
+        }
+    }
+
+    private void ForwardButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (BrowserWebView.CanGoForward)
+        {
+            BrowserWebView.GoForward();
+        }
+    }
+
+    private void ReloadButton_Click(object sender, RoutedEventArgs e) => BrowserWebView.Reload();
+
+    private async void ClearDataButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (BrowserWebView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Clear browsing data?",
+            Content = "This clears cookies, cache, permissions and other browsing data for this profile.",
+            PrimaryButtonText = "Clear",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await BrowserWebView.CoreWebView2.Profile.ClearBrowsingDataAsync(
+                CoreWebView2BrowsingDataKinds.AllProfile);
+            Navigate(AddressResolver.DefaultHomePage);
+        }
+    }
+
+    private void Navigate(Uri uri)
+    {
+        if (BrowserWebView.CoreWebView2 is not null && AddressResolver.IsAllowedWebUri(uri))
+        {
+            BrowserWebView.CoreWebView2.Navigate(uri.AbsoluteUri);
+        }
+    }
+
+    private void UpdateNavigationButtons()
+    {
+        BackButton.IsEnabled = BrowserWebView.CanGoBack;
+        ForwardButton.IsEnabled = BrowserWebView.CanGoForward;
+    }
+}

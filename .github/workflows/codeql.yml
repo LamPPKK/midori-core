@@ -38,3 +38,36 @@ jobs:
       - run: cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
       - run: cmake --build _build
       - uses: github/codeql-action/analyze@v3
+
+  apple:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: swift
+      - run: >-
+          xcodebuild
+          -project platform/apple/XanhBrowserApple.xcodeproj
+          -scheme XanhBrowser-macOS
+          -configuration Debug
+          -derivedDataPath _build/codeql-apple
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - uses: github/codeql-action/analyze@v3
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+      - run: >-
+          dotnet build platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+          --configuration Debug
+          -p:Platform=x64
+      - uses: github/codeql-action/analyze@v3

@@ -1,6 +1,7 @@
 # Xanh Browser 1.0 release runbook
 
-This runbook covers Xanh Browser for Linux and Xanh Browser Lite for Android.
+This runbook covers Xanh Browser for Linux, Apple and Windows, plus Xanh
+Browser Lite for Android.
 The full Android edition has a separate checklist in the
 [Android repository](https://github.com/LamPPKK/midori-android/blob/codex/xanh-browser-modernization/RELEASING.md).
 
@@ -11,6 +12,9 @@ Do not publish a production artifact while any required gate below is missing.
 | Product | Application ID | Version |
 | --- | --- | --- |
 | Linux desktop | `io.github.lamppkk.xanhbrowser` | `1.0.0` |
+| iOS / iPadOS | `io.github.lamppkk.xanhbrowser` | `1.0.0` / `10000` |
+| macOS | `io.github.lamppkk.xanhbrowser.macos` | `1.0.0` / `10000` |
+| Windows | `XanhBrowser.Windows` | `1.0.0` / `10000` |
 | Android Lite | `io.github.lamppkk.xanhbrowser.lite` | `1.0.0` / `10000` |
 
 The archival desktop baseline is `legacy-midori-9.0`. The production release
@@ -23,6 +27,12 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 - JDK 17, Android SDK 36 and an emulator/device matrix for API 26, 30, 33 and 36
 - `flatpak-builder`, `appstreamcli`, GPG and an offline source-release key
 - Access to the Lite Play listing and its dedicated Play App Signing upload key
+- Xcode 26+, Apple Developer membership, dedicated distribution certificates,
+  provisioning profiles and App Store Connect records for macOS and universal
+  iOS/iPadOS
+- Windows 10/11 x64 and ARM64 test systems, .NET 8, Windows App SDK 2.3.1,
+  Evergreen WebView2 Runtime 150+ and a dedicated Windows code-signing
+  certificate
 - The four Lite signing values below, supplied through the environment or the
   matching private Gradle properties
 
@@ -46,8 +56,8 @@ GitHub source-release automation additionally requires
 3. Search shipping sources for obsolete product IDs and dependencies. Only
    licenses, historical changelog entries and the desktop importer may retain
    the historical product name.
-4. Require green GitHub Actions results for Linux, Android Lite, instrumentation,
-   CodeQL and dependency review.
+4. Require green GitHub Actions results for Linux, Android Lite,
+   instrumentation, Apple, Windows, CodeQL and dependency review.
 
 Verification:
 
@@ -75,6 +85,8 @@ allowed historical material, never a shipping dependency or application ID.
 2. Validate all GTK4 UI files and runtime linkage:
 
    ```sh
+   pkg-config --atleast-version=2.52.5 webkitgtk-6.0
+   pkg-config --modversion webkitgtk-6.0
    for file in ui/*.ui; do gtk4-builder-tool validate "$file"; done
    ldd _build/xanh-browser
    ```
@@ -83,8 +95,8 @@ allowed historical material, never a shipping dependency or application ID.
    errors, media permissions, downloads, private mode, session recovery,
    profile import and every native plugin.
 
-Verification: tests must pass without warnings, and `ldd` must contain no GTK3,
-WebKitGTK 4.0 or libsoup 2 library.
+Verification: tests must pass without warnings, WebKitGTK must be 2.52.5 or
+newer, and `ldd` must contain no GTK3, WebKitGTK 4.0 or libsoup 2 library.
 
 ## 3. Build and inspect Flatpak
 
@@ -130,7 +142,47 @@ Lite upload key, and a Play-generated APK must install as
 `io.github.lamppkk.xanhbrowser.lite` version `1.0.0` (`10000`) on a clean
 device. A plain `bundleRelease` artifact is unsigned and must never be uploaded.
 
-## 5. Produce signed source artifacts
+## 5. Validate Apple and Windows
+
+Before producing source artifacts, validate the new native editions.
+
+### Apple
+
+1. Run `swift test --package-path platform/apple` with Xcode 26 or newer.
+2. Build `XanhBrowser-macOS` and the universal `XanhBrowser-iOS` scheme in
+   Release configuration. Exercise phone and tablet layouts, rotation, process
+   restoration, regular/private tabs, navigation, downloads, file input,
+   camera/microphone/location prompts and external schemes on physical devices.
+3. Archive with the dedicated distribution profiles. Validate the macOS App
+   Sandbox and hardened runtime, notarize the direct macOS build if one is
+   distributed, and submit the signed archives to App Store Connect.
+
+Verification: both archives must report the intended bundle ID/version, contain
+no private signing material, pass App Store validation and install from TestFlight
+or the notarized distribution channel on clean devices.
+
+### Windows
+
+1. Run the core tests and publish both architectures:
+
+   ```powershell
+   dotnet test platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj -c Release
+   dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64
+   dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj -c Release -r win-arm64 --self-contained true -p:Platform=ARM64
+   ```
+
+2. Test multi-tab, InPrivate, clear-data, download, permissions, external
+   schemes and recovery from a WebView2 process failure on current Windows 10
+   and Windows 11 with current Evergreen Stable Runtime.
+3. Sign every executable and package with the dedicated certificate, verify the
+   timestamp and signature on a separate clean system, then run Microsoft
+   Defender and SmartScreen submission checks.
+
+Verification: x64 and ARM64 packages must install cleanly, retain a valid
+signature after download, and use the serviced Evergreen Runtime rather than a
+stale bundled browser engine.
+
+## 6. Produce signed source artifacts
 
 With `XANH_RELEASE_GPG_KEY` set to the offline release key ID:
 
@@ -144,24 +196,26 @@ Verification: checksum and detached-signature verification must both succeed
 from a separate clean directory. The `v1.0.0` tag also runs the signed-source
 and Flatpak workflows.
 
-## 6. Promote in order
+## 7. Promote in order
 
 1. Android full and Lite internal testing
 2. Android full and Lite closed testing
 3. Linux Flatpak beta
-4. Android full and Lite production
-5. Linux Flatpak production and signed source archive
+4. Apple TestFlight and signed Windows preview ring
+5. Android full and Lite production
+6. Apple/Windows production after store and platform gates
+7. Linux Flatpak production and signed source archive
 
 Do not skip a stage. Resolve every blocker/high finding from lint, dependency
 review, CodeQL and the Play pre-launch report before promotion.
 
 ## Final verification
 
-- All three signed products install cleanly with the intended name, ID and version.
+- All signed products install cleanly with the intended name, ID and version.
 - Core browsing, privacy and recovery checklists pass on every supported target.
 - CI is green for the exact release commit and tag.
-- No release surface advertises Windows, macOS, Android legacy-data import,
-  Manifest V3 or complete browser-extension compatibility.
+- No release surface advertises Android legacy-data import, Manifest V3 or
+  complete browser-extension compatibility.
 - Release notes link the checksum and detached signature for the source archive.
 
 ## Rollback and escalation

@@ -13,8 +13,8 @@ pkg_check_modules(XANH REQUIRED IMPORTED_TARGET
     glib-2.0>=2.74
     gio-2.0>=2.74
     gtk4>=4.10
-    webkitgtk-6.0>=2.52.0
-    javascriptcoregtk-6.0>=2.52.0
+    webkitgtk-6.0>=2.52.5
+    javascriptcoregtk-6.0>=2.52.5
     libsoup-3.0
     sqlite3
     libpeas-2>=2.0
@@ -143,6 +143,10 @@ function(add_xanh_test target)
 endfunction()
 
 if(BUILD_TESTING)
+    add_executable(webkit-version-test tests-modern/webkit-version-test.c)
+    target_link_libraries(webkit-version-test PRIVATE PkgConfig::XANH)
+    add_test(NAME webkit-version-test COMMAND webkit-version-test)
+
     add_xanh_test(database-test SOURCE tests-modern/database-test.vala)
     add_xanh_test(address-resolver-test SOURCE tests-modern/address-resolver-test.vala
         SUPPORT desktop/address-resolver.vala)

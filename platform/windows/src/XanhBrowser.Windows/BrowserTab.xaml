@@ -1,0 +1,51 @@
+<UserControl
+    x:Class="XanhBrowser.Windows.BrowserTab"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="8" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="BackButton" Click="BackButton_Click" IsEnabled="False" ToolTipService.ToolTip="Back">
+                <SymbolIcon Symbol="Back" />
+            </Button>
+            <Button x:Name="ForwardButton" Grid.Column="1" Click="ForwardButton_Click" IsEnabled="False" ToolTipService.ToolTip="Forward">
+                <SymbolIcon Symbol="Forward" />
+            </Button>
+            <Button Grid.Column="2" Click="ReloadButton_Click" ToolTipService.ToolTip="Reload">
+                <SymbolIcon Symbol="Refresh" />
+            </Button>
+            <TextBox
+                x:Name="AddressBox"
+                Grid.Column="3"
+                KeyDown="AddressBox_KeyDown"
+                PlaceholderText="Search or enter website" />
+            <Button Grid.Column="4" Click="ClearDataButton_Click" ToolTipService.ToolTip="Clear browsing data">
+                <SymbolIcon Symbol="Delete" />
+            </Button>
+        </Grid>
+
+        <ProgressBar x:Name="LoadProgress" Grid.Row="1" IsIndeterminate="True" Visibility="Collapsed" />
+
+        <controls:WebView2
+            x:Name="BrowserWebView"
+            Grid.Row="2"
+            CoreWebView2Initialized="BrowserWebView_CoreWebView2Initialized"
+            NavigationCompleted="BrowserWebView_NavigationCompleted"
+            NavigationStarting="BrowserWebView_NavigationStarting"
+            SourceChanged="BrowserWebView_SourceChanged" />
+    </Grid>
+</UserControl>

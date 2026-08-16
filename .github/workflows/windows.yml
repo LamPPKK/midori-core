@@ -1,0 +1,52 @@
+name: Windows
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+          - platform: ARM64
+            rid: win-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          cache: true
+          cache-dependency-path: platform/windows/**/*.csproj
+      - name: Test Windows core
+        run: dotnet test platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj --configuration Release
+      - name: Publish x64 application
+        run: >-
+          dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          -p:Platform=${{ matrix.platform }}
+          --output _artifact/${{ matrix.rid }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-browser-windows-${{ matrix.rid }}-unsigned
+          if-no-files-found: error
+          path: _artifact/${{ matrix.rid }}
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

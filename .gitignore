@@ -13,5 +13,7 @@ prime
 .idea
 .DS_Store
 /build
+**/bin/
+**/obj/
 /captures
 .externalNativeBuild

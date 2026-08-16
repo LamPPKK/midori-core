@@ -42,14 +42,22 @@ add_compile_options(
     -Wno-unused-parameter
     -Wno-unused-variable
     -Wno-unused-but-set-variable)
+add_compile_definitions(GCR_API_SUBJECT_TO_CHANGE)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wno-tautological-pointer-compare)
 endif()
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    # Vala 0.56 emits these constructs for automatic string properties and
+    # Vala 0.56 emits these constructs for automatic properties, closure
+    # destroy notifiers, bindings with const arrays, async finish helpers and
     # sqlite3_exec's optional error-message out parameter. Keep every other
     # compiler warning fatal.
-    add_compile_options(-Wno-discarded-qualifiers -Wno-address)
+    add_compile_definitions(VALA_STRICT_C)
+    add_compile_options(
+        -Wno-address
+        -Wno-cast-function-type
+        -Wno-discarded-qualifiers
+        -Wno-incompatible-pointer-types
+        -Wno-unused-function)
 endif()
 include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}/desktop"

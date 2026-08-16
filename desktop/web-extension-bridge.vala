@@ -410,7 +410,7 @@ namespace Xanh {
                     tab_id == 0 || !BrowserDatabase.is_web_uri (uri)) return;
             string? origin = uri_origin (uri);
             if (origin != null) active_tab_grants.insert (
-                extension_id, "%llu:%s".printf (tab_id, origin));
+                extension_id, "%s:%s".printf (tab_id.to_string (), origin));
         }
 
         string read_text (string root, string relative) throws Error {
@@ -502,7 +502,8 @@ namespace Xanh {
         }
 
         void resolve (WebKit.WebView source, string? world, int64 promise, string json) {
-            string script = "globalThis.__xanhResolve(%lld, %s);".printf (promise, json);
+            string script = "globalThis.__xanhResolve(%s, %s);".printf (
+                promise.to_string (), json);
             source.evaluate_javascript.begin (script, -1, world, null, null);
         }
 
@@ -511,7 +512,8 @@ namespace Xanh {
             var node = new Json.Node (Json.NodeType.VALUE);
             node.set_string (message);
             generator.set_root (node);
-            string script = "globalThis.__xanhReject(%lld, %s);".printf (promise, generator.to_data (null));
+            string script = "globalThis.__xanhReject(%s, %s);".printf (
+                promise.to_string (), generator.to_data (null));
             source.evaluate_javascript.begin (script, -1, world, null, null);
         }
 
@@ -591,7 +593,7 @@ namespace Xanh {
             string? granted = active_tab_grants.lookup (extension.id);
             string? current = uri_origin (uri);
             return granted != null && current != null &&
-                granted == "%llu:%s".printf (tab_id, current);
+                granted == "%s:%s".printf (tab_id.to_string (), current);
         }
 
         static bool has_permission (ExtensionDefinition extension, string permission) {

@@ -1,9 +1,0 @@
-/* SPDX-License-Identifier: LGPL-2.1-or-later */
-
-namespace Xanh.Config {
-    public const string APP_ID = "io.github.lamppkk.xanhbrowser";
-    public const string APP_NAME = "Xanh Browser";
-    public const string VERSION = "1.0.0";
-    public const string USER_AGENT_TOKEN = "XanhBrowser/1.0";
-    public const string PLUGINDIR = "@XANH_PLUGIN_DIR@";
-}

@@ -36,9 +36,10 @@ set(XANH_VALA_OPTIONS
     --fatal-warnings
     --enable-checking)
 set(XANH_PLUGIN_DIR "${CMAKE_INSTALL_FULL_LIBDIR}/xanh-browser")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/desktop")
 configure_file(
     desktop/config.vala.in
-    "${CMAKE_CURRENT_BINARY_DIR}/config.vala"
+    "${CMAKE_CURRENT_BINARY_DIR}/desktop/config.vala"
     @ONLY)
 
 add_compile_options(
@@ -61,7 +62,7 @@ include_directories(
     ${XANH_INCLUDE_DIRS})
 
 vala_precompile(XANH_CORE_C xanh-browser-core
-    "${CMAKE_CURRENT_BINARY_DIR}/config.vala"
+    "${CMAKE_CURRENT_BINARY_DIR}/desktop/config.vala"
     desktop/database.vala
     desktop/plugin-api.vala
 PACKAGES ${XANH_VALA_PACKAGES}

@@ -26,7 +26,7 @@ internal class XanhWebViewClient(
     }
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-        activity.onProgress(0)
+        activity.onPageStarted(url)
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {

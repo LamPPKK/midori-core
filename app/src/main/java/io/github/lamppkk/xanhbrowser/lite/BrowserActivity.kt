@@ -46,6 +46,7 @@ class BrowserActivity : AppCompatActivity() {
     private var geolocationDialog: AlertDialog? = null
     private var desktopSite = false
     private var currentNavigationUrl: String? = null
+    private var pendingNavigationUrl: String? = null
 
     private val filePicker = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -98,7 +99,10 @@ class BrowserActivity : AppCompatActivity() {
         val webViewState = Bundle()
         binding.webView.saveState(webViewState)
         outState.putBundle(STATE_WEB_VIEW, webViewState)
-        outState.putString(STATE_CURRENT_URL, currentNavigationUrl ?: binding.webView.url)
+        outState.putString(
+            STATE_CURRENT_URL,
+            pendingNavigationUrl ?: currentNavigationUrl ?: binding.webView.url,
+        )
         outState.putBoolean(STATE_DESKTOP_SITE, desktopSite)
         super.onSaveInstanceState(outState)
     }
@@ -183,18 +187,33 @@ class BrowserActivity : AppCompatActivity() {
         if (AddressResolver.isExternal(resolved)) {
             openExternal(uri)
         } else {
+            pendingNavigationUrl = resolved
             currentNavigationUrl = resolved
             binding.webView.loadUrl(resolved)
         }
     }
 
-    internal fun onPageChanged(url: String?, title: String?) {
+    internal fun onPageStarted(url: String?) {
         if (!url.isNullOrBlank() && url != "about:blank") {
             currentNavigationUrl = url
+            pendingNavigationUrl = null
+        }
+        onProgress(0)
+    }
+
+    internal fun onPageChanged(url: String?, title: String?) {
+        if (
+            !url.isNullOrBlank() &&
+            url != "about:blank" &&
+            (pendingNavigationUrl == null || pendingNavigationUrl == url) &&
+            (pendingNavigationUrl != null || currentNavigationUrl == null || currentNavigationUrl == url)
+        ) {
+            currentNavigationUrl = url
+            pendingNavigationUrl = null
             binding.urlBar.setText(url)
             preferences.edit { putString(LAST_URL, url) }
+            supportActionBar?.subtitle = title
         }
-        supportActionBar?.subtitle = title
     }
 
     internal fun onProgress(progress: Int) {

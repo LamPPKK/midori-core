@@ -28,7 +28,7 @@ jobs:
           cache-dependency-path: platform/windows/**/*.csproj
       - name: Test Windows core
         run: dotnet test platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj --configuration Release
-      - name: Publish x64 application
+      - name: Publish ${{ matrix.platform }} application
         run: >-
           dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
           --configuration Release

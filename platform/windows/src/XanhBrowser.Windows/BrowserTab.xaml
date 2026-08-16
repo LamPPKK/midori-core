@@ -45,7 +45,6 @@
             Grid.Row="2"
             CoreWebView2Initialized="BrowserWebView_CoreWebView2Initialized"
             NavigationCompleted="BrowserWebView_NavigationCompleted"
-            NavigationStarting="BrowserWebView_NavigationStarting"
-            SourceChanged="BrowserWebView_SourceChanged" />
+            NavigationStarting="BrowserWebView_NavigationStarting" />
     </Grid>
 </UserControl>

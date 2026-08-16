@@ -63,6 +63,7 @@ public sealed partial class BrowserTab : UserControl
         sender.CoreWebView2.HistoryChanged += (_, _) => UpdateNavigationButtons();
         sender.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
         sender.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
+        sender.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
     }
 
     private async void CoreWebView2_NewWindowRequested(
@@ -181,11 +182,12 @@ public sealed partial class BrowserTab : UserControl
         UpdateNavigationButtons();
     }
 
-    private void BrowserWebView_SourceChanged(WebView2 sender, CoreWebView2SourceChangedEventArgs args)
+    private void CoreWebView2_SourceChanged(CoreWebView2 sender, CoreWebView2SourceChangedEventArgs args)
     {
-        if (AddressResolver.IsAllowedWebUri(sender.Source))
+        if (Uri.TryCreate(sender.Source, UriKind.Absolute, out var uri)
+            && AddressResolver.IsAllowedWebUri(uri))
         {
-            AddressBox.Text = sender.Source.AbsoluteUri;
+            AddressBox.Text = uri.AbsoluteUri;
         }
     }
 

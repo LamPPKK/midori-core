@@ -42,9 +42,10 @@ public sealed partial class BrowserTab : UserControl, IDisposable
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Xanh Browser",
                 "WebView2");
-            // Pass both optional paths positionally because the WinRT projection used by
-            // WinUI does not preserve the SDK's parameter names on every architecture.
-            var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                null,
+                userDataFolder,
+                new CoreWebView2EnvironmentOptions());
             if (_disposed)
             {
                 return;

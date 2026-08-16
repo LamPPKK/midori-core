@@ -13,17 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
-      - run: pacman -Syu --noconfirm git cmake ninja vala gtk4 webkitgtk-6.0 libsoup3 sqlite libpeas-2 gcr-4 json-glib appstream xorg-server-xvfb weston
+      - run: pacman -Syu --noconfirm git cmake ninja vala gtk4 webkitgtk-6.0 libsoup3 sqlite libpeas-2 gcr-4 json-glib appstream dbus xorg-server-xvfb weston
       - uses: actions/checkout@v4
       - run: cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
       - run: cmake --build _build
-      - run: xvfb-run -a ctest --test-dir _build --output-on-failure
+      - run: dbus-uuidgen --ensure=/etc/machine-id
+      - name: X11 test suite
+        run: dbus-run-session -- xvfb-run -a env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 ctest --test-dir _build --output-on-failure
       - name: Wayland application smoke test
         run: |
           install -d -m 0700 /tmp/xanh-runtime
           XDG_RUNTIME_DIR=/tmp/xanh-runtime weston --backend=headless-backend.so --socket=xanh-wayland --idle-time=0 >/tmp/xanh-weston.log 2>&1 &
           sleep 2
-          XDG_RUNTIME_DIR=/tmp/xanh-runtime WAYLAND_DISPLAY=xanh-wayland GDK_BACKEND=wayland ctest --test-dir _build --output-on-failure -R application-smoke
+          dbus-run-session -- env XDG_RUNTIME_DIR=/tmp/xanh-runtime WAYLAND_DISPLAY=xanh-wayland GDK_BACKEND=wayland WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 ctest --test-dir _build --output-on-failure -R application-smoke
       - run: cmake --build _build --target validate-metadata
       - run: for file in ui/*.ui; do gtk4-builder-tool validate "$file"; done
       - name: Verify modern runtime linkage

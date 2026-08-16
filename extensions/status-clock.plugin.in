@@ -1,6 +1,0 @@
-[Plugin]
-Module=status-clock
-IAge=3
-Icon=preferences-system-time-symbolic
-_Name=Statusbar Clock
-_Description=Display date and time in the statusbar

@@ -1,0 +1,7 @@
+[Plugin]
+Module=xanh-session
+Loader=C
+IAge=2
+Name=Session
+Description=Safely restores Xanh Browser tabs
+Builtin=true

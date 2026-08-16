@@ -1,10 +1,9 @@
 <resources>
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-        <!-- Customize your theme here. -->
-        <item name="colorPrimary">#81ca45</item>
-        <item name="colorPrimaryDark">#4da80d</item>
-        <item name="colorAccent">#eee</item>
+    <style name="Theme.XanhBrowserLite" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/xanh_green</item>
+        <item name="colorSecondary">@color/xanh_accent</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/xanh_surface</item>
     </style>
-
 </resources>

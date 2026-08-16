@@ -1,0 +1,21 @@
+app-id: io.github.lamppkk.xanhbrowser
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: xanh-browser
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=org.freedesktop.GeoClue2
+modules:
+  - name: xanh-browser
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+    sources:
+      - type: dir
+        path: ..

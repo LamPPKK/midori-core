@@ -1,11 +1,23 @@
 <resources>
-    <string name="appName">Midori</string>
-    <string name="appWebsite">https://www.midori-browser.org</string>
-    <string name="userAgentVersion">Midori/6</string>
-
-    <string name="actionShare">Share</string>
-    <string name="actionClearPrivateData">Clear Private Data</string>
-    <string name="actionRequestDesktopSite">Request Desktop site</string>
-
-    <string name="hintSearchOrEnterAddress">Search or enter an address</string>
+    <string name="app_name">Xanh Browser Lite</string>
+    <string name="app_website">https://duckduckgo.com/</string>
+    <string name="search_or_address">Search or enter an address</string>
+    <string name="back">Back</string>
+    <string name="forward">Forward</string>
+    <string name="reload">Reload</string>
+    <string name="share">Share</string>
+    <string name="desktop_site">Desktop site</string>
+    <string name="downloads">Downloads</string>
+    <string name="clear_private_data">Clear private data</string>
+    <string name="private_data_cleared">Private data cleared</string>
+    <string name="app_settings">App settings</string>
+    <string name="download_started">Download started</string>
+    <string name="download_failed">Download failed</string>
+    <string name="no_app_for_link">No app can open this link</string>
+    <string name="tls_error">The secure connection could not be verified</string>
+    <string name="unsafe_page_blocked">Unsafe page blocked</string>
+    <string name="location_request_title">Allow location access?</string>
+    <string name="location_request_message">%1$s wants to use your location.</string>
+    <string name="deny">Deny</string>
+    <string name="allow_once">Allow once</string>
 </resources>

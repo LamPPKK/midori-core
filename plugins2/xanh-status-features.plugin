@@ -1,0 +1,7 @@
+[Plugin]
+Module=xanh-status-features
+Loader=C
+IAge=2
+Name=Status features
+Description=Shows page loading and link status
+Builtin=true

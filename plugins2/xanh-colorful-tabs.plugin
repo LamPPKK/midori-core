@@ -1,0 +1,7 @@
+[Plugin]
+Module=xanh-colorful-tabs
+Loader=C
+IAge=2
+Name=Colorful tabs
+Description=Assigns stable colors to tab origins
+Builtin=true

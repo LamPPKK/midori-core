@@ -1,0 +1,40 @@
+name: CodeQL
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+      - run: ./gradlew --no-daemon assembleDebug
+      - uses: github/codeql-action/analyze@v3
+
+  desktop:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm git cmake ninja vala gtk4 webkitgtk-6.0 libsoup3 sqlite libpeas-2 gcr-4 json-glib
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: cpp
+      - run: cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - run: cmake --build _build
+      - uses: github/codeql-action/analyze@v3

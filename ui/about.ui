@@ -1,16 +1,2 @@
-<interface>
-  <template class="MidoriAbout" parent="GtkAboutDialog">
-    <property name="modal">yes</property>
-    <property name="copyright" translatable="yes">2007-2019 Astian Foundation</property>
-    <property name="authors">2007-2019 Christian Dywan &lt;christian@twotoasts.de&gt;
-      2009-2012 Alexander Butenko &lt;a.butenka@gmail.com&gt;
-      2014 Paweł Forysiuk &lt;tuxator@o2.pl&gt;
-      2010 Samuel Creshal &lt;creshal@arcor.de&gt;
-      2010 Arno Renevier &lt;arno@renevier.net&gt;
-    </property>
-    <property name="license-type">GTK_LICENSE_LGPL_2_1</property>
-    <property name="program-name" translatable="yes">Midori Web Browser</property>
-    <property name="comments" translatable="yes">A lightweight web browser.</property>
-    <property name="translator-credits" translatable="yes">translator-credits</property>
-  </template>
-</interface>
+<?xml version="1.0" encoding="UTF-8"?>
+<interface><requires lib="gtk" version="4.10"/><object class="GtkAboutDialog" id="about"><property name="program-name">Xanh Browser</property><property name="version">1.0.0</property><property name="comments">A privacy-minded web browser</property><property name="logo-icon-name">io.github.lamppkk.xanhbrowser</property></object></interface>

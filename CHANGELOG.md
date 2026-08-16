@@ -3,6 +3,47 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.0.0] - Unreleased
+
+### Added
+
+- Added the Xanh Browser Linux application with tabs, bookmarks, history,
+  downloads, private browsing and safe session recovery.
+- Added a confirmed, idempotent importer for legacy bookmarks, history and
+  settings. Legacy sessions are never restored automatically.
+- Added six native plugins on plugin ABI 2 and a permission-checked Manifest V2
+  WebExtension compatibility subset.
+- Added Xanh Browser Lite for Android API 26–36 with single-tab navigation,
+  sharing, desktop mode, scoped downloads, file upload, geolocation consent and
+  asynchronous privacy clearing.
+- Added Linux, Android, instrumentation, CodeQL, dependency-review, Flatpak and
+  signed-source GitHub Actions workflows.
+
+### Changed
+
+- Renamed the Linux application to Xanh Browser with application ID
+  `io.github.lamppkk.xanhbrowser`.
+- Renamed the small Android edition to Xanh Browser Lite with application ID
+  `io.github.lamppkk.xanhbrowser.lite` and version code `10000`.
+- Ported the desktop stack to GTK 4, WebKitGTK 6.0, libsoup 3, libpeas 2 and
+  GCR 4.
+- Modernized Android builds to JDK 17, Android SDK 36, AGP 9.3, Gradle 9.5,
+  AndroidX and View Binding.
+
+### Security
+
+- Isolated WebExtension script worlds and added message, host-permission and CSP
+  validation.
+- Enabled Android Safe Browsing, blocked mixed content and production cleartext,
+  constrained external schemes and removed legacy storage permissions.
+- Added guarded production-signing tasks so unsigned verification AABs cannot be
+  mistaken for Play upload artifacts.
+
+### Removed
+
+- Removed the GTK3, WebKitGTK 4.0, libsoup 2 and vendored WebKit VAPI paths from
+  the shipping desktop build.
+
 ## [9.0] - 2019-07-27
 - Use OpenGraph images for Speed Dial shortcuts
 - Better support for Javascript popups

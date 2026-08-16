@@ -1,0 +1,5 @@
+Xanh Browser Lite is the compact Android edition of Xanh Browser.
+
+It keeps a focused single-tab experience with navigation, search, reload, sharing, desktop mode, downloads, file upload and geolocation prompts. Safe Browsing is enabled, mixed content and production cleartext traffic are blocked, and unknown external link schemes never reach the WebView.
+
+Xanh Browser Lite deliberately omits a tab manager, history manager and bookmark database to keep its footprint small.

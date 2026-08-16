@@ -1,0 +1,27 @@
+name: Flatpak
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-49
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: xanh-browser.flatpak
+          manifest-path: flatpak/io.github.lamppkk.xanhbrowser.yml
+          cache-key: flatpak-${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-browser-flatpak
+          path: xanh-browser.flatpak

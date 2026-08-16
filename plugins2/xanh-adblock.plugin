@@ -1,0 +1,7 @@
+[Plugin]
+Module=xanh-adblock
+Loader=C
+IAge=2
+Name=Advertisement blocking
+Description=Blocks known advertising and tracking requests
+Builtin=true

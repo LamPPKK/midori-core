@@ -1,0 +1,41 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+
+namespace Xanh {
+    public class TabState : Object {
+        public uint64 id { get; set; }
+        public string uri { get; set; default = "about:blank"; }
+        public string title { get; set; default = "New Tab"; }
+        public string? recovery_uri { get; set; }
+        public string? tint { get; set; }
+        public double progress { get; set; }
+        public bool private_mode { get; set; }
+    }
+
+    public class PluginHost : Object {
+        public BrowserDatabase database { get; construct; }
+        public bool adblock_enabled { get; set; }
+        public string adblock_blocked_domains { get; set; default = ""; }
+        public string adblock_whitelist_domains { get; set; default = ""; }
+        public bool bookmarks_enabled { get; set; }
+        public bool session_enabled { get; set; }
+        public bool colorful_tabs_enabled { get; set; }
+        public bool status_clock_enabled { get; set; }
+        public bool status_features_enabled { get; set; }
+        public string status_text { get; set; default = ""; }
+
+        public signal void page_loaded (TabState tab);
+        public signal void progress_changed (TabState tab);
+        public signal void bookmark_requested (TabState tab);
+        public signal void shutting_down ();
+
+        public PluginHost (BrowserDatabase database) {
+            Object (database: database);
+        }
+    }
+
+    public interface BrowserPlugin : Object {
+        public abstract PluginHost host { owned get; construct set; }
+        public abstract void activate ();
+        public abstract void deactivate ();
+    }
+}

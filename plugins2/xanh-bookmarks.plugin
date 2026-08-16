@@ -1,0 +1,7 @@
+[Plugin]
+Module=xanh-bookmarks
+Loader=C
+IAge=2
+Name=Bookmarks
+Description=Stores and exposes browser bookmarks
+Builtin=true

@@ -1,0 +1,1 @@
+First Xanh Browser Lite release with secure single-tab browsing and privacy controls.

@@ -1,94 +1,190 @@
-# Copyright (C) 2013-2018 Christian Dywan <christian@twotoasts.de>
-
-cmake_minimum_required(VERSION 3.2)
-
-# dh_translations detects this if there's no variable used
-set (GETTEXT_PACKAGE "midori")
-add_definitions("-DGETTEXT_PACKAGE=\"${GETTEXT_PACKAGE}\"")
-project(${GETTEXT_PACKAGE} C)
-set(PROJECT_DOMAIN org.midori_browser.Midori)
-set(PROJECT_BUGS https://github.com/midori-browser/core/issues)
-set(PROJECT_WEBSITE https://www.midori-browser.org)
-set(CORE_VERSION 9.0)
-
-execute_process(COMMAND "git" "describe" "--tags"
-                OUTPUT_VARIABLE REVISION
-                ERROR_QUIET
-                OUTPUT_STRIP_TRAILING_WHITESPACE)
-if (REVISION)
-    set(CORE_VERSION "${REVISION}")
-    # All warnings are errors in development builds
-    set(VALAFLAGS ${VALAFLAGS} --fatal-warnings)
-else ()
-    # No runtime type checks
-    set(VALAFLAGS ${VALAFLAGS} --disable-assert)
-endif ()
-
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
-# Disallow building during install to avoid permission problems
-set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY 1)
-
-include(FindIntltool)
-
-find_package(Vala REQUIRED)
-vala_require("0.30.0")
-set(VALAFLAGS ${VALAFLAGS}
-    --debug
-    --target-glib=2.46
-    --enable-deprecated
-    )
+cmake_minimum_required(VERSION 3.24)
+project(xanh-browser VERSION 1.0.0 LANGUAGES C)
 
 include(GNUInstallDirs)
-set(DATADIR ${CMAKE_INSTALL_FULL_DATADIR})
-set(PLUGINDIR "${CMAKE_INSTALL_FULL_LIBDIR}/${CMAKE_PROJECT_NAME}" CACHE STRING "Location for system-wide plugins")
+include(CTest)
+find_package(PkgConfig REQUIRED)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+find_package(Vala REQUIRED)
+vala_require("0.56.0")
+include(ValaPrecompile)
 
-find_package(PkgConfig)
-pkg_check_modules(DEPS REQUIRED
-                  sqlite3>=3.6.19
-                  gio-2.0>=2.46.2
-                  libsoup-2.4>=2.48.0
-                  )
-set(PKGS sqlite3 gio-2.0 libsoup-2.4)
+pkg_check_modules(XANH REQUIRED IMPORTED_TARGET
+    glib-2.0>=2.74
+    gio-2.0>=2.74
+    gtk4>=4.10
+    webkitgtk-6.0>=2.52.0
+    javascriptcoregtk-6.0>=2.52.0
+    libsoup-3.0
+    sqlite3
+    libpeas-2>=2.0
+    gcr-4
+    json-glib-1.0)
 
-pkg_check_modules(DEPS_GTK REQUIRED
-                  gtk+-3.0>=3.12.0
-                  webkit2gtk-4.0>=2.16.6
-                  gcr-ui-3>=2.32
-                  libpeas-gtk-1.0
-                  json-glib-1.0>=0.12
-                  libarchive
-                  )
-set(PKGS ${PKGS} gtk+-3.0 libsoup-2.4 gcr-ui-3 libpeas-gtk-1.0 json-glib-1.0 posix)
-set(EXTRA_VAPIS
-    ${CMAKE_SOURCE_DIR}/vapi/config.vapi
-    ${CMAKE_SOURCE_DIR}/vapi/libarchive.vapi
-    ${CMAKE_SOURCE_DIR}/vapi/webkit2gtk-4.0.vapi
-    ${CMAKE_SOURCE_DIR}/vapi/javascriptcoregtk-4.0.vapi)
+set(XANH_VALA_PACKAGES
+    gio-2.0
+    gtk4
+    webkitgtk-6.0
+    javascriptcoregtk-6.0
+    libsoup-3.0
+    sqlite3
+    libpeas-2
+    gcr-4
+    json-glib-1.0)
+set(XANH_VALA_OPTIONS
+    --target-glib=2.74
+    --fatal-warnings
+    --enable-checking)
+set(XANH_PLUGIN_DIR "${CMAKE_INSTALL_FULL_LIBDIR}/xanh-browser")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+configure_file(
+    desktop/config.vala.in
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/config.vala"
+    @ONLY)
 
-add_definitions("-DGCR_API_SUBJECT_TO_CHANGE")
-set(CFLAGS "${CFLAGS} -g")
+add_compile_options(
+    -Wall -Wextra -Werror
+    -Wno-unused-parameter
+    -Wno-unused-variable
+    -Wno-unused-but-set-variable)
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Wno-tautological-pointer-compare)
+endif()
+include_directories(
+    "${CMAKE_CURRENT_SOURCE_DIR}/desktop"
+    "${CMAKE_CURRENT_BINARY_DIR}/desktop"
+    ${XANH_INCLUDE_DIRS})
 
-# Explicitly add -fPIC for older toolchains
-set(VALA_CFLAGS "-g -fPIC -w -Werror")
+vala_precompile(XANH_CORE_C xanh-browser-core
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/config.vala"
+    desktop/database.vala
+    desktop/plugin-api.vala
+PACKAGES ${XANH_VALA_PACKAGES}
+OPTIONS ${XANH_VALA_OPTIONS}
+DIRECTORY desktop
+GENERATE_VAPI xanh-browser-core
+GENERATE_HEADER xanh-browser-core)
 
-set(LIBCORE "${CMAKE_PROJECT_NAME}-core")
-set(CORE_USER_AGENT_VERSION "Midori/6")
+add_library(xanh-browser-core SHARED ${XANH_CORE_C})
+set_target_properties(xanh-browser-core PROPERTIES
+    VERSION 2.0.0
+    SOVERSION 2
+    OUTPUT_NAME xanh-browser-core)
+target_link_libraries(xanh-browser-core PRIVATE PkgConfig::XANH)
 
-configure_file(config.h.in config.h @ONLY)
+vala_precompile(XANH_APP_C xanh-browser
+    desktop/address-resolver.vala
+    desktop/profile-importer.vala
+    desktop/plugin-manager.vala
+    desktop/web-extension-bridge.vala
+    desktop/browser-window.vala
+    desktop/application.vala
+    desktop/main.vala
+PACKAGES ${XANH_VALA_PACKAGES}
+OPTIONS ${XANH_VALA_OPTIONS}
+DIRECTORY desktop-app
+CUSTOM_VAPIS "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi")
 
-# CMake provides no uninstall target by design
-add_custom_target (uninstall
-    COMMAND "xargs" "rm" "-v" "<" "install_manifest.txt")
+add_executable(xanh-browser ${XANH_APP_C})
+target_include_directories(xanh-browser PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
+target_link_libraries(xanh-browser PRIVATE xanh-browser-core PkgConfig::XANH)
 
-install(FILES COPYING README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+function(add_xanh_plugin target source manifest)
+    vala_precompile(${target}_C ${target}
+        ${source}
+    PACKAGES ${XANH_VALA_PACKAGES}
+    OPTIONS ${XANH_VALA_OPTIONS}
+    DIRECTORY "plugins/${target}"
+    CUSTOM_VAPIS "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi")
+    add_library(${target} MODULE ${${target}_C})
+    target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
+    target_link_libraries(${target} PRIVATE xanh-browser-core PkgConfig::XANH)
+    configure_file(${manifest} "${CMAKE_CURRENT_BINARY_DIR}/${target}.plugin" COPYONLY)
+    install(TARGETS ${target} LIBRARY DESTINATION "${XANH_PLUGIN_DIR}")
+    install(FILES ${manifest} DESTINATION "${XANH_PLUGIN_DIR}")
+endfunction()
 
-set(DESKTOP_ICON "${PROJECT_DOMAIN}" CACHE STRING "The Icon value to be used in the .desktop file")
+add_xanh_plugin(xanh-adblock plugins2/adblock.vala plugins2/xanh-adblock.plugin)
+add_xanh_plugin(xanh-bookmarks plugins2/bookmarks.vala plugins2/xanh-bookmarks.plugin)
+add_xanh_plugin(xanh-session plugins2/session.vala plugins2/xanh-session.plugin)
+add_xanh_plugin(xanh-colorful-tabs plugins2/colorful-tabs.vala plugins2/xanh-colorful-tabs.plugin)
+add_xanh_plugin(xanh-status-clock plugins2/status-clock.vala plugins2/xanh-status-clock.plugin)
+add_xanh_plugin(xanh-status-features plugins2/status-features.vala plugins2/xanh-status-features.plugin)
 
-add_subdirectory (core)
-add_subdirectory (web)
-add_subdirectory (extensions)
-enable_testing()
-add_subdirectory (tests)
-add_subdirectory (po)
-add_subdirectory (icons)
-add_subdirectory (data)
+function(add_xanh_test target)
+    set(options WEB_EXTENSION)
+    set(oneValueArgs SOURCE)
+    set(multiValueArgs SUPPORT)
+    cmake_parse_arguments(TEST "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    set(test_sources ${TEST_SOURCE})
+    if(TEST_SUPPORT)
+        list(APPEND test_sources ${TEST_SUPPORT})
+    endif()
+    vala_precompile(${target}_C ${target}
+        ${test_sources}
+    PACKAGES ${XANH_VALA_PACKAGES}
+    OPTIONS ${XANH_VALA_OPTIONS}
+    DIRECTORY "tests/${target}"
+    CUSTOM_VAPIS "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi")
+    add_executable(${target} ${${target}_C})
+    target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
+    target_link_libraries(${target} PRIVATE xanh-browser-core PkgConfig::XANH)
+    add_test(NAME ${target} COMMAND ${target})
+endfunction()
+
+if(BUILD_TESTING)
+    add_xanh_test(database-test SOURCE tests-modern/database-test.vala)
+    add_xanh_test(address-resolver-test SOURCE tests-modern/address-resolver-test.vala
+        SUPPORT desktop/address-resolver.vala)
+    add_xanh_test(importer-test SOURCE tests-modern/importer-test.vala
+        SUPPORT desktop/profile-importer.vala)
+    add_xanh_test(web-extension-test SOURCE tests-modern/web-extension-test.vala
+        SUPPORT desktop/web-extension-bridge.vala)
+    add_xanh_test(plugin-test SOURCE tests-modern/plugin-test.vala
+        SUPPORT desktop/plugin-manager.vala)
+    add_dependencies(plugin-test
+        xanh-adblock xanh-bookmarks xanh-session xanh-colorful-tabs
+        xanh-status-clock xanh-status-features)
+    set_tests_properties(plugin-test PROPERTIES
+        ENVIRONMENT "XANH_TEST_PLUGIN_DIR=${CMAKE_CURRENT_BINARY_DIR}")
+    add_xanh_test(application-smoke-test SOURCE tests-modern/application-smoke-test.vala
+        SUPPORT
+            desktop/address-resolver.vala
+            desktop/profile-importer.vala
+            desktop/plugin-manager.vala
+            desktop/web-extension-bridge.vala
+            desktop/browser-window.vala
+            desktop/application.vala)
+    add_dependencies(application-smoke-test
+        xanh-adblock xanh-bookmarks xanh-session xanh-colorful-tabs
+        xanh-status-clock xanh-status-features)
+    set_tests_properties(application-smoke-test PROPERTIES
+        ENVIRONMENT "XANH_PLUGIN_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        TIMEOUT 20)
+endif()
+
+configure_file(
+    data-xanh/io.github.lamppkk.xanhbrowser.service
+    "${CMAKE_CURRENT_BINARY_DIR}/io.github.lamppkk.xanhbrowser.service"
+    @ONLY)
+
+install(TARGETS xanh-browser xanh-browser-core
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+install(FILES data-xanh/io.github.lamppkk.xanhbrowser.desktop
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+install(FILES data-xanh/io.github.lamppkk.xanhbrowser.metainfo.xml
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
+install(FILES data-xanh/io.github.lamppkk.xanhbrowser.gschema.xml
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/glib-2.0/schemas")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/io.github.lamppkk.xanhbrowser.service"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/dbus-1/services")
+install(FILES data-xanh/io.github.lamppkk.xanhbrowser.svg
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
+install(FILES COPYING README.md RELEASING.md
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+
+add_custom_target(validate-metadata
+    COMMAND glib-compile-schemas --strict --dry-run "${CMAKE_CURRENT_SOURCE_DIR}/data-xanh"
+    COMMAND appstreamcli validate --no-net "${CMAKE_CURRENT_SOURCE_DIR}/data-xanh/io.github.lamppkk.xanhbrowser.metainfo.xml"
+    VERBATIM)

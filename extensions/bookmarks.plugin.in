@@ -1,7 +1,0 @@
-[Plugin]
-Module=bookmarks
-IAge=3
-Builtin=true
-Icon=user-bookmarks-symbolic
-_Name=Bookmarks
-_Description=Show the saved bookmarks

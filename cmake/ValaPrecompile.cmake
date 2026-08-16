@@ -118,10 +118,11 @@ macro(vala_precompile output target_name)
     parse_arguments(ARGS "TARGET;PACKAGES;OPTIONS;DIRECTORY;GENERATE_GIR;GENERATE_SYMBOLS;GENERATE_HEADER;GENERATE_VAPI;CUSTOM_VAPIS" "" ${ARGN})
 
     if(ARGS_DIRECTORY)
-        set(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${ARGS_DIRECTORY})
+        set(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${ARGS_DIRECTORY})
     else(ARGS_DIRECTORY)
         set(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     endif(ARGS_DIRECTORY)
+    file(MAKE_DIRECTORY ${DIRECTORY})
     include_directories(${DIRECTORY})
     set(vala_pkg_opts "")
     foreach(pkg ${ARGS_PACKAGES})
@@ -144,8 +145,8 @@ macro(vala_precompile output target_name)
         string(REPLACE ".gs" ".c" src ${src})
         if(${IS_MATCHED} MATCHES "/")
             get_filename_component(VALA_FILE_NAME ${src} NAME)
-            set(out_file "${CMAKE_CURRENT_BINARY_DIR}/${VALA_FILE_NAME}")
-            list(APPEND out_files "${CMAKE_CURRENT_BINARY_DIR}/${VALA_FILE_NAME}")
+            set(out_file "${DIRECTORY}/${VALA_FILE_NAME}")
+            list(APPEND out_files "${DIRECTORY}/${VALA_FILE_NAME}")
         else()
             set(out_file "${DIRECTORY}/${src}")
             list(APPEND out_files "${DIRECTORY}/${src}")
@@ -226,6 +227,8 @@ macro(vala_precompile output target_name)
     DEPENDS 
         ${in_files} 
         ${ARGS_CUSTOM_VAPIS}
+    WORKING_DIRECTORY
+        ${DIRECTORY}
     COMMENT
         "Generating ${out_files_display}"
     )

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.lamppkk.xanhbrowser</id>
+  <name>Xanh Browser</name>
+  <summary>A privacy-minded GTK 4 web browser</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LGPL-2.1-or-later</project_license>
+  <launchable type="desktop-id">io.github.lamppkk.xanhbrowser.desktop</launchable>
+  <description>
+    <p>Xanh Browser combines GTK 4 and WebKitGTK with tabs, bookmarks, history,
+    downloads, private browsing, native plugins and a focused Manifest V2
+    compatibility layer.</p>
+  </description>
+  <url type="homepage">https://github.com/lamppkk/xanhbrowser</url>
+  <provides><binary>xanh-browser</binary></provides>
+  <releases>
+    <release version="1.0.0" date="2026-08-17">
+      <description><p>First Xanh Browser release.</p></description>
+    </release>
+  </releases>
+</component>

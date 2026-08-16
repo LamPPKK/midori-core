@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="io.github.lamppkk.xanhbrowser" path="/io/github/lamppkk/xanhbrowser/">
+    <key name="homepage" type="s"><default>'https://duckduckgo.com/'</default></key>
+    <key name="search-template" type="s"><default>'https://duckduckgo.com/?q=%s'</default></key>
+    <key name="enable-javascript" type="b"><default>true</default></key>
+    <key name="restore-session" type="b"><default>true</default></key>
+  </schema>
+</schemalist>

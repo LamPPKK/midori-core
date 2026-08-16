@@ -1,0 +1,39 @@
+name: Linux desktop
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm git cmake ninja vala gtk4 webkitgtk-6.0 libsoup3 sqlite libpeas-2 gcr-4 json-glib appstream xorg-server-xvfb weston
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+      - run: cmake --build _build
+      - run: xvfb-run -a ctest --test-dir _build --output-on-failure
+      - name: Wayland application smoke test
+        run: |
+          install -d -m 0700 /tmp/xanh-runtime
+          XDG_RUNTIME_DIR=/tmp/xanh-runtime weston --backend=headless-backend.so --socket=xanh-wayland --idle-time=0 >/tmp/xanh-weston.log 2>&1 &
+          sleep 2
+          XDG_RUNTIME_DIR=/tmp/xanh-runtime WAYLAND_DISPLAY=xanh-wayland GDK_BACKEND=wayland ctest --test-dir _build --output-on-failure -R application-smoke
+      - run: cmake --build _build --target validate-metadata
+      - run: for file in ui/*.ui; do gtk4-builder-tool validate "$file"; done
+      - name: Verify modern runtime linkage
+        run: |
+          if ldd _build/xanh-browser | grep -E 'libgtk-3|libwebkit2gtk-4\.0|libsoup-2'; then
+            echo 'Legacy desktop dependency detected' >&2
+            exit 1
+          fi
+      - run: DESTDIR="$PWD/_artifact" cmake --install _build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-browser-linux
+          path: _artifact

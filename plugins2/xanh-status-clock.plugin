@@ -1,0 +1,7 @@
+[Plugin]
+Module=xanh-status-clock
+Loader=C
+IAge=2
+Name=Status clock
+Description=Shows local time in the browser status area
+Builtin=true

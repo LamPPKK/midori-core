@@ -1,0 +1,45 @@
+name: Signed source release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v1.0.0']
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Import release signing key
+        env:
+          XANH_RELEASE_GPG_PRIVATE_KEY: ${{ secrets.XANH_RELEASE_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$XANH_RELEASE_GPG_PRIVATE_KEY" ]; then
+            echo 'The source release signing key is not configured.' >&2
+            exit 1
+          fi
+          printf '%s' "$XANH_RELEASE_GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+      - name: Build and verify source artifacts
+        env:
+          XANH_RELEASE_GPG_KEY: ${{ secrets.XANH_RELEASE_GPG_KEY }}
+        run: |
+          if [ -z "$XANH_RELEASE_GPG_KEY" ]; then
+            echo 'The source release signing key ID is not configured.' >&2
+            exit 1
+          fi
+          ./scripts/release-source.sh
+          sha256sum --check xanh-browser-1.0.0.tar.xz.sha256
+          gpg --batch --verify xanh-browser-1.0.0.tar.xz.asc xanh-browser-1.0.0.tar.xz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-browser-source-1.0.0
+          if-no-files-found: error
+          path: |
+            xanh-browser-1.0.0.tar.xz
+            xanh-browser-1.0.0.tar.xz.sha256
+            xanh-browser-1.0.0.tar.xz.asc

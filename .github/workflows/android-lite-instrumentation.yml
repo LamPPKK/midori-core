@@ -1,0 +1,46 @@
+name: Android Lite instrumentation
+
+on:
+  push:
+    branches: [ master, codex/xanh-browser-modernization ]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '53 2 * * 6'
+
+permissions:
+  contents: read
+
+jobs:
+  connected-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api-level: 26
+            profile: pixel_2
+          - api-level: 30
+            profile: pixel_6
+          - api-level: 33
+            profile: pixel_6
+          - api-level: 36
+            profile: pixel_9
+          - api-level: 36
+            profile: pixel_tablet
+          - api-level: 36
+            profile: pixel_fold
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          disable-animations: true
+          script: ./gradlew --no-daemon connectedDebugAndroidTest

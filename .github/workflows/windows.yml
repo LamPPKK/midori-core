@@ -36,6 +36,13 @@ jobs:
           --self-contained true
           -p:Platform=${{ matrix.platform }}
           --output _artifact/${{ matrix.rid }}
+      - name: Verify published application
+        shell: pwsh
+        run: |
+          $executable = '_artifact/${{ matrix.rid }}/XanhBrowser.Windows.exe'
+          if (-not (Test-Path $executable)) { throw "Missing $executable" }
+          $version = (Get-Item $executable).VersionInfo.ProductVersion
+          if (-not $version.StartsWith('1.0.0')) { throw "Unexpected product version: $version" }
       - uses: actions/upload-artifact@v4
         with:
           name: xanh-browser-windows-${{ matrix.rid }}-unsigned

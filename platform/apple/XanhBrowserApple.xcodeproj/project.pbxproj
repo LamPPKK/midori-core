@@ -14,15 +14,18 @@
 		52BFFF6AE82166622BFAEB29 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594809F854069BC05EA45F9 /* BrowserView.swift */; };
 		686761EC979A9C397C116114 /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB98C73205558CF4F34E1412 /* Bookmark.swift */; };
 		6A514225E7C89C76D8F1E60B /* BrowserModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */; };
+		790A752BBFBB82502345359E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C5707A9D15C10A864537D41 /* Assets.xcassets */; };
 		81932F2A89EA18BC106D6A7A /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
 		E542001C874AB4BD17586767 /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */; };
 		EF3559F5A7A3CDD36DE59870 /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
+		FF0B71A4D695C1537C30C25B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C5707A9D15C10A864537D41 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserModel.swift; sourceTree = "<group>"; };
 		3645A06B4E7BF8BB9B1E5661 /* XanhBrowser-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "XanhBrowser-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		535F33329D0A3CB316F461C6 /* XanhBrowser-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "XanhBrowser-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6C5707A9D15C10A864537D41 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolver.swift; sourceTree = "<group>"; };
 		A33C392942764CA582BA6818 /* XanhBrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XanhBrowserApp.swift; sourceTree = "<group>"; };
 		A594809F854069BC05EA45F9 /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserView.swift; sourceTree = "<group>"; };
@@ -61,6 +64,7 @@
 		CEE16800181591AB2F745B2E /* App */ = {
 			isa = PBXGroup;
 			children = (
+				6C5707A9D15C10A864537D41 /* Assets.xcassets */,
 				2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */,
 				A594809F854069BC05EA45F9 /* BrowserView.swift */,
 				A33C392942764CA582BA6818 /* XanhBrowserApp.swift */,
@@ -76,6 +80,7 @@
 			buildConfigurationList = 70D761A694F58B0E2B85506A /* Build configuration list for PBXNativeTarget "XanhBrowser-iOS" */;
 			buildPhases = (
 				2132CB70C56DBCF3605E7E27 /* Sources */,
+				C15FC96F723696ABEB41D1A5 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -93,6 +98,7 @@
 			buildConfigurationList = A7C0F8585B0F52E0B59873D9 /* Build configuration list for PBXNativeTarget "XanhBrowser-macOS" */;
 			buildPhases = (
 				FDF13D4C783A72ACB4FA7212 /* Sources */,
+				214917CB3D840C9321A791F8 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -136,6 +142,25 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		214917CB3D840C9321A791F8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF0B71A4D695C1537C30C25B /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C15FC96F723696ABEB41D1A5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				790A752BBFBB82502345359E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		2132CB70C56DBCF3605E7E27 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -167,7 +192,7 @@
 		1AC1FE780A424D02EE63C335 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-iOS";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -252,7 +277,7 @@
 		7EBED96CCE534473CDFA3E18 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-iOS";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -344,7 +369,7 @@
 		FA1A5B478C652CC7274BAF78 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-macOS";
 				CODE_SIGN_ENTITLEMENTS = Config/XanhBrowserMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -361,7 +386,7 @@
 		FE4CCEBC7E6CF9A9210D7C25 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-macOS";
 				CODE_SIGN_ENTITLEMENTS = Config/XanhBrowserMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;

@@ -14,7 +14,7 @@ Do not publish a production artifact while any required gate below is missing.
 | Linux desktop | `io.github.lamppkk.xanhbrowser` | `1.0.0` |
 | iOS / iPadOS | `io.github.lamppkk.xanhbrowser` | `1.0.0` / `10000` |
 | macOS | `io.github.lamppkk.xanhbrowser.macos` | `1.0.0` / `10000` |
-| Windows | `XanhBrowser.Windows` | `1.0.0` / `10000` |
+| Windows | `XanhBrowser.Windows` | `1.0.0` |
 | Android Lite | `io.github.lamppkk.xanhbrowser.lite` | `1.0.0` / `10000` |
 
 The archival desktop baseline is `legacy-midori-9.0`. The production release

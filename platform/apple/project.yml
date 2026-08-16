@@ -26,6 +26,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.lamppkk.xanhbrowser
         PRODUCT_NAME: Xanh Browser
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-iOS
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
@@ -40,10 +41,14 @@ targets:
       - Sources/XanhBrowserCore
     entitlements:
       path: Config/XanhBrowserMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.lamppkk.xanhbrowser.macos
         PRODUCT_NAME: Xanh Browser
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-macOS
         CODE_SIGN_ENTITLEMENTS: Config/XanhBrowserMac.entitlements
         ENABLE_HARDENED_RUNTIME: YES
 schemes:

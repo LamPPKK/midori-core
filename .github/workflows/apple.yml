@@ -18,6 +18,8 @@ jobs:
           xcodebuild -version
           sdk_major="$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)"
           test "$sdk_major" -ge 26
+          test "$(plutil -extract com.apple.security.app-sandbox raw platform/apple/Config/XanhBrowserMac.entitlements)" = true
+          test "$(plutil -extract com.apple.security.network.client raw platform/apple/Config/XanhBrowserMac.entitlements)" = true
       - name: Test shared Apple core
         run: swift test --package-path platform/apple
       - name: Build macOS application
@@ -40,6 +42,14 @@ jobs:
             -derivedDataPath _build/apple-ios \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Verify artifact identities
+        run: |
+          mac_info='_build/apple-macos/Build/Products/Release/Xanh Browser.app/Contents/Info.plist'
+          ios_info='_build/apple-ios/Build/Products/Release-iphonesimulator/Xanh Browser.app/Info.plist'
+          test "$(plutil -extract CFBundleIdentifier raw "$mac_info")" = io.github.lamppkk.xanhbrowser.macos
+          test "$(plutil -extract CFBundleShortVersionString raw "$mac_info")" = 1.0.0
+          test "$(plutil -extract CFBundleIdentifier raw "$ios_info")" = io.github.lamppkk.xanhbrowser
+          test "$(plutil -extract CFBundleShortVersionString raw "$ios_info")" = 1.0.0
       - uses: actions/upload-artifact@v4
         with:
           name: xanh-browser-apple-unsigned

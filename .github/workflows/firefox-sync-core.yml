@@ -77,20 +77,21 @@ jobs:
           sha256sum xanh-sync-core/target/release/libxanh_sync_core.so \
             > xanh-sync-core/target/release/libxanh_sync_core.so.sha256
       - name: Generate the reviewed Kotlin and Swift UniFFI bindings
+        working-directory: xanh-sync-core
         run: |
-          mkdir -p xanh-sync-core/target/bindings/kotlin xanh-sync-core/target/bindings/swift
+          mkdir -p target/bindings/kotlin target/bindings/swift
           CARGO_TARGET_DIR="$RUNNER_TEMP/uniffi-tool" \
-            cargo run --locked --release --features bindgen-cli --manifest-path xanh-sync-core/Cargo.toml \
+            cargo run --locked --release --features bindgen-cli --manifest-path Cargo.toml \
             --bin xanh-uniffi-bindgen -- generate \
-            --library xanh-sync-core/target/release/libxanh_sync_core.so \
-            --language kotlin --no-format --out-dir xanh-sync-core/target/bindings/kotlin
+            --library target/release/libxanh_sync_core.so \
+            --language kotlin --no-format --out-dir target/bindings/kotlin
           CARGO_TARGET_DIR="$RUNNER_TEMP/uniffi-tool" \
-            cargo run --locked --release --features bindgen-cli --manifest-path xanh-sync-core/Cargo.toml \
+            cargo run --locked --release --features bindgen-cli --manifest-path Cargo.toml \
             --bin xanh-uniffi-bindgen -- generate \
-            --library xanh-sync-core/target/release/libxanh_sync_core.so \
-            --language swift --no-format --out-dir xanh-sync-core/target/bindings/swift
-          grep -R -F 'class MozillaSyncRuntime' xanh-sync-core/target/bindings/kotlin
-          grep -R -F 'class MozillaSyncRuntime' xanh-sync-core/target/bindings/swift
+            --library target/release/libxanh_sync_core.so \
+            --language swift --no-format --out-dir target/bindings/swift
+          grep -R -F 'class MozillaSyncRuntime' target/bindings/kotlin
+          grep -R -F 'class MozillaSyncRuntime' target/bindings/swift
       - name: Smoke-test the stable C ABI without exposing the generated key
         run: |
           LD_LIBRARY_PATH="$RUNNER_TEMP/nss/lib" python3 - <<'PY'

@@ -62,11 +62,17 @@ jobs:
       - name: Prepare the NSS layout required by Application Services
         run: |
           mkdir -p "$RUNNER_TEMP/nss/lib" "$RUNNER_TEMP/nss/include"
-          find /usr/lib -name 'libfreebl3.so' -o -name 'libnss3.so' -o -name 'libnssckbi.so' \
-            -o -name 'libsoftokn3.so' -o -name 'libnspr4.so' -o -name 'libnssutil3.so' \
-            -o -name 'libplc4.so' -o -name 'libplds4.so' | while read -r library; do
-              ln -sf "$library" "$RUNNER_TEMP/nss/lib/$(basename "$library")"
-            done
+          nss_libdir="$(pkg-config --variable=libdir nss)"
+          nspr_libdir="$(pkg-config --variable=libdir nspr)"
+          for library in libfreebl3.so libnss3.so libnssckbi.so libsoftokn3.so \
+            libnssutil3.so; do
+              test -f "$nss_libdir/$library"
+              ln -sf "$nss_libdir/$library" "$RUNNER_TEMP/nss/lib/$library"
+          done
+          for library in libnspr4.so libplc4.so libplds4.so; do
+              test -f "$nspr_libdir/$library"
+              ln -sf "$nspr_libdir/$library" "$RUNNER_TEMP/nss/lib/$library"
+          done
           cp -R /usr/include/nss/. "$RUNNER_TEMP/nss/include/"
           cp -R /usr/include/nspr/. "$RUNNER_TEMP/nss/include/"
       - name: Build the pinned native core

@@ -30,6 +30,10 @@ The `mozilla` build initializes the pinned `init_rust_components` component
 before opening a runtime or generating a local logins key. Embedders do not
 need to initialize NSS through a separate Xanh API.
 
+Linux CI resolves the NSS and NSPR library directories through `pkg-config`.
+This deliberately avoids mixing the system libraries with private copies from
+an installed Firefox build, which may require a matching `libmozsqlite3`.
+
 ```sh
 cargo test --manifest-path xanh-sync-core/Cargo.toml
 cargo build --release --features mozilla --manifest-path xanh-sync-core/Cargo.toml

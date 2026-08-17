@@ -85,12 +85,14 @@ jobs:
             --bin xanh-uniffi-bindgen -- generate \
             --library target/release/libxanh_sync_core.so \
             --crate xanh_sync_core \
+            --metadata-no-deps \
             --language kotlin --no-format --out-dir target/bindings/kotlin
           CARGO_TARGET_DIR="$RUNNER_TEMP/uniffi-tool" \
             cargo run --locked --release --features bindgen-cli --manifest-path Cargo.toml \
             --bin xanh-uniffi-bindgen -- generate \
             --library target/release/libxanh_sync_core.so \
             --crate xanh_sync_core \
+            --metadata-no-deps \
             --language swift --no-format --out-dir target/bindings/swift
           grep -R -F 'class MozillaSyncRuntime' target/bindings/kotlin
           grep -R -F 'class MozillaSyncRuntime' target/bindings/swift

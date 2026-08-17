@@ -1768,6 +1768,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
+name = "xanh-sync-bindgen-context"
+version = "0.0.0"
+dependencies = [
+ "xanh-sync-core",
+]
+
+[[package]]
 name = "xanh-sync-core"
 version = "1.0.0-alpha.1"
 dependencies = [

@@ -1,0 +1,8 @@
+[package]
+name = "xanh-sync-bindgen-context"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+xanh-sync-core = { path = "..", features = ["mozilla"] }

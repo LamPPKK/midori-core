@@ -36,3 +36,9 @@ generates both Kotlin and Swift bindings with the locked `bindgen-cli` feature.
 This ensures `MozillaSyncRuntime` (OAuth, account state, vault, single-flight
 sync and disconnect) is present in the foreign-language contract; generated
 files are build artifacts, not hand-edited source.
+
+`bindgen-context` is a metadata-only workspace member. It enables the pinned
+Application Services graph for `cargo metadata`, allowing UniFFI to locate the
+upstream Places, Tabs and Logins UDL files embedded in the production library.
+It is excluded from the workspace default members, ships no runtime code and
+does not change the default feature set of `xanh-sync-core`.

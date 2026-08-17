@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">Xanh Browser Lite WebKit</string>
+    <string name="app_website">https://duckduckgo.com/</string>
+    <string name="search_or_address">Search or enter an address</string>
+    <string name="back">Back</string>
+    <string name="forward">Forward</string>
+    <string name="reload">Reload</string>
+    <string name="share">Share</string>
+    <string name="desktop_site">Desktop site</string>
+    <string name="export_backup">Export encrypted backup</string>
+    <string name="import_backup">Import encrypted backup</string>
+    <string name="backup_password_hint">Backup password</string>
+    <string name="backup_password_description">Use at least 8 characters. You will need the same password to import this backup.</string>
+    <string name="backup_password_too_short">Password must contain at least 8 characters</string>
+    <string name="backup_exported">Encrypted backup exported</string>
+    <string name="backup_imported">Backup imported</string>
+    <string name="backup_failed">Backup could not be read or written</string>
+    <string name="clear_cookies">Clear cookies</string>
+    <string name="cookies_cleared">Cookies cleared</string>
+    <string name="engine_information">WebKit engine information</string>
+    <string name="engine_information_message">WPE WebKit %1$s\nWPEView %2$s\n\nThis is an experimental preview. Production publishing remains blocked until the engine reaches the project security baseline and every native library supports 16 KiB pages.</string>
+    <string name="app_settings">App settings</string>
+    <string name="no_app_for_link">No app can open this link</string>
+    <string name="blocked_unsafe_navigation">Blocked a non-web navigation</string>
+    <string name="tls_error">The secure connection could not be verified</string>
+</resources>

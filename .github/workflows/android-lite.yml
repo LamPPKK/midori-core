@@ -20,7 +20,13 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@v3
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
-      - run: ./gradlew --no-daemon lintDebug testDebugUnitTest assembleDebug bundleRelease
+      - run: >-
+          ./gradlew --no-daemon
+          :backup-core:testDebugUnitTest
+          :app:lintDebug
+          :app:testDebugUnitTest
+          :app:assembleDebug
+          :app:bundleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: xanh-browser-lite

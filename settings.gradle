@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = 'xanh-browser-lite'
 include ':app'
+include ':app-webkit'
+include ':backup-core'

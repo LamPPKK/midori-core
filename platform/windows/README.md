@@ -34,6 +34,17 @@ The generated files are unsigned verification artifacts. A production build
 must be signed with the dedicated Windows code-signing certificate and tested
 against both x64 and ARM64 Evergreen WebView2 channels before distribution.
 
+## Encrypted backup and sync
+
+The command bar can export and import the cross-platform `.xanhbackup` format.
+It includes regular tab URLs only and deliberately excludes InPrivate tabs,
+cookies, passwords and cache. Use the Windows file picker to save it in an
+OS-backed-up Documents folder, OneDrive, Google Drive for desktop or a Git
+working tree. The same file can be imported by both Android Lite editions.
+
+See [`../../docs/PORTABLE_BACKUP.md`](../../docs/PORTABLE_BACKUP.md) for the
+wire format and safe provider workflow.
+
 ## Security baseline
 
 - Only valid `http`, `https` and `about:blank` navigation reaches WebView2.

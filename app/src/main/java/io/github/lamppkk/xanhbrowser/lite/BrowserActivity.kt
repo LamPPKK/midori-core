@@ -15,6 +15,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.text.InputType
+import android.widget.EditText
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.URLUtil
@@ -35,7 +37,14 @@ import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.annotation.VisibleForTesting
+import androidx.lifecycle.lifecycleScope
 import io.github.lamppkk.xanhbrowser.lite.databinding.ActivityBrowserBinding
+import io.github.lamppkk.xanhbrowser.backup.PortableBackup
+import io.github.lamppkk.xanhbrowser.backup.PortableBackupPayload
+import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class BrowserActivity : AppCompatActivity() {
     private lateinit var binding: ActivityBrowserBinding
@@ -47,6 +56,25 @@ class BrowserActivity : AppCompatActivity() {
     private var desktopSite = false
     private var currentNavigationUrl: String? = null
     private var pendingNavigationUrl: String? = null
+    private var pendingBackupPassword: CharArray? = null
+
+    private val createBackupDocument = registerForActivityResult(
+        ActivityResultContracts.CreateDocument(PortableBackup.MIME_TYPE),
+    ) { uri ->
+        val password = pendingBackupPassword
+        pendingBackupPassword = null
+        if (uri == null || password == null) {
+            password?.fill('\u0000')
+        } else {
+            exportBackup(uri, password)
+        }
+    }
+
+    private val openBackupDocument = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) promptBackupPassword(R.string.import_backup) { importBackup(uri, it) }
+    }
 
     private val filePicker = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -108,6 +136,8 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        pendingBackupPassword?.fill('\u0000')
+        pendingBackupPassword = null
         fileCallback?.onReceiveValue(null)
         fileCallback = null
         geolocationDialog?.setOnCancelListener(null)
@@ -382,6 +412,108 @@ class BrowserActivity : AppCompatActivity() {
         else Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_SHORT).show()
     }
 
+    private fun chooseBackupDestination() {
+        promptBackupPassword(R.string.export_backup) { password ->
+            pendingBackupPassword?.fill('\u0000')
+            pendingBackupPassword = password
+            createBackupDocument.launch("xanh-browser-lite-${System.currentTimeMillis()}${PortableBackup.FILE_EXTENSION}")
+        }
+    }
+
+    private fun chooseBackupToImport() {
+        openBackupDocument.launch(arrayOf(PortableBackup.MIME_TYPE, "application/octet-stream"))
+    }
+
+    private fun promptBackupPassword(title: Int, onAccepted: (CharArray) -> Unit) {
+        val input = EditText(this).apply {
+            hint = getString(R.string.backup_password_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(R.string.backup_password_description)
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val password = input.text.toString().toCharArray()
+                if (password.size < 8) {
+                    password.fill('\u0000')
+                    Toast.makeText(this, R.string.backup_password_too_short, Toast.LENGTH_SHORT).show()
+                } else {
+                    onAccepted(password)
+                }
+                input.text?.clear()
+            }
+            .show()
+    }
+
+    private fun exportBackup(uri: Uri, password: CharArray) {
+        val candidate = pendingNavigationUrl ?: currentNavigationUrl ?: binding.webView.url
+        val url = candidate?.takeIf(PortableBackup::isSupportedWebUrl)
+            ?: getString(R.string.app_website)
+        val payload = PortableBackupPayload(
+            createdAtEpochMillis = System.currentTimeMillis(),
+            sourceEdition = "android-lite",
+            urls = listOf(url),
+            selectedIndex = 0,
+            desktopSite = desktopSite,
+        )
+        lifecycleScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val encoded = PortableBackup.encode(payload, password)
+                        contentResolver.openOutputStream(uri, "w")?.use { it.write(encoded) }
+                            ?: error("Cannot open backup destination")
+                    }
+                }
+            } finally {
+                password.fill('\u0000')
+            }
+            Toast.makeText(
+                this@BrowserActivity,
+                if (result.isSuccess) R.string.backup_exported else R.string.backup_failed,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    private fun importBackup(uri: Uri, password: CharArray) {
+        lifecycleScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val encoded = contentResolver.openInputStream(uri)?.use(::readBoundedBackup)
+                            ?: error("Cannot open backup")
+                        PortableBackup.decode(encoded, password)
+                    }
+                }
+            } finally {
+                password.fill('\u0000')
+            }
+            result.onSuccess { backup ->
+                desktopSite = backup.desktopSite
+                requestDesktopSite(desktopSite, reload = false)
+                loadUrlOrSearch(backup.urls[backup.selectedIndex])
+                Toast.makeText(this@BrowserActivity, R.string.backup_imported, Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(this@BrowserActivity, R.string.backup_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun readBoundedBackup(input: java.io.InputStream): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            require(output.size() + count <= PortableBackup.MAX_ENCODED_BYTES) { "Backup is too large" }
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.app_menu, menu)
         return true
@@ -416,6 +548,14 @@ class BrowserActivity : AppCompatActivity() {
         }
         R.id.action_downloads -> {
             openDownloads()
+            true
+        }
+        R.id.action_export_backup -> {
+            chooseBackupDestination()
+            true
+        }
+        R.id.action_import_backup -> {
+            chooseBackupToImport()
             true
         }
         R.id.action_clear_private_data -> {

@@ -1,0 +1,127 @@
+diff --git a/Tools/MiniBrowser/win/CMakeLists.txt b/Tools/MiniBrowser/win/CMakeLists.txt
+--- a/Tools/MiniBrowser/win/CMakeLists.txt
++++ b/Tools/MiniBrowser/win/CMakeLists.txt
+@@ -39,3 +39,3 @@ WEBKIT_EXECUTABLE_DECLARE(MiniBrowser)
+ WEBKIT_EXECUTABLE(MiniBrowser)
+ 
+-set_target_properties(MiniBrowser PROPERTIES WIN32_EXECUTABLE ON)
++set_target_properties(MiniBrowser PROPERTIES WIN32_EXECUTABLE ON OUTPUT_NAME "XanhBrowser.WebKit")
+diff --git a/Tools/MiniBrowser/win/MainWindow.cpp b/Tools/MiniBrowser/win/MainWindow.cpp
+--- a/Tools/MiniBrowser/win/MainWindow.cpp
++++ b/Tools/MiniBrowser/win/MainWindow.cpp
+@@ -35,7 +35,7 @@ namespace WebCore {
+ float deviceScaleFactorForWindow(HWND);
+ }
+ 
+-static const wchar_t* kMiniBrowserRegistryKey = L"Software\\WebKit\\MiniBrowser";
++static const wchar_t* kMiniBrowserRegistryKey = L"Software\\Xanh Browser\\WebKit";
+ 
+ static constexpr int kToolbarImageSize = 32;
+ static constexpr int kToolbarURLBarIndex = 4;
+@@ -583,15 +583,11 @@ INT_PTR CALLBACK MainWindow::serverTrustDialogProc(HWND hDlg, UINT message, WPAR
+ 
+ void MainWindow::loadURL(std::wstring url)
+ {
+-    if (::PathFileExists(url.c_str()) || ::PathIsUNC(url.c_str())) {
+-        wchar_t fileURL[INTERNET_MAX_URL_LENGTH];
+-        DWORD fileURLLength = _countof(fileURL);
+-
+-        if (SUCCEEDED(::UrlCreateFromPath(url.c_str(), fileURL, &fileURLLength, 0)))
+-            url = fileURL;
+-    }
+     if (url.find(L"://") == url.npos)
+-        url = L"http://" + url;
++        url = L"https://" + url;
++
++    if (url.rfind(L"https://", 0) && url.rfind(L"http://", 0))
++        return;
+ 
+     if (FAILED(m_browserWindow->loadURL(_bstr_t(url.c_str()))))
+         return;
+@@ -601,7 +597,7 @@ void MainWindow::loadURL(std::wstring url)
+ 
+ void MainWindow::goHome()
+ {
+-    std::wstring defaultURL = L"https://www.webkit.org/";
++    std::wstring defaultURL = L"https://duckduckgo.com/";
+     wchar_t url[INTERNET_MAX_URL_LENGTH];
+     DWORD urlLength = sizeof(url);
+     if (!RegGetValue(HKEY_CURRENT_USER, kMiniBrowserRegistryKey, L"DefaultURL", RRF_RT_REG_SZ, nullptr, &url, &urlLength))
+diff --git a/Tools/MiniBrowser/win/MiniBrowserLib.rc b/Tools/MiniBrowser/win/MiniBrowserLib.rc
+--- a/Tools/MiniBrowser/win/MiniBrowserLib.rc
++++ b/Tools/MiniBrowser/win/MiniBrowserLib.rc
+@@ -168,6 +168,6 @@ FONT 8, "MS Shell Dlg", 0, 0, 0x0
+ BEGIN
+     ICON            IDI_MINIBROWSER,IDC_MYICON,14,9,20,20
+-    LTEXT           "MiniBrowser Version 1.1",IDC_STATIC,49,10,119,8
+-    LTEXT           "Copyright (C) 2015-2019",IDC_STATIC,49,20,119,8
++    LTEXT           "Xanh Browser WebKit 1.0",IDC_STATIC,49,10,119,8
++    LTEXT           "Powered by WebKit",IDC_STATIC,49,20,119,8
+     DEFPUSHBUTTON   "OK",IDOK,186,10,30,11,WS_GROUP
+ END
+@@ -419,6 +419,6 @@ IDB_TOOLBAR             BITMAP                  "toolbar.bmp"
+ STRINGTABLE
+ BEGIN
+-    IDS_APP_TITLE           "MiniBrowser"
+-    IDC_MINIBROWSER         "MINIBROWSER"
++    IDS_APP_TITLE           "Xanh Browser WebKit"
++    IDC_MINIBROWSER         "XANHBROWSERWEBKIT"
+ END
+ 
+diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+--- a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
++++ b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+@@ -49,7 +49,6 @@
+ #include <WebKit/WKWebsiteDataStoreConfigurationRef.h>
+ #include <WebKit/WKWebsiteDataStoreRef.h>
+ #include <WebKit/WKWebsiteDataStoreRefCurl.h>
+-#include <filesystem>
+ #include <sstream>
+ #include <vector>
+ 
+@@ -118,22 +117,6 @@ WKRetainPtr<WKURLRef> createWKURL(const std::wstring& str)
+     return adoptWK(WKURLCreateWithUTF8CString(utf8.data()));
+ }
+ 
+-WKRetainPtr<WKStringRef> injectedBundlePath()
+-{
+-    auto module = GetModuleHandle(nullptr);
+-    std::wstring path;
+-    for (;;) {
+-        path.resize(path.size() + MAX_PATH);
+-        auto copied = GetModuleFileName(module, path.data(), path.size());
+-        if (copied < path.size()) {
+-            path.resize(copied);
+-            break;
+-        }
+-    }
+-    path = std::filesystem::path(path).replace_filename("MiniBrowserInjectedBundle.dll");
+-    return createWKString(path);
+-}
+-
+ Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND mainWnd, bool)
+ {
+     auto websiteDataStoreConf = adoptWK(WKWebsiteDataStoreConfigurationCreate());
+@@ -141,13 +124,12 @@ Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND
+     auto websiteDataStore = adoptWK(WKWebsiteDataStoreCreateWithConfiguration(websiteDataStoreConf.get()));
+ 
+     auto contextConf = adoptWK(WKContextConfigurationCreate());
+-    WKContextConfigurationSetInjectedBundlePath(contextConf.get(), injectedBundlePath().get());
+ 
+     auto context = adoptWK(WKContextCreateWithConfiguration(contextConf.get()));
+ 
+     auto preferences = adoptWK(WKPreferencesCreate());
+     WKPreferencesSetMediaCapabilitiesEnabled(preferences.get(), false);
+-    WKPreferencesSetDeveloperExtrasEnabled(preferences.get(), true);
++    WKPreferencesSetDeveloperExtrasEnabled(preferences.get(), false);
+ 
+     auto pageConf = adoptWK(WKPageConfigurationCreate());
+     WKPageConfigurationSetWebsiteDataStore(pageConf.get(), websiteDataStore.get());
+@@ -486,6 +468,6 @@ void WebKitBrowserWindow::didChangeTitle(const void* clientInfo)
+     auto& thisWindow = toWebKitBrowserWindow(clientInfo);
+     auto page = WKViewGetPage(thisWindow.m_view.get());
+     WKRetainPtr<WKStringRef> title = adoptWK(WKPageCopyTitle(page));
+-    std::wstring titleString = createString(title.get()) + L" [WebKit]";
++    std::wstring titleString = createString(title.get()) + L" [Xanh Browser WebKit]";
+     SetWindowText(thisWindow.m_hMainWnd, titleString.c_str());
+ }

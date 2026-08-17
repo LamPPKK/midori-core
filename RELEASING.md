@@ -1,7 +1,7 @@
 # Xanh Browser 1.0 release runbook
 
-This runbook covers Xanh Browser for Linux, Apple and Windows, plus Xanh
-Browser Lite for Android.
+This runbook covers Xanh Browser for Linux, Apple and Windows, Xanh Browser
+Lite for Android, and the two experimental WebKit variants.
 The full Android edition has a separate checklist in the
 [Android repository](https://github.com/LamPPKK/midori-android/blob/codex/xanh-browser-modernization/RELEASING.md).
 
@@ -15,7 +15,9 @@ Do not publish a production artifact while any required gate below is missing.
 | iOS / iPadOS | `io.github.lamppkk.xanhbrowser` | `1.0.0` / `10000` |
 | macOS | `io.github.lamppkk.xanhbrowser.macos` | `1.0.0` / `10000` |
 | Windows | `XanhBrowser.Windows` | `1.0.0` |
+| Windows WebKit preview | `XanhBrowser.WebKit` | `1.0.0` |
 | Android Lite | `io.github.lamppkk.xanhbrowser.lite` | `1.0.0` / `10000` |
+| Android Lite WebKit preview | `io.github.lamppkk.xanhbrowser.lite.webkit` | `1.0.0` / `10000` |
 
 The archival desktop baseline is `legacy-midori-9.0`. The production release
 tag is `v1.0.0` and must reference the reviewed release commit.
@@ -43,6 +45,11 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 | `XANH_LITE_KEY_ALIAS` | Upload-key alias |
 | `XANH_LITE_KEY_PASSWORD` | Upload-key password |
 
+The Android WebKit preview uses a distinct upload key and the equivalent
+`XANH_WEBKIT_KEYSTORE`, `XANH_WEBKIT_STORE_PASSWORD`,
+`XANH_WEBKIT_KEY_ALIAS` and `XANH_WEBKIT_KEY_PASSWORD` values. A WebKit build
+must never reuse the regular Lite key.
+
 GitHub source-release automation additionally requires
 `XANH_RELEASE_GPG_PRIVATE_KEY` as a base64-encoded private key and
 `XANH_RELEASE_GPG_KEY` as its key ID. Never store any key or password in Git.
@@ -56,8 +63,8 @@ GitHub source-release automation additionally requires
 3. Search shipping sources for obsolete product IDs and dependencies. Only
    licenses, historical changelog entries and the desktop importer may retain
    the historical product name.
-4. Require green GitHub Actions results for Linux, Android Lite,
-   instrumentation, Apple, Windows, CodeQL and dependency review.
+4. Require green GitHub Actions results for Linux, Android Lite, WebKit
+   editions, instrumentation, Apple, Windows, CodeQL and dependency review.
 
 Verification:
 
@@ -120,17 +127,19 @@ Flatpak manifest.
 
    ```sh
    ./gradlew --no-daemon \
-     lintDebug \
-     testDebugUnitTest \
-     assembleDebug \
-     assembleAndroidTest \
-     bundleRelease
+     :backup-core:testDebugUnitTest \
+     :app:lintDebug \
+     :app:testDebugUnitTest \
+     :app:assembleDebug \
+     :app:assembleAndroidTest \
+     :app:bundleRelease
    ```
 
 2. Run `connectedDebugAndroidTest` on API 26, 30, 33 and 36, including phone,
    tablet and foldable profiles and multiple stable System WebView versions.
 3. Exercise navigation, predictive back, rotation/process death, downloads,
-   sharing, external schemes, file upload, geolocation and privacy clearing.
+   sharing, external schemes, file upload, geolocation, privacy clearing and
+   encrypted backup import/export through an Android Documents provider.
 4. Export the four `XANH_LITE_*` values and build the signed candidate:
 
    ```sh
@@ -141,6 +150,33 @@ Verification: `verifyReleaseSigning` must pass, the AAB must be signed by the
 Lite upload key, and a Play-generated APK must install as
 `io.github.lamppkk.xanhbrowser.lite` version `1.0.0` (`10000`) on a clean
 device. A plain `bundleRelease` artifact is unsigned and must never be uploaded.
+
+### Android WPE WebKit preview
+
+Build the separately installable preview with:
+
+```sh
+./gradlew --no-daemon \
+  :backup-core:testDebugUnitTest \
+  :app-webkit:lintDebug \
+  :app-webkit:testDebugUnitTest \
+  :app-webkit:assembleDebug \
+  :app-webkit:assembleAndroidTest \
+  :app-webkit:bundleRelease
+```
+
+Run connected tests on physical/emulated API 31 and 36 arm64/x86_64 targets.
+Exercise TLS rejection, navigation, media, rotation/process death, large-page
+devices and encrypted backup round-trips with Lite and Windows.
+
+The initial preview pins WPEView 0.3.3, which embeds WPE WebKit 2.50.6, and
+Android lint reports its arm64 `libFLAC.so` as not 16 KiB page aligned. Both
+are production blockers. Do not suppress that lint warning or publish this
+edition until a reviewed WPEView artifact embeds WPE WebKit 2.52.5 or newer,
+all native libraries pass the 16 KiB check and the guarded
+`bundleWebKitProductionRelease` task succeeds with the distinct WebKit key.
+Bundle the reviewed WebKit/WPEView third-party notices and fulfill all source
+availability obligations before distribution.
 
 ## 5. Validate Apple and Windows
 
@@ -172,8 +208,10 @@ or the notarized distribution channel on clean devices.
    ```
 
 2. Test multi-tab, InPrivate, clear-data, download, permissions, external
-   schemes and recovery from a WebView2 process failure on current Windows 10
-   and Windows 11 with current Evergreen Stable Runtime.
+   schemes, encrypted backup import/export and recovery from a WebView2 process
+   failure on current Windows 10 and Windows 11 with current Evergreen Stable
+   Runtime. Decode the shared Android golden backup vector and round-trip a
+   provider-hosted file in both directions.
 3. Sign every executable and package with the dedicated certificate, verify the
    timestamp and signature on a separate clean system, then run Microsoft
    Defender and SmartScreen submission checks.
@@ -181,6 +219,27 @@ or the notarized distribution channel on clean devices.
 Verification: x64 and ARM64 packages must install cleanly, retain a valid
 signature after download, and use the serviced Evergreen Runtime rather than a
 stale bundled browser engine.
+
+### Windows WebKit/WinCairo preview
+
+The WebKit variant is a separate x64 source build; it is not an engine switch
+inside the WinUI application. Follow `platform/windows-webkit/README.md` and
+build the exact revision in `platform/windows-webkit/WEBKIT_REVISION` with:
+
+```powershell
+.\platform\windows-webkit\scripts\Build-XanhBrowserWebKit.ps1 `
+  -WebKitSource C:\src\WebKit
+```
+
+Verify the branding patch on every revision update, run upstream WebKit tests,
+audit the copied runtime dependency closure, sign every shipped PE file and
+test navigation, TLS, download, media and process recovery on clean Windows 10
+and Windows 11 x64 systems. The generated `ENGINE.txt` and executable SHA-256
+must match the reviewed build.
+
+This preview is not production-ready until its upstream MiniBrowser-based UI
+has the same encrypted backup import/export surface as the WinUI and Android
+editions. Windows ARM64 support also remains unavailable in upstream WinCairo.
 
 ## 6. Produce signed source artifacts
 
@@ -213,6 +272,8 @@ review, CodeQL and the Play pre-launch report before promotion.
 
 - All signed products install cleanly with the intended name, ID and version.
 - Core browsing, privacy and recovery checklists pass on every supported target.
+- `.xanhbackup` golden-vector and provider round-trips pass between Android
+  Lite and Windows; no private state appears in the decoded payload.
 - CI is green for the exact release commit and tag.
 - No release surface advertises Android legacy-data import, Manifest V3 or
   complete browser-extension compatibility.

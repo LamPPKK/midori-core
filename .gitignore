@@ -12,6 +12,7 @@ prime
 /local.properties
 .idea
 .DS_Store
+*.xanhbackup
 /build
 **/bin/
 **/obj/

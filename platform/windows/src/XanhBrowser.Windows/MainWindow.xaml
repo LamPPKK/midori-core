@@ -10,6 +10,14 @@
 
         <CommandBar DefaultLabelPosition="Right">
             <AppBarButton
+                Click="ExportBackup_Click"
+                Icon="Save"
+                Label="Export backup" />
+            <AppBarButton
+                Click="ImportBackup_Click"
+                Icon="OpenFile"
+                Label="Import backup" />
+            <AppBarButton
                 Click="NewPrivateTab_Click"
                 Icon="ProtectedDocument"
                 Label="New private tab" />

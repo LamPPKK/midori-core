@@ -6,9 +6,9 @@ and Windows editions, and the small single-tab Android edition, Xanh Browser
 Lite.
 
 > **Release status:** Linux and Android Lite 1.0.0 are release candidates. The
-> Apple and Windows ports are 1.0.0 preview candidates. CI produces unsigned
-> verification artifacts only; production artifacts must not be published
-> until the signing, device, security and store gates in
+> Apple, Windows and experimental WebKit editions are 1.0.0 preview
+> candidates. CI produces unsigned verification artifacts only; production
+> artifacts must not be published until the signing, device, security and store gates in
 > [RELEASING.md](RELEASING.md) are complete.
 
 ## Editions
@@ -19,15 +19,18 @@ Lite.
 | Xanh Browser | `io.github.lamppkk.xanhbrowser` | iOS 26 / iPadOS 26 | 1.0.0 (`10000`) |
 | Xanh Browser | `io.github.lamppkk.xanhbrowser.macos` | macOS 26 | 1.0.0 (`10000`) |
 | Xanh Browser | `XanhBrowser.Windows` | Windows 10 2004+ (x64/ARM64) | 1.0.0 |
+| Xanh Browser WebKit | `XanhBrowser.WebKit` | Windows x64 preview | 1.0.0 |
 | Xanh Browser Lite | `io.github.lamppkk.xanhbrowser.lite` | Android 8.0+ (API 26+) | 1.0.0 (`10000`) |
+| Xanh Browser Lite WebKit | `io.github.lamppkk.xanhbrowser.lite.webkit` | Android 12+ (API 31+) preview | 1.0.0 (`10000`) |
 
 The full multi-tab Android edition is maintained in the
 [Xanh Browser Android repository](https://github.com/LamPPKK/midori-android).
 
 The Apple apps use the operating system WebKit through SwiftUI `WebPage` and
-`WebView`; the Windows app uses the Evergreen Edge WebView2 Runtime. Windows
-cannot share Apple's WebKit engine because Apple does not ship a supported
-production WebKit embedding framework for that platform.
+`WebView`. The production Windows app uses the Evergreen Edge WebView2 Runtime;
+its separate x64 preview builds the upstream WebKit WinCairo port from a pinned
+source revision. Android Lite similarly keeps the production System WebView
+edition and adds a separate WPE WebKit preview.
 
 ## Linux desktop
 
@@ -87,17 +90,41 @@ Use JDK 17 and Android SDK 36:
 
 ```sh
 ./gradlew --no-daemon \
-  lintDebug \
-  testDebugUnitTest \
-  assembleDebug \
-  assembleAndroidTest \
-  bundleRelease
+  :backup-core:testDebugUnitTest \
+  :app:lintDebug \
+  :app:testDebugUnitTest \
+  :app:assembleDebug \
+  :app:assembleAndroidTest \
+  :app:bundleRelease
 ```
 
 Generated files are placed under `app/build/outputs/`. `bundleRelease` creates
 an **unsigned verification AAB**. A production bundle requires the dedicated
 Lite upload key and the guarded `bundleProductionRelease` task documented in
 [RELEASING.md](RELEASING.md).
+
+### Android WPE WebKit preview
+
+The `app-webkit` module is a separately installable, single-tab WPE WebKit
+edition for arm64 and x86_64 devices running API 31 or newer:
+
+```sh
+./gradlew --no-daemon \
+  :backup-core:testDebugUnitTest \
+  :app-webkit:lintDebug \
+  :app-webkit:testDebugUnitTest \
+  :app-webkit:assembleDebug \
+  :app-webkit:assembleAndroidTest \
+  :app-webkit:bundleRelease
+```
+
+It currently uses the newest published Maven artifact, WPEView 0.3.3, whose
+embedded runtime identifies itself as WPE WebKit 2.50.6. This is intentionally
+preview-only: the upstream artifact is below this project's WPE WebKit 2.52.5
+security baseline and one bundled native library is not 16 KiB page aligned.
+The guarded production task fails until both conditions are resolved. Exact
+engine versions are pinned in `app-webkit/WPEVIEW_VERSION` and
+`app-webkit/WPE_RUNTIME_VERSION` and are also shown in the application menu.
 
 ## Apple platforms
 
@@ -113,7 +140,25 @@ The Windows edition is a native WinUI 3 application with multi-tab and
 InPrivate browsing, strict URL/scheme validation, tracking prevention and
 WebView2 host-bridge features disabled by default. See
 [`platform/windows/README.md`](platform/windows/README.md) for .NET 8 build and
-publish commands.
+publish commands. A real WebKit/WinCairo x64 preview, built from a pinned
+upstream source revision, lives in
+[`platform/windows-webkit/`](platform/windows-webkit/README.md).
+
+## Encrypted backup and sync
+
+The full Android edition, Android Lite, Android Lite WebKit and Windows WebView2
+can export and import the same portable `.xanhbackup` file. The file is
+encrypted with a user password using PBKDF2-HMAC-SHA256 and AES-256-GCM. It
+contains only regular tab URLs, the selected tab and the desktop-site setting;
+cookies, passwords, cache and private tabs are excluded.
+
+The application uses the operating-system file picker. On Android this can
+write directly to Google Drive or another installed Documents provider. On
+Windows it can write to OneDrive, Google Drive for desktop, an OS-backed-up
+Documents folder or a Git working tree. The application stores no cloud token,
+and syncing/merge conflicts remain under the selected provider's control. See
+[`docs/PORTABLE_BACKUP.md`](docs/PORTABLE_BACKUP.md) for the format, threat
+model and provider workflow.
 
 ## Repository map
 
@@ -126,8 +171,11 @@ publish commands.
 | `ui/` | GTK4 Builder resources |
 | `flatpak/` | Flatpak manifest for the desktop application |
 | `app/` | Xanh Browser Lite Android module |
+| `app-webkit/` | Separately installable WPE WebKit Android preview |
+| `backup-core/` | Android implementation of the portable encrypted backup format |
 | `platform/apple/` | Shared macOS, iOS and iPadOS application |
 | `platform/windows/` | Windows application powered by WebView2 |
+| `platform/windows-webkit/` | Pinned source build of the WebKit WinCairo x64 preview |
 | `fastlane/` | Play listing metadata for Lite |
 | `.github/workflows/` | Linux, Android, Apple, Windows, Flatpak, CodeQL and source-release CI |
 
@@ -144,17 +192,20 @@ publish commands.
   functionality.
 - Android production blocks cleartext and mixed content, enables Safe Browsing
   and uses scoped storage without legacy external-storage permissions.
+- Portable backups are authenticated and encrypted, reject non-HTTP(S) URLs
+  and are bounded to 1 MiB and 50 tabs before parsing.
 - External Android schemes are handed off only after URI and intent checks.
 - File and geolocation access require user consent when requested.
 - Signing keys and passwords must never be committed to this repository.
 
 ## Supported release scope
 
-The 1.0 codebase targets Linux desktop, Android API 26–36, macOS 26,
-iOS/iPadOS 26 and Windows 10 build 19041 or newer. Signed Apple and Windows
-distribution remains gated until their platform test matrices and store/code
-signing checklists pass. Android legacy-data import and Manifest V3 remain
-outside the 1.0 scope.
+The production 1.0 codebase targets Linux desktop, Android API 26–36, macOS 26,
+iOS/iPadOS 26 and Windows 10 build 19041 or newer. The Android API 31+ WPE and
+Windows x64 WinCairo variants remain preview-only until their engine-specific
+release gates pass. Signed Apple and Windows distribution remains gated until
+their platform test matrices and store/code-signing checklists pass. Android
+legacy-data import and Manifest V3 remain outside the 1.0 scope.
 
 ## Historical baseline and license
 

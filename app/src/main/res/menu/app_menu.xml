@@ -7,6 +7,8 @@
     <item android:id="@+id/action_share" android:icon="@drawable/ic_share_24dp" android:title="@string/share" app:showAsAction="never" />
     <item android:id="@+id/action_desktop_site" android:checkable="true" android:title="@string/desktop_site" app:showAsAction="never" />
     <item android:id="@+id/action_downloads" android:title="@string/downloads" app:showAsAction="never" />
+    <item android:id="@+id/action_export_backup" android:title="@string/export_backup" app:showAsAction="never" />
+    <item android:id="@+id/action_import_backup" android:title="@string/import_backup" app:showAsAction="never" />
     <item android:id="@+id/action_clear_private_data" android:icon="@drawable/ic_clear_private_data_24dp" android:title="@string/clear_private_data" app:showAsAction="never" />
     <item android:id="@+id/action_app_settings" android:title="@string/app_settings" app:showAsAction="never" />
 </menu>

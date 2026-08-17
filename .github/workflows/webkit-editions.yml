@@ -1,0 +1,85 @@
+name: WebKit editions
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-wpe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build and test Android WPE WebKit edition
+        run: >-
+          ./gradlew --no-daemon
+          :backup-core:testDebugUnitTest
+          :app-webkit:lintDebug
+          :app-webkit:testDebugUnitTest
+          :app-webkit:assembleDebug
+          :app-webkit:assembleAndroidTest
+          :app-webkit:bundleRelease
+      - name: Verify embedded engine and ABI surface
+        run: |
+          expected="$(cat app-webkit/WPE_RUNTIME_VERSION)"
+          unzip -p app-webkit/build/outputs/apk/debug/app-webkit-debug.apk \
+            lib/arm64-v8a/libWPEWebKit-2.0.so > "$RUNNER_TEMP/libWPEWebKit-2.0.so"
+          strings "$RUNNER_TEMP/libWPEWebKit-2.0.so" > "$RUNNER_TEMP/wpe-strings.txt"
+          grep -F -m1 "wpewebkit-${expected}" "$RUNNER_TEMP/wpe-strings.txt"
+          zipinfo -1 app-webkit/build/outputs/apk/debug/app-webkit-debug.apk | \
+            grep -E '^lib/(arm64-v8a|x86_64)/'
+          if zipinfo -1 app-webkit/build/outputs/apk/debug/app-webkit-debug.apk | \
+            grep -Eq '^lib/(armeabi-v7a|x86)/'; then
+            echo 'Unexpected unsupported Android ABI' >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-browser-lite-webkit-unsigned
+          if-no-files-found: error
+          path: |
+            app-webkit/build/outputs/apk/debug/*.apk
+            app-webkit/build/outputs/bundle/release/*.aab
+            app-webkit/build/reports/lint-results-debug.*
+
+  windows-wincairo-baseline:
+    runs-on: ubuntu-latest
+    env:
+      WEBKIT_REVISION: e303a714c767cbc7d553c6297b1041713745ff82
+    steps:
+      - uses: actions/checkout@v6
+      - name: Fetch pinned upstream patch inputs
+        run: |
+          mkdir -p _webkit/Tools/MiniBrowser/win
+          for file in CMakeLists.txt MainWindow.cpp MiniBrowserLib.rc WebKitBrowserWindow.cpp; do
+            curl --fail --location --silent --show-error \
+              "https://raw.githubusercontent.com/WebKit/WebKit/${WEBKIT_REVISION}/Tools/MiniBrowser/win/${file}" \
+              --output "_webkit/Tools/MiniBrowser/win/${file}"
+          done
+      - name: Verify revision and branding patch
+        run: |
+          test "$(cat platform/windows-webkit/WEBKIT_REVISION)" = "${WEBKIT_REVISION}"
+          git -C _webkit init
+          git -C _webkit apply --check --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-browser-webkit.patch"
+          grep -F 'OUTPUT_NAME "XanhBrowser.WebKit"' platform/windows-webkit/patches/xanh-browser-webkit.patch
+          grep -F 'https://duckduckgo.com/' platform/windows-webkit/patches/xanh-browser-webkit.patch
+          grep -F 'WKPreferencesSetDeveloperExtrasEnabled(preferences.get(), false)' platform/windows-webkit/patches/xanh-browser-webkit.patch
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

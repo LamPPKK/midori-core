@@ -8,6 +8,14 @@
     <string name="share">Share</string>
     <string name="desktop_site">Desktop site</string>
     <string name="downloads">Downloads</string>
+    <string name="export_backup">Export encrypted backup</string>
+    <string name="import_backup">Import encrypted backup</string>
+    <string name="backup_password_hint">Backup password</string>
+    <string name="backup_password_description">Use at least 8 characters. You will need the same password to import this backup.</string>
+    <string name="backup_password_too_short">Password must contain at least 8 characters</string>
+    <string name="backup_exported">Encrypted backup exported</string>
+    <string name="backup_imported">Backup imported</string>
+    <string name="backup_failed">Backup could not be read or written</string>
     <string name="clear_private_data">Clear private data</string>
     <string name="private_data_cleared">Private data cleared</string>
     <string name="app_settings">App settings</string>

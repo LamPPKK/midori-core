@@ -11,6 +11,27 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        if (providers.gradleProperty('xanhEnableSyncFeature').map { it.toBoolean() }.orElse(false).get()) {
+            def syncRepository = providers.gradleProperty('xanhSyncRepository')
+                .orElse(providers.environmentVariable('XANH_SYNC_MAVEN_REPOSITORY'))
+                .orNull
+            if (!syncRepository) {
+                throw new GradleException(
+                    'xanhEnableSyncFeature requires xanhSyncRepository or XANH_SYNC_MAVEN_REPOSITORY ' +
+                        'pointing to the reviewed xanh-sync-android Maven repository'
+                )
+            }
+            maven {
+                url = uri(syncRepository)
+                content { includeGroup 'io.github.lamppkk.xanhbrowser' }
+            }
+            exclusiveContent {
+                forRepository {
+                    maven { url = uri('https://maven.mozilla.org/maven2') }
+                }
+                filter { includeGroupByRegex 'org\\.mozilla\\..*' }
+            }
+        }
     }
 }
 
@@ -18,3 +39,11 @@ rootProject.name = 'xanh-browser-lite'
 include ':app'
 include ':app-webkit'
 include ':backup-core'
+
+if (providers.gradleProperty('xanhEnableSyncFeature').map { it.toBoolean() }.orElse(false).get()) {
+    include ':sync-feature-common'
+    include ':sync_feature'
+    project(':sync_feature').projectDir = file('sync-feature')
+    include ':sync_feature_wpe'
+    project(':sync_feature_wpe').projectDir = file('sync-feature-wpe')
+}

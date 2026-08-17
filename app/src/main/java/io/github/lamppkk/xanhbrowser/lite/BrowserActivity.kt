@@ -57,6 +57,7 @@ class BrowserActivity : AppCompatActivity() {
     private var currentNavigationUrl: String? = null
     private var pendingNavigationUrl: String? = null
     private var pendingBackupPassword: CharArray? = null
+    private val syncFeature by lazy { SyncFeatureInstaller(this) }
 
     private val createBackupDocument = registerForActivityResult(
         ActivityResultContracts.CreateDocument(PortableBackup.MIME_TYPE),
@@ -123,6 +124,11 @@ class BrowserActivity : AppCompatActivity() {
         AddressResolver.resolveWebIntent(intent.dataString)?.let(::loadUrlOrSearch)
     }
 
+    override fun onResume() {
+        super.onResume()
+        syncFeature.attachCredentialBridge(binding.webView)
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         val webViewState = Bundle()
         binding.webView.saveState(webViewState)
@@ -144,6 +150,7 @@ class BrowserActivity : AppCompatActivity() {
         geolocationDialog?.dismiss()
         geolocationDialog = null
         completeGeolocation(false)
+        syncFeature.destroy()
         binding.webView.apply {
             stopLoading()
             webChromeClient = null
@@ -224,6 +231,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     internal fun onPageStarted(url: String?) {
+        syncFeature.navigationStarted(url)
         if (!url.isNullOrBlank() && url != "about:blank") {
             currentNavigationUrl = url
             pendingNavigationUrl = null
@@ -232,6 +240,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     internal fun onPageChanged(url: String?, title: String?) {
+        syncFeature.navigationCommitted(url, title)
         if (
             !url.isNullOrBlank() &&
             url != "about:blank" &&
@@ -516,6 +525,7 @@ class BrowserActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.app_menu, menu)
+        menu.findItem(R.id.action_firefox_sync)?.isVisible = BuildConfig.XANH_SYNC_FEATURE_ENABLED
         return true
     }
 
@@ -556,6 +566,10 @@ class BrowserActivity : AppCompatActivity() {
         }
         R.id.action_import_backup -> {
             chooseBackupToImport()
+            true
+        }
+        R.id.action_firefox_sync -> {
+            syncFeature.open(binding.webView.url, binding.webView.title)
             true
         }
         R.id.action_clear_private_data -> {

@@ -2,6 +2,16 @@ plugins {
     id 'com.android.application'
 }
 
+def syncFeatureEnabled = providers.gradleProperty('xanhEnableSyncFeature')
+    .map { it.toBoolean() }.orElse(false).get()
+def syncClientId = providers.gradleProperty('xanhWpeFxaClientId')
+    .orElse(providers.environmentVariable('XANH_WPE_FXA_CLIENT_ID')).orElse('').get()
+def syncProductionApproved = providers.gradleProperty('xanhFxaProductionApproved')
+    .orElse(providers.environmentVariable('XANH_FXA_PRODUCTION_APPROVED'))
+    .map { it == '1' || it.equalsIgnoreCase('true') }.orElse(false).get()
+def syncSelfHostedOnly = providers.gradleProperty('xanhSyncSelfHostedOnly')
+    .map { it.toBoolean() }.orElse(false).get()
+
 def wpeViewVersion = file('WPEVIEW_VERSION').text.trim()
 def wpeRuntimeVersion = file('WPE_RUNTIME_VERSION').text.trim()
 def wpeRuntimeProductionReady = false
@@ -29,11 +39,17 @@ android {
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
         resValue 'string', 'wpe_view_version', wpeViewVersion
         resValue 'string', 'wpe_runtime_version', wpeRuntimeVersion
+        buildConfigField 'boolean', 'XANH_SYNC_FEATURE_ENABLED', syncFeatureEnabled.toString()
+        buildConfigField 'String', 'XANH_FXA_CLIENT_ID', '"' + syncClientId.replace('"', '\\"') + '"'
+        buildConfigField 'boolean', 'XANH_FXA_PRODUCTION_APPROVED', syncProductionApproved.toString()
+        buildConfigField 'boolean', 'XANH_SYNC_SELF_HOSTED_ONLY', syncSelfHostedOnly.toString()
 
         ndk {
             abiFilters 'arm64-v8a', 'x86_64'
         }
     }
+
+    dynamicFeatures = syncFeatureEnabled ? [':sync_feature_wpe'] : []
 
     signingConfigs {
         if (hasUploadSigning) {
@@ -61,7 +77,7 @@ android {
 
     buildFeatures {
         viewBinding = true
-        buildConfig = false
+        buildConfig = true
         resValues = true
     }
 
@@ -78,6 +94,25 @@ android {
 
     testOptions {
         unitTests.includeAndroidResources = true
+    }
+}
+
+tasks.register('verifyWpeSyncFeatureConfiguration') {
+    doLast {
+        if (syncFeatureEnabled) {
+            def mozillaHosted = !syncSelfHostedOnly && syncProductionApproved && !syncClientId.isBlank()
+            if (!mozillaHosted && !syncSelfHostedOnly) {
+                throw new GradleException(
+                    'WPE Sync must be either Mozilla-hosted with an approved client ID or explicitly self-hosted-only'
+                )
+            }
+        }
+    }
+}
+
+if (syncFeatureEnabled) {
+    tasks.matching { it.name == 'bundleRelease' || it.name == 'assembleRelease' }.configureEach {
+        dependsOn 'verifyWpeSyncFeatureConfiguration'
     }
 }
 
@@ -111,9 +146,14 @@ tasks.register('bundleWebKitProductionRelease') {
 
 dependencies {
     implementation project(':backup-core')
+    implementation 'com.google.android.play:feature-delivery-ktx:2.1.0'
     implementation 'androidx.activity:activity-ktx:1.12.3'
     implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.browser:browser:1.9.0'
     implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
+    implementation 'androidx.webkit:webkit:1.15.0'
     implementation 'com.google.android.material:material:1.13.0'
     implementation "org.wpewebkit.wpeview:wpeview:${wpeViewVersion}"
 

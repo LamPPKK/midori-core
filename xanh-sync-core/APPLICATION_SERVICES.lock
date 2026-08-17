@@ -1,0 +1,7 @@
+version=155.0
+tag=v155.0
+revision=c0fd8cea40c9b5dafc6604831f7bd7a8c096d313
+release_date=2026-08-13
+license=MPL-2.0
+maven_repository=https://maven.mozilla.org/maven2
+source=https://github.com/mozilla/application-services

@@ -160,6 +160,30 @@ and syncing/merge conflicts remain under the selected provider's control. See
 [`docs/PORTABLE_BACKUP.md`](docs/PORTABLE_BACKUP.md) for the format, threat
 model and provider workflow.
 
+## Mozilla Accounts / Firefox Sync
+
+`xanh-sync-core` is the shared Rust boundary for Mozilla Accounts and Firefox
+Sync. It pins stable Mozilla Application Services 155.0 and exposes UniFFI plus
+a versioned C ABI for Kotlin, Swift, Vala and C#. Bookmarks/history use Places,
+remote tabs use Tabs and passwords use a local authenticated Logins vault.
+Mozilla-hosted builds require registered per-edition client IDs and production
+approval; an HTTPS self-hosted deployment remains available when configured
+against the same server as Firefox.
+
+The feature is release-gated independently on each platform. WPE and WinCairo
+remain preview-only until their isolated message bridges, vaults and packaging
+security checks pass. See [`docs/FIREFOX_SYNC.md`](docs/FIREFOX_SYNC.md) for the
+architecture, threat boundary and required interoperability matrix. Sync
+tokens, scoped keys and passwords are never included in `.xanhbackup`.
+
+Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
+the Application Services runtime; the base app loads it only after the user
+chooses Firefox Sync. CI builds both base-only and `lite-with-sync` bundles,
+runs `scripts/verify-lite-sync-size.sh`, and rejects a base-module increase over
+1 MiB, native Sync code in `base/`, or unsupported legacy ABIs. The WPE split
+shares the data UI but deliberately has no password-fill bridge and remains
+blocked from production.
+
 ## Repository map
 
 | Path | Purpose |
@@ -173,6 +197,10 @@ model and provider workflow.
 | `app/` | Xanh Browser Lite Android module |
 | `app-webkit/` | Separately installable WPE WebKit Android preview |
 | `backup-core/` | Android implementation of the portable encrypted backup format |
+| `sync-feature-common/` | Shared Lite on-demand Sync UI, vault and scheduler |
+| `sync-feature/` | System WebView dynamic feature with the isolated credential bridge |
+| `sync-feature-wpe/` | WPE dynamic feature; password filling remains disabled |
+| `xanh-sync-core/` | Rust Application Services core, UniFFI and stable C ABI |
 | `platform/apple/` | Shared macOS, iOS and iPadOS application |
 | `platform/windows/` | Windows application powered by WebView2 |
 | `platform/windows-webkit/` | Pinned source build of the WebKit WinCairo x64 preview |

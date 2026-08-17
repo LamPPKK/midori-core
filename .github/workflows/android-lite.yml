@@ -36,6 +36,73 @@ jobs:
             app/build/outputs/bundle/release/*.aab
             app/build/reports/lint-results-debug.*
 
+  sync-feature:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check out the reviewed Android Sync AAR source
+        uses: actions/checkout@v6
+        with:
+          repository: LamPPKK/midori-android
+          ref: master
+          path: _sync_android
+      - name: Select the matching Android integration branch when it exists
+        working-directory: _sync_android
+        env:
+          SYNC_REF: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+        run: |
+          if git fetch origin "$SYNC_REF"; then
+            git checkout --detach FETCH_HEAD
+          else
+            echo "No matching Android branch; using master"
+          fi
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Publish the pinned Android Sync AAR to a local repository
+        working-directory: _sync_android
+        run: ./gradlew --no-daemon :sync-core:publishReleasePublicationToBuildRepository
+      - name: Build the base-only Lite release
+        run: |
+          ./gradlew --no-daemon :app:bundleRelease
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/xanh-browser-lite-base.aab"
+      - name: Build and lint the on-demand System WebView and WPE features
+        run: |
+          ./gradlew --no-daemon \
+            -PxanhEnableSyncFeature=true \
+            -PxanhSyncSelfHostedOnly=true \
+            -PxanhSyncRepository="$GITHUB_WORKSPACE/_sync_android/sync-core/build/maven" \
+            :sync-feature-common:lintDebug \
+            :app:lintDebug \
+            :app-webkit:lintDebug \
+            :sync_feature:assembleDebug \
+            :sync_feature_wpe:assembleDebug \
+            :app:bundleRelease \
+            :app-webkit:bundleRelease
+          cp app/build/outputs/bundle/release/app-release.aab \
+            "$RUNNER_TEMP/xanh-browser-lite-with-sync.aab"
+          cp app-webkit/build/outputs/bundle/release/app-webkit-release.aab \
+            "$RUNNER_TEMP/xanh-browser-wpe-with-sync.aab"
+      - name: Enforce the Lite base-size and split-install boundaries
+        run: >-
+          ./scripts/verify-lite-sync-size.sh
+          "$RUNNER_TEMP/xanh-browser-lite-base.aab"
+          "$RUNNER_TEMP/xanh-browser-lite-with-sync.aab"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-browser-lite-sync-preview
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/xanh-browser-lite-with-sync.aab
+            ${{ runner.temp }}/xanh-browser-wpe-with-sync.aab
+            sync-feature-common/build/reports/lint-results-debug.*
+            app/build/reports/lint-results-debug.*
+            app-webkit/build/reports/lint-results-debug.*
+
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

@@ -1,0 +1,115 @@
+name: Firefox Sync core
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust-contract-and-api:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+      - name: Verify pinned Application Services release
+        run: |
+          grep -Fx 'version=155.0' xanh-sync-core/APPLICATION_SERVICES.lock
+          grep -Fx 'revision=c0fd8cea40c9b5dafc6604831f7bd7a8c096d313' xanh-sync-core/APPLICATION_SERVICES.lock
+          cargo fmt --manifest-path xanh-sync-core/Cargo.toml --check
+      - name: Test portable contract and FFI policy
+        run: cargo test --locked --manifest-path xanh-sync-core/Cargo.toml
+      - name: Compile-check Mozilla backend API
+        run: |
+          mkdir -p "$RUNNER_TEMP/fake-nss/lib" "$RUNNER_TEMP/fake-nss/include"
+          NSS_DIR="$RUNNER_TEMP/fake-nss" NSS_STATIC=1 \
+            cargo check --locked --features mozilla --manifest-path xanh-sync-core/Cargo.toml
+      - name: Clippy
+        run: >-
+          NSS_DIR="$RUNNER_TEMP/fake-nss" NSS_STATIC=1
+          cargo clippy --locked --features mozilla
+          --manifest-path xanh-sync-core/Cargo.toml -- -D warnings
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: xanh-sync-core
+      - uses: anchore/sbom-action@v0
+        with:
+          path: xanh-sync-core
+          format: cyclonedx-json
+          artifact-name: xanh-sync-core-sbom.cdx.json
+
+  license-and-release-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: ./scripts/verify-sync-release.sh source
+
+  native-linux-core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Install NSS build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libnss3-dev libnspr4-dev
+      - name: Prepare the NSS layout required by Application Services
+        run: |
+          mkdir -p "$RUNNER_TEMP/nss/lib" "$RUNNER_TEMP/nss/include"
+          find /usr/lib -name 'libfreebl3.so' -o -name 'libnss3.so' -o -name 'libnssckbi.so' \
+            -o -name 'libsoftokn3.so' -o -name 'libnspr4.so' -o -name 'libnssutil3.so' \
+            -o -name 'libplc4.so' -o -name 'libplds4.so' | while read -r library; do
+              ln -sf "$library" "$RUNNER_TEMP/nss/lib/$(basename "$library")"
+            done
+          cp -R /usr/include/nss/. "$RUNNER_TEMP/nss/include/"
+          cp -R /usr/include/nspr/. "$RUNNER_TEMP/nss/include/"
+      - name: Build the pinned native core
+        run: |
+          NSS_DIR="$RUNNER_TEMP/nss" cargo build --locked --release --features mozilla \
+            --manifest-path xanh-sync-core/Cargo.toml
+          ldd xanh-sync-core/target/release/libxanh_sync_core.so
+          sha256sum xanh-sync-core/target/release/libxanh_sync_core.so \
+            > xanh-sync-core/target/release/libxanh_sync_core.so.sha256
+      - name: Generate the reviewed Kotlin and Swift UniFFI bindings
+        run: |
+          mkdir -p xanh-sync-core/target/bindings/kotlin xanh-sync-core/target/bindings/swift
+          CARGO_TARGET_DIR="$RUNNER_TEMP/uniffi-tool" \
+            cargo run --locked --release --features bindgen-cli --manifest-path xanh-sync-core/Cargo.toml \
+            --bin xanh-uniffi-bindgen -- generate \
+            --library xanh-sync-core/target/release/libxanh_sync_core.so \
+            --language kotlin --no-format --out-dir xanh-sync-core/target/bindings/kotlin
+          CARGO_TARGET_DIR="$RUNNER_TEMP/uniffi-tool" \
+            cargo run --locked --release --features bindgen-cli --manifest-path xanh-sync-core/Cargo.toml \
+            --bin xanh-uniffi-bindgen -- generate \
+            --library xanh-sync-core/target/release/libxanh_sync_core.so \
+            --language swift --no-format --out-dir xanh-sync-core/target/bindings/swift
+          grep -R -F 'class MozillaSyncRuntime' xanh-sync-core/target/bindings/kotlin
+          grep -R -F 'class MozillaSyncRuntime' xanh-sync-core/target/bindings/swift
+      - name: Smoke-test the stable C ABI without exposing the generated key
+        run: |
+          LD_LIBRARY_PATH="$RUNNER_TEMP/nss/lib" python3 - <<'PY'
+          import ctypes
+          core = ctypes.CDLL('xanh-sync-core/target/release/libxanh_sync_core.so')
+          core.xanh_sync_core_version.restype = ctypes.c_void_p
+          core.xanh_sync_generate_local_logins_key.restype = ctypes.c_void_p
+          core.xanh_sync_string_free.argtypes = [ctypes.c_void_p]
+          version = core.xanh_sync_core_version()
+          key = core.xanh_sync_generate_local_logins_key()
+          assert version and key
+          core.xanh_sync_string_free(version)
+          core.xanh_sync_string_free(key)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xanh-sync-core-linux-x64
+          if-no-files-found: error
+          path: |
+            xanh-sync-core/target/release/libxanh_sync_core.so
+            xanh-sync-core/target/release/libxanh_sync_core.so.sha256
+            xanh-sync-core/target/bindings/**

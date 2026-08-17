@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.24)
 project(xanh-browser VERSION 1.0.0 LANGUAGES C)
 
+option(XANH_ENABLE_FIREFOX_SYNC "Link the production Mozilla Application Services core" OFF)
+set(XANH_SYNC_CORE_LIBRARY "" CACHE FILEPATH "Path to libxanh_sync_core built with --features mozilla")
+
 include(GNUInstallDirs)
 include(CTest)
 find_package(PkgConfig REQUIRED)
@@ -95,9 +98,21 @@ OPTIONS ${XANH_VALA_OPTIONS}
 DIRECTORY desktop-app
 CUSTOM_VAPIS "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi")
 
-add_executable(xanh-browser ${XANH_APP_C})
+add_executable(xanh-browser ${XANH_APP_C} desktop/sync-link-check.c)
 target_include_directories(xanh-browser PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
 target_link_libraries(xanh-browser PRIVATE xanh-browser-core PkgConfig::XANH)
+
+if(XANH_ENABLE_FIREFOX_SYNC)
+    if(NOT EXISTS "${XANH_SYNC_CORE_LIBRARY}")
+        message(FATAL_ERROR "XANH_ENABLE_FIREFOX_SYNC requires XANH_SYNC_CORE_LIBRARY")
+    endif()
+    add_library(xanh-sync-core-native SHARED IMPORTED GLOBAL)
+    set_target_properties(xanh-sync-core-native PROPERTIES
+        IMPORTED_LOCATION "${XANH_SYNC_CORE_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/xanh-sync-core/include")
+    target_link_libraries(xanh-browser PRIVATE xanh-sync-core-native)
+    target_compile_definitions(xanh-browser PRIVATE XANH_ENABLE_FIREFOX_SYNC=1)
+endif()
 
 function(add_xanh_plugin target source manifest)
     vala_precompile(${target}_C ${target}
@@ -196,6 +211,8 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/io.github.lamppkk.xanhbrowser.service
 install(FILES data-xanh/io.github.lamppkk.xanhbrowser.svg
     DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
 install(FILES COPYING README.md RELEASING.md
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES THIRD_PARTY_NOTICES.md docs/FIREFOX_SYNC.md
     DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 
 add_custom_target(validate-metadata

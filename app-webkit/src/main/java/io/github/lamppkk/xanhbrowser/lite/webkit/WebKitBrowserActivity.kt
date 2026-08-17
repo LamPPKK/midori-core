@@ -43,6 +43,7 @@ class WebKitBrowserActivity : AppCompatActivity() {
     private var mobileUserAgent = ""
     private var currentUrl: String? = null
     private var pendingBackupPassword: CharArray? = null
+    private val syncFeature by lazy { SyncFeatureInstaller(this) }
 
     private val createBackupDocument = registerForActivityResult(
         ActivityResultContracts.CreateDocument(PortableBackup.MIME_TYPE),
@@ -149,6 +150,7 @@ class WebKitBrowserActivity : AppCompatActivity() {
                     preferences.edit { putString(LAST_URL, url) }
                 }
                 supportActionBar?.subtitle = view.title
+                syncFeature.navigationCommitted(url, view.title)
                 onProgress(100)
             }
 
@@ -350,6 +352,7 @@ class WebKitBrowserActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.webkit_app_menu, menu)
+        menu.findItem(R.id.action_firefox_sync)?.isVisible = BuildConfig.XANH_SYNC_FEATURE_ENABLED
         return true
     }
 
@@ -390,6 +393,10 @@ class WebKitBrowserActivity : AppCompatActivity() {
         }
         R.id.action_import_backup -> {
             chooseBackupToImport()
+            true
+        }
+        R.id.action_firefox_sync -> {
+            syncFeature.open(currentUrl, supportActionBar?.subtitle?.toString())
             true
         }
         R.id.action_engine_information -> {

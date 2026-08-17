@@ -1,0 +1,49 @@
+[package]
+name = "xanh-sync-core"
+version = "1.0.0-alpha.1"
+edition = "2021"
+license = "MPL-2.0"
+description = "Cross-platform Mozilla Accounts / Firefox Sync core for Xanh Browser"
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "xanh-uniffi-bindgen"
+path = "src/uniffi_bindgen_main.rs"
+required-features = ["bindgen-cli"]
+
+[features]
+default = []
+bindgen-cli = ["uniffi/cli"]
+mozilla = [
+    "dep:fxa-client",
+    "dep:logins",
+    "dep:places",
+    "dep:sync_manager",
+    "dep:tabs",
+]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+url = "2.5"
+uniffi = "0.31"
+
+# Stable Application Services 155.0, released 2026-08-13. Production builds
+# must enable `mozilla` and retain this exact revision until the compatibility
+# suite and SBOM have been rerun for a newer release.
+fxa-client = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }
+logins = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }
+places = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", default-features = false, optional = true }
+sync_manager = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }
+tabs = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }
+
+[patch.crates-io]
+# Application Services relies on this monorepo stub. Without the patch Cargo
+# selects the unrelated crates.io package and native NSS linkage fails.
+mozbuild = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313" }
+
+[dev-dependencies]
+tempfile = "3.27"

@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace = 'io.github.lamppkk.xanhbrowser.lite.sync'
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 26
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    buildFeatures {
+        buildConfig = false
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    api 'io.github.lamppkk.xanhbrowser:xanh-sync-android:1.0.0-alpha.1'
+    // Shared AndroidX UI/runtime libraries live in each base APK. Keeping them
+    // compile-only here prevents duplicate classes across base and split APKs.
+    compileOnly 'androidx.activity:activity-ktx:1.12.3'
+    compileOnly 'androidx.appcompat:appcompat:1.7.1'
+    compileOnly 'androidx.biometric:biometric:1.1.0'
+    compileOnly 'androidx.browser:browser:1.9.0'
+    compileOnly 'androidx.core:core-ktx:1.17.0'
+    compileOnly 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
+    compileOnly 'androidx.webkit:webkit:1.15.0'
+    compileOnly 'com.google.android.material:material:1.13.0'
+}

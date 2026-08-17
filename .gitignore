@@ -1,4 +1,5 @@
 _build
+/xanh-sync-core/target/
 
 snap/.snapcraft
 parts
@@ -14,6 +15,7 @@ prime
 .DS_Store
 *.xanhbackup
 /build
+**/build/
 **/bin/
 **/obj/
 **/.build/

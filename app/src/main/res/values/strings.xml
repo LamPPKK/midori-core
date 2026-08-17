@@ -10,6 +10,9 @@
     <string name="downloads">Downloads</string>
     <string name="export_backup">Export encrypted backup</string>
     <string name="import_backup">Import encrypted backup</string>
+    <string name="firefox_sync">Firefox Sync</string>
+    <string name="sync_feature_title">Firefox Sync</string>
+    <string name="sync_feature_unavailable">The on-demand Sync module is unavailable</string>
     <string name="backup_password_hint">Backup password</string>
     <string name="backup_password_description">Use at least 8 characters. You will need the same password to import this backup.</string>
     <string name="backup_password_too_short">Password must contain at least 8 characters</string>

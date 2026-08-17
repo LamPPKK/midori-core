@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   asynchronous privacy clearing.
 - Added Linux, Android, instrumentation, CodeQL, dependency-review, Flatpak and
   signed-source GitHub Actions workflows.
+- Added the `xanh-sync-core` Rust boundary for Mozilla Accounts / Firefox Sync,
+  pinned to stable Application Services 155.0 with UniFFI and a stable C ABI.
+- Added shared account, engine, scheduling, backoff, migration, bridge and vault
+  policies plus Android, Swift and C# platform contracts.
 
 ### Changed
 
@@ -38,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   constrained external schemes and removed legacy storage permissions.
 - Added guarded production-signing tasks so unsigned verification AABs cannot be
   mistaken for Play upload artifacts.
+- Added exact-origin credential policy, five-minute vault expiry, HTTPS-only
+  self-hosted configuration and approval-gated Mozilla-hosted release checks.
 
 ### Removed
 

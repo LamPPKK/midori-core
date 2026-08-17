@@ -2,6 +2,16 @@ plugins {
     id 'com.android.application'
 }
 
+def syncFeatureEnabled = providers.gradleProperty('xanhEnableSyncFeature')
+    .map { it.toBoolean() }.orElse(false).get()
+def syncClientId = providers.gradleProperty('xanhLiteFxaClientId')
+    .orElse(providers.environmentVariable('XANH_LITE_FXA_CLIENT_ID')).orElse('').get()
+def syncProductionApproved = providers.gradleProperty('xanhFxaProductionApproved')
+    .orElse(providers.environmentVariable('XANH_FXA_PRODUCTION_APPROVED'))
+    .map { it == '1' || it.equalsIgnoreCase('true') }.orElse(false).get()
+def syncSelfHostedOnly = providers.gradleProperty('xanhSyncSelfHostedOnly')
+    .map { it.toBoolean() }.orElse(false).get()
+
 def uploadStoreFile = providers.gradleProperty('xanhLiteUploadStoreFile')
     .orElse(providers.environmentVariable('XANH_LITE_KEYSTORE')).orNull
 def uploadStorePassword = providers.gradleProperty('xanhLiteUploadStorePassword')
@@ -23,7 +33,16 @@ android {
         versionCode = 10000
         versionName = '1.0.0'
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
+        buildConfigField 'boolean', 'XANH_SYNC_FEATURE_ENABLED', syncFeatureEnabled.toString()
+        buildConfigField 'String', 'XANH_FXA_CLIENT_ID', '"' + syncClientId.replace('"', '\\"') + '"'
+        buildConfigField 'boolean', 'XANH_FXA_PRODUCTION_APPROVED', syncProductionApproved.toString()
+        buildConfigField 'boolean', 'XANH_SYNC_SELF_HOSTED_ONLY', syncSelfHostedOnly.toString()
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+        }
     }
+
+    dynamicFeatures = syncFeatureEnabled ? [':sync_feature'] : []
 
     signingConfigs {
         if (hasUploadSigning) {
@@ -51,7 +70,7 @@ android {
 
     buildFeatures {
         viewBinding = true
-        buildConfig = false
+        buildConfig = true
     }
 
     compileOptions {
@@ -61,6 +80,25 @@ android {
 
     testOptions {
         unitTests.includeAndroidResources = true
+    }
+}
+
+tasks.register('verifySyncFeatureConfiguration') {
+    doLast {
+        if (syncFeatureEnabled) {
+            def mozillaHosted = !syncSelfHostedOnly && syncProductionApproved && !syncClientId.isBlank()
+            if (!mozillaHosted && !syncSelfHostedOnly) {
+                throw new GradleException(
+                    'Lite Sync must be either Mozilla-hosted with an approved client ID or explicitly self-hosted-only'
+                )
+            }
+        }
+    }
+}
+
+if (syncFeatureEnabled) {
+    tasks.matching { it.name == 'bundleRelease' || it.name == 'assembleRelease' }.configureEach {
+        dependsOn 'verifySyncFeatureConfiguration'
     }
 }
 
@@ -82,9 +120,14 @@ tasks.register('bundleProductionRelease') {
 
 dependencies {
     implementation project(':backup-core')
+    implementation 'com.google.android.play:feature-delivery-ktx:2.1.0'
     implementation 'androidx.activity:activity-ktx:1.12.3'
     implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.browser:browser:1.9.0'
     implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
+    implementation 'androidx.webkit:webkit:1.15.0'
     implementation 'com.google.android.material:material:1.13.0'
 
     testImplementation 'junit:junit:4.13.2'

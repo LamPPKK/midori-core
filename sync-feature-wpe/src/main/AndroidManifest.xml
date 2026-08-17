@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:dist="http://schemas.android.com/apk/distribution">
+    <dist:module dist:instant="false" dist:title="@string/sync_feature_title">
+        <dist:delivery><dist:on-demand /></dist:delivery>
+        <dist:fusing dist:include="true" />
+    </dist:module>
+    <application tools:ignore="MissingClass">
+        <activity android:name="mozilla.telemetry.glean.debug.GleanDebugActivity" tools:node="remove" />
+        <provider android:name="androidx.startup.InitializationProvider" tools:node="remove" />
+        <service android:name="androidx.work.impl.background.systemjob.SystemJobService" tools:node="remove" />
+        <service android:name="androidx.work.impl.foreground.SystemForegroundService" tools:node="remove" />
+        <receiver android:name="androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver" tools:node="remove" />
+        <receiver android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver" tools:node="remove" />
+        <receiver android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver" tools:node="remove" />
+        <service
+            android:name="io.github.lamppkk.xanhbrowser.lite.sync.LiteSyncJobService"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <activity
+            android:name="io.github.lamppkk.xanhbrowser.lite.sync.SyncFeatureActivity"
+            android:exported="false" />
+        <activity
+            android:name="io.github.lamppkk.xanhbrowser.lite.sync.SyncPasswordActivity"
+            android:exported="false" />
+        <activity
+            android:name="io.github.lamppkk.xanhbrowser.lite.sync.SyncOAuthRedirectActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="xanh-browser-wpe"
+                    android:host="accounts"
+                    android:path="/oauth" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

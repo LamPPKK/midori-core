@@ -182,6 +182,50 @@ availability obligations before distribution.
 
 Before producing source artifacts, validate the new native editions.
 
+### Firefox Sync release gate (all editions)
+
+Before enabling Sync in any signed artifact, build `xanh-sync-core` with the
+`mozilla` feature against the exact revision in
+`xanh-sync-core/APPLICATION_SERVICES.lock`, generate an SBOM and include
+`THIRD_PARTY_NOTICES.md`. Run `./scripts/verify-sync-release.sh <edition>` for
+the target and retain evidence for every environment flag it checks.
+
+Mozilla-hosted releases require a separately registered client ID/redirect URI
+and written production approval for each application identity. Otherwise the
+release must be explicitly self-hosted-only and Firefox must be configured to
+the same HTTPS Accounts/Sync deployment. Never put OAuth tokens, scoped keys,
+account JSON, local Logins keys or test credentials in Git, CI logs, crash
+reports or `.xanhbackup`.
+
+The candidate is blocked until disposable-account testing covers two-way
+bookmark/history/tab/password create/update/delete, conflict, long offline,
+password change, collection reset, remote wipe, expiry and backoff. Inspect
+databases, logs and crash output for plaintext secrets and complete independent
+FFI/bridge fuzzing and security review. WPE and WinCairo Sync remain blocked by
+their isolated-bridge/vault guards even if another edition passes.
+
+For Lite, first publish the reviewed Android AAR to a private/local Maven
+repository, then build the on-demand splits explicitly:
+
+```sh
+./gradlew -p ../midori-android \
+  :sync-core:publishReleasePublicationToBuildRepository
+./gradlew \
+  -PxanhEnableSyncFeature=true \
+  -PxanhSyncSelfHostedOnly=true \
+  -PxanhSyncRepository=../midori-android/sync-core/build/maven \
+  :sync-feature-common:lintDebug \
+  :app:bundleRelease :app-webkit:bundleRelease
+./scripts/verify-lite-sync-size.sh \
+  /path/to/base-only.aab app/build/outputs/bundle/release/app-release.aab
+```
+
+Replace `xanhSyncSelfHostedOnly` with the registered client-ID/approval
+properties only after written Mozilla approval. Retain the base-only bundle
+used by the size comparison. The AAB is the `lite-with-sync` GitHub artifact;
+use Play delivery or a reviewed `bundletool` split set for installation rather
+than repackaging it as a monolithic APK.
+
 ### Apple
 
 1. Run `swift test --package-path platform/apple` with Xcode 26 or newer.
@@ -192,6 +236,10 @@ Before producing source artifacts, validate the new native editions.
 3. Archive with the dedicated distribution profiles. Validate the macOS App
    Sandbox and hardened runtime, notarize the direct macOS build if one is
    distributed, and submit the signed archives to App Store Connect.
+4. For Sync builds, package the pinned official Application Services
+   XCFramework/checksum, verify non-synchronizing `ThisDeviceOnly` Keychain
+   entries and LocalAuthentication lock/background behavior, then run
+   `./scripts/verify-sync-release.sh apple`.
 
 Verification: both archives must report the intended bundle ID/version, contain
 no private signing material, pass App Store validation and install from TestFlight
@@ -215,6 +263,9 @@ or the notarized distribution channel on clean devices.
 3. Sign every executable and package with the dedicated certificate, verify the
    timestamp and signature on a separate clean system, then run Microsoft
    Defender and SmartScreen submission checks.
+4. For Sync builds, package the native C ABI DLL under the application-local
+   runtime directory, protect account state with DPAPI and vault access with
+   Windows Hello, then run `./scripts/verify-sync-release.sh windows`.
 
 Verification: x64 and ARM64 packages must install cleanly, retain a valid
 signature after download, and use the serviced Evergreen Runtime rather than a

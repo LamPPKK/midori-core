@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   pinned to stable Application Services 155.0 with UniFFI and a stable C ABI.
 - Added shared account, engine, scheduling, backoff, migration, bridge and vault
   policies plus Android, Swift and C# platform contracts.
+- Added reproducible Sync release gates, generated cross-language bindings and
+  an implementation-status record that keeps incomplete platform adapters out
+  of production releases.
 
 ### Changed
 

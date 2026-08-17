@@ -173,8 +173,11 @@ against the same server as Firefox.
 The feature is release-gated independently on each platform. WPE and WinCairo
 remain preview-only until their isolated message bridges, vaults and packaging
 security checks pass. See [`docs/FIREFOX_SYNC.md`](docs/FIREFOX_SYNC.md) for the
-architecture, threat boundary and required interoperability matrix. Sync
-tokens, scoped keys and passwords are never included in `.xanhbackup`.
+architecture, implementation snapshot, threat boundary and required
+interoperability matrix. Passing local builds does not open a production gate;
+Mozilla approval or a documented self-hosted deployment, signed artifacts and
+the interoperability/security matrix remain mandatory. Sync tokens, scoped
+keys and passwords are never included in `.xanhbackup`.
 
 Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
 the Application Services runtime; the base app loads it only after the user

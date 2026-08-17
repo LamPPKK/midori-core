@@ -73,6 +73,39 @@ the platform UI, secure-state lifecycle, native packaging and required bridge
 tests are present. Environment flags are attestations backed by test evidence,
 not switches that make an incomplete integration safe.
 
+## Implementation snapshot (2026-08-18)
+
+The shared implementation is pinned and reproducible: Rust unit tests pass,
+the `mozilla` feature builds and passes Clippy with warnings denied, the C ABI
+header passes a GLib-backed syntax check, and the source release gate passes.
+Generated Kotlin and Swift bindings are checked in CI against the portable
+UniFFI contract and the concrete `MozillaSyncRuntime` API.
+
+The platform boundary tests currently pass locally: 13 Apple tests cover the
+contract and device-only Keychain/LocalAuthentication policy, while 19 Windows
+tests cover the contract, P/Invoke surface and DPAPI/Windows Hello policy. The
+Lite Android build produces both System WebView and WPE dynamic features. Its
+base-module growth is 758,772 bytes, below the 1 MiB limit, and Application
+Services native libraries appear only in the on-demand Sync split.
+
+This evidence is not a production compatibility claim. The following release
+evidence is still required:
+
+- Mozilla production client IDs, registered redirects and Sync scope approval,
+  or a documented HTTPS self-hosted deployment;
+- disposable-account Firefox-to-Xanh interoperability for all four engines;
+- signed artifacts, the complete device/OS/WebView matrix and remote CI for the
+  exact release commit;
+- message/FFI fuzzing, secret-redaction review and an independent security
+  review;
+- complete Linux, Apple and Windows runtime UI/native packaging integrations;
+- an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
+  and the equivalent bridge/vault/package evidence for WinCairo.
+
+Until every applicable item is recorded, Sync remains release-gated on that
+edition. A successful verification build is not permission to advertise
+Mozilla-hosted Firefox compatibility.
+
 WPE remains blocked while WPEView lacks an isolated document-start/message
 bridge and while every native library has not passed 16 KiB page-size checks.
 WinCairo remains blocked until its isolated bridge, vault and packaged native

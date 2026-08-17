@@ -29,6 +29,13 @@ use crate::{
 
 const SYNC_SCOPE: &str = "https://identity.mozilla.com/apps/oldsync";
 
+/// Initializes NSS and the other process-wide services required by Mozilla
+/// Application Services. The upstream initializer is safe to call more than
+/// once, so every public construction path can enforce this precondition.
+pub(crate) fn initialize_application_services() {
+    init_rust_components::initialize();
+}
+
 pub struct MozillaBackend {
     config: SyncConfig,
     account: FirefoxAccount,
@@ -168,6 +175,7 @@ impl MozillaBackend {
         account_json: Option<&str>,
         persisted_sync_state: Option<String>,
     ) -> Result<Self, SyncError> {
+        initialize_application_services();
         config.validate()?;
         let fxa_config = to_fxa_config(&config)?;
         let account = if let Some(serialized) = account_json {

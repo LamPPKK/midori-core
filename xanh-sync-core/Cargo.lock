@@ -656,6 +656,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "init_rust_components"
+version = "0.1.0"
+source = "git+https://github.com/mozilla/application-services?rev=c0fd8cea40c9b5dafc6604831f7bd7a8c096d313#c0fd8cea40c9b5dafc6604831f7bd7a8c096d313"
+dependencies = [
+ "nss-as",
+ "uniffi",
+]
+
+[[package]]
 name = "interrupt-support"
 version = "0.1.0"
 source = "git+https://github.com/mozilla/application-services?rev=c0fd8cea40c9b5dafc6604831f7bd7a8c096d313#c0fd8cea40c9b5dafc6604831f7bd7a8c096d313"
@@ -1779,6 +1788,7 @@ name = "xanh-sync-core"
 version = "1.0.0-alpha.1"
 dependencies = [
  "fxa-client",
+ "init_rust_components",
  "logins",
  "places",
  "serde",

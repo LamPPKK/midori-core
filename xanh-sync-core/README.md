@@ -26,6 +26,10 @@ Native build prerequisites follow Mozilla's NSS instructions. For a pinned
 Application Services checkout, build NSS and export `NSS_DIR`/`NSS_STATIC=1`
 before running:
 
+The `mozilla` build initializes the pinned `init_rust_components` component
+before opening a runtime or generating a local logins key. Embedders do not
+need to initialize NSS through a separate Xanh API.
+
 ```sh
 cargo test --manifest-path xanh-sync-core/Cargo.toml
 cargo build --release --features mozilla --manifest-path xanh-sync-core/Cargo.toml

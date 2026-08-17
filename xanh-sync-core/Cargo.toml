@@ -23,6 +23,7 @@ default = []
 bindgen-cli = ["uniffi/cli"]
 mozilla = [
     "dep:fxa-client",
+    "dep:init_rust_components",
     "dep:logins",
     "dep:places",
     "dep:sync_manager",
@@ -40,6 +41,7 @@ uniffi = "0.31"
 # must enable `mozilla` and retain this exact revision until the compatibility
 # suite and SBOM have been rerun for a newer release.
 fxa-client = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }
+init_rust_components = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }
 logins = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }
 places = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", default-features = false, optional = true }
 sync_manager = { git = "https://github.com/mozilla/application-services", rev = "c0fd8cea40c9b5dafc6604831f7bd7a8c096d313", optional = true }

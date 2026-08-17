@@ -124,6 +124,7 @@ pub extern "C" fn xanh_sync_last_error() -> *mut c_char {
 pub extern "C" fn xanh_sync_generate_local_logins_key() -> *mut c_char {
     #[cfg(feature = "mozilla")]
     {
+        crate::mozilla::initialize_application_services();
         match logins::encryption::create_key() {
             Ok(key) => owned_string(key),
             Err(error) => {

@@ -54,6 +54,32 @@ char *xanh_sync_runtime_update_local_tabs(void *runtime, const char *tabs_json);
 /* Returns sanitized remote tabs grouped by device. This is display data only;
  * the host must require an explicit user action before opening any URL. */
 char *xanh_sync_runtime_remote_tabs_json(void *runtime);
+/* Well-known Places roots: 0 menu, 1 toolbar, 2 unfiled, 3 mobile. */
+char *xanh_sync_bookmark_root_guid(int32_t root);
+/* Bookmark mutations use the bounded JSON records documented in the core
+ * README and require an explicit `is_private` context flag; private
+ * create/update/delete requests fail closed. A returned GUID/string is caller-owned.
+ * Bookmark tree records can contain non-web Firefox URLs, but `is_openable` is
+ * true only for canonical
+ * HTTP(S) URLs accepted by Xanh navigation policy. */
+char *xanh_sync_runtime_create_bookmark(void *runtime, const char *bookmark_json);
+char *xanh_sync_runtime_bookmarks_json(void *runtime, int32_t root);
+bool xanh_sync_runtime_update_bookmark(void *runtime, const char *update_json);
+/* Returns 1 when deleted, 0 when absent and -1 on error. */
+int32_t xanh_sync_runtime_delete_bookmark(
+    void *runtime,
+    const char *guid,
+    bool is_private
+);
+/* Private history records are skipped by the core. History queries return at
+ * most 500 sanitized top-level HTTP(S) visits. */
+char *xanh_sync_runtime_record_history(void *runtime, const char *visits_json);
+char *xanh_sync_runtime_recent_history_json(void *runtime, uint32_t limit);
+bool xanh_sync_runtime_delete_history_visit(
+    void *runtime,
+    const char *url,
+    int64_t visited_at_epoch_millis
+);
 bool xanh_sync_runtime_disconnect(void *runtime, bool delete_local);
 
 #ifdef __cplusplus

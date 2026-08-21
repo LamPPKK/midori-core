@@ -103,6 +103,10 @@ jobs:
             --language swift --no-format --out-dir target/bindings/swift
           grep -R -F 'class MozillaSyncRuntime' target/bindings/kotlin
           grep -R -F 'class MozillaSyncRuntime' target/bindings/swift
+          grep -R -F 'createBookmark' target/bindings/kotlin
+          grep -R -F 'createBookmark' target/bindings/swift
+          grep -R -F 'recordHistory' target/bindings/kotlin
+          grep -R -F 'recordHistory' target/bindings/swift
       - name: Smoke-test the stable C ABI without exposing the generated key
         run: |
           LD_LIBRARY_PATH="$RUNNER_TEMP/nss/lib" python3 - <<'PY'
@@ -127,6 +131,26 @@ jobs:
           core.xanh_sync_runtime_update_local_tabs.restype = ctypes.c_void_p
           core.xanh_sync_runtime_remote_tabs_json.argtypes = [ctypes.c_void_p]
           core.xanh_sync_runtime_remote_tabs_json.restype = ctypes.c_void_p
+          core.xanh_sync_bookmark_root_guid.argtypes = [ctypes.c_int32]
+          core.xanh_sync_bookmark_root_guid.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_create_bookmark.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_create_bookmark.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_bookmarks_json.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+          core.xanh_sync_runtime_bookmarks_json.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_update_bookmark.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_update_bookmark.restype = ctypes.c_bool
+          core.xanh_sync_runtime_delete_bookmark.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_bool]
+          core.xanh_sync_runtime_delete_bookmark.restype = ctypes.c_int32
+          core.xanh_sync_runtime_record_history.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_record_history.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_recent_history_json.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+          core.xanh_sync_runtime_recent_history_json.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_delete_history_visit.argtypes = [
+              ctypes.c_void_p,
+              ctypes.c_char_p,
+              ctypes.c_int64,
+          ]
+          core.xanh_sync_runtime_delete_history_visit.restype = ctypes.c_bool
 
           version = core.xanh_sync_core_version()
           key = core.xanh_sync_generate_local_logins_key()
@@ -146,6 +170,11 @@ jobs:
                   config, profile.encode(), None, None, None
               )
               assert runtime
+              with tempfile.TemporaryDirectory() as second_profile:
+                  second_runtime = core.xanh_sync_runtime_open(
+                      config, second_profile.encode(), None, None, None
+                  )
+                  assert not second_runtime
               local_tabs = json.dumps([
                   {
                       'title': 'Regular',
@@ -174,7 +203,107 @@ jobs:
               remote = core.xanh_sync_runtime_remote_tabs_json(runtime)
               assert remote and json.loads(ctypes.string_at(remote)) == []
               core.xanh_sync_string_free(remote)
+
+              root = core.xanh_sync_bookmark_root_guid(2)
+              assert root and ctypes.string_at(root).decode() == 'unfiled_____'
+              core.xanh_sync_string_free(root)
+              folder = json.dumps({
+                  'parent_guid': 'unfiled_____',
+                  'position': None,
+                  'kind': 'folder',
+                  'title': 'CI folder',
+                  'url': None,
+                  'date_added_epoch_millis': 1700000000100,
+                  'last_modified_epoch_millis': 1700000000101,
+                  'is_private': False,
+              }).encode()
+              folder_guid_ptr = core.xanh_sync_runtime_create_bookmark(runtime, folder)
+              assert folder_guid_ptr
+              folder_guid = ctypes.string_at(folder_guid_ptr).decode()
+              core.xanh_sync_string_free(folder_guid_ptr)
+              bookmark = json.dumps({
+                  'parent_guid': folder_guid,
+                  'position': None,
+                  'kind': 'bookmark',
+                  'title': 'Before',
+                  'url': 'https://example.com/old',
+                  'date_added_epoch_millis': 1700000000102,
+                  'last_modified_epoch_millis': 1700000000103,
+                  'is_private': False,
+              }).encode()
+              bookmark_guid_ptr = core.xanh_sync_runtime_create_bookmark(runtime, bookmark)
+              assert bookmark_guid_ptr
+              bookmark_guid = ctypes.string_at(bookmark_guid_ptr).decode()
+              core.xanh_sync_string_free(bookmark_guid_ptr)
+              update_bookmark = json.dumps({
+                  'guid': bookmark_guid,
+                  'title': 'After',
+                  'url': 'https://example.com/new',
+                  'parent_guid': None,
+                  'position': None,
+                  'is_private': False,
+              }).encode()
+              assert core.xanh_sync_runtime_update_bookmark(runtime, update_bookmark)
+              bookmark_tree_ptr = core.xanh_sync_runtime_bookmarks_json(runtime, 2)
+              assert bookmark_tree_ptr
+              bookmark_tree = json.loads(ctypes.string_at(bookmark_tree_ptr))
+              core.xanh_sync_string_free(bookmark_tree_ptr)
+              stored = next(item for item in bookmark_tree if item['guid'] == bookmark_guid)
+              assert stored['title'] == 'After'
+              assert stored['url'] == 'https://example.com/new'
+              assert stored['is_openable'] is True
+
+              visits = json.dumps([
+                  {
+                      'url': 'https://example.com/regular',
+                      'title': 'Regular',
+                      'visited_at_epoch_millis': 1700000000200,
+                      'transition': 'typed',
+                      'is_private': False,
+                  },
+                  {
+                      'url': 'https://example.com/private',
+                      'title': 'Private',
+                      'visited_at_epoch_millis': 1700000000201,
+                      'transition': 'link',
+                      'is_private': True,
+                  },
+              ]).encode()
+              history_result_ptr = core.xanh_sync_runtime_record_history(runtime, visits)
+              assert history_result_ptr
+              assert json.loads(ctypes.string_at(history_result_ptr)) == {
+                  'accepted_count': 1,
+                  'skipped_private_count': 1,
+              }
+              core.xanh_sync_string_free(history_result_ptr)
+              history_retry_ptr = core.xanh_sync_runtime_record_history(runtime, visits)
+              assert history_retry_ptr
+              assert json.loads(ctypes.string_at(history_retry_ptr)) == {
+                  'accepted_count': 1,
+                  'skipped_private_count': 1,
+              }
+              core.xanh_sync_string_free(history_retry_ptr)
+              history_ptr = core.xanh_sync_runtime_recent_history_json(runtime, 10)
+              assert history_ptr
+              history = json.loads(ctypes.string_at(history_ptr))
+              core.xanh_sync_string_free(history_ptr)
+              assert len(history) == 1
+              assert history[0]['url'] == 'https://example.com/regular'
+              assert core.xanh_sync_runtime_delete_history_visit(
+                  runtime,
+                  history[0]['url'].encode(),
+                  history[0]['visited_at_epoch_millis'],
+              )
+              assert core.xanh_sync_runtime_delete_bookmark(runtime, bookmark_guid.encode(), True) == -1
+              assert core.xanh_sync_runtime_delete_bookmark(runtime, bookmark_guid.encode(), False) == 1
+              assert core.xanh_sync_runtime_delete_bookmark(runtime, folder_guid.encode(), False) == 1
               core.xanh_sync_runtime_free(runtime)
+              with tempfile.TemporaryDirectory() as replacement_profile:
+                  replacement = core.xanh_sync_runtime_open(
+                      config, replacement_profile.encode(), None, None, None
+                  )
+                  assert replacement
+                  core.xanh_sync_runtime_free(replacement)
           PY
       - uses: actions/upload-artifact@v4
         with:

@@ -151,7 +151,11 @@ pub(crate) fn truncate(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
 }
 
-fn canonical_web_url(value: &str, max_length: usize, label: &str) -> Result<String, SyncError> {
+pub(crate) fn canonical_web_url(
+    value: &str,
+    max_length: usize,
+    label: &str,
+) -> Result<String, SyncError> {
     if value.len() > max_length {
         return Err(SyncError::InvalidConfig(format!(
             "{label} exceeds {max_length} bytes"

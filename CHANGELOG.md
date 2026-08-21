@@ -28,6 +28,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added a bounded Firefox Tabs data bridge across UniFFI and the stable C ABI;
   it excludes private tabs, sanitizes remote URLs and keeps remote opening
   behind an explicit user action.
+- Added the real Places bookmark/history bridge across UniFFI and the stable C
+  ABI, including bookmark-tree CRUD, private-history exclusion, bounded recent
+  history and native Application Services round-trip tests. Bookmark traversal
+  is non-recursive and bounded; private delete requests fail closed, and a
+  process-wide runtime lease prevents cross-profile Sync-engine registration.
 
 ### Changed
 

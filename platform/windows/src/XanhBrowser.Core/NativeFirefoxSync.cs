@@ -59,6 +59,41 @@ public sealed class NativeFirefoxSync : IDisposable
     public string RemoteTabsJson() =>
         NativeMethods.TakeOwned(NativeMethods.RemoteTabsJson(_handle));
 
+    public static string BookmarkRootGuid(int root) =>
+        NativeMethods.TakeOwned(NativeMethods.BookmarkRootGuid(root));
+
+    public string CreateBookmark(string bookmarkJson) =>
+        NativeMethods.TakeOwned(NativeMethods.CreateBookmark(_handle, bookmarkJson));
+
+    public string BookmarksJson(int root) =>
+        NativeMethods.TakeOwned(NativeMethods.BookmarksJson(_handle, root));
+
+    public void UpdateBookmark(string updateJson)
+    {
+        if (!NativeMethods.UpdateBookmark(_handle, updateJson))
+            throw new InvalidOperationException(NativeMethods.TakeLastError());
+    }
+
+    public bool DeleteBookmark(string guid, bool isPrivate)
+    {
+        var result = NativeMethods.DeleteBookmark(_handle, guid, isPrivate);
+        return result >= 0
+            ? result == 1
+            : throw new InvalidOperationException(NativeMethods.TakeLastError());
+    }
+
+    public string RecordHistory(string visitsJson) =>
+        NativeMethods.TakeOwned(NativeMethods.RecordHistory(_handle, visitsJson));
+
+    public string RecentHistoryJson(uint limit) =>
+        NativeMethods.TakeOwned(NativeMethods.RecentHistoryJson(_handle, limit));
+
+    public void DeleteHistoryVisit(string url, long visitedAtEpochMillis)
+    {
+        if (!NativeMethods.DeleteHistoryVisit(_handle, url, visitedAtEpochMillis))
+            throw new InvalidOperationException(NativeMethods.TakeLastError());
+    }
+
     public void Disconnect(bool deleteLocal)
     {
         if (!NativeMethods.Disconnect(_handle, deleteLocal))
@@ -134,6 +169,36 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string tabs);
     [DllImport(Library, EntryPoint = "xanh_sync_runtime_remote_tabs_json")]
     internal static extern nint RemoteTabsJson(SyncRuntimeHandle runtime);
+    [DllImport(Library, EntryPoint = "xanh_sync_bookmark_root_guid")]
+    internal static extern nint BookmarkRootGuid(int root);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_create_bookmark")]
+    internal static extern nint CreateBookmark(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string bookmarkJson);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_bookmarks_json")]
+    internal static extern nint BookmarksJson(SyncRuntimeHandle runtime, int root);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_update_bookmark")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool UpdateBookmark(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string updateJson);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_delete_bookmark")]
+    internal static extern int DeleteBookmark(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string guid,
+        [MarshalAs(UnmanagedType.I1)] bool isPrivate);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_record_history")]
+    internal static extern nint RecordHistory(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string visitsJson);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_recent_history_json")]
+    internal static extern nint RecentHistoryJson(SyncRuntimeHandle runtime, uint limit);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_delete_history_visit")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool DeleteHistoryVisit(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string url,
+        long visitedAtEpochMillis);
     [DllImport(Library, EntryPoint = "xanh_sync_runtime_disconnect")]
     [return: MarshalAs(UnmanagedType.I1)]
     internal static extern bool Disconnect(SyncRuntimeHandle runtime, [MarshalAs(UnmanagedType.I1)] bool deleteLocal);

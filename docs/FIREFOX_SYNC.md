@@ -10,6 +10,9 @@ from production.
 Bookmarks, history, tabs and passwords use the upstream Places, Tabs and
 Logins engines and the upstream Sync Manager. Engine switches are local to a
 device. Remote tabs are grouped by device and are never opened automatically.
+Because Application Services 155 stores engine registrations process-wide,
+Xanh permits exactly one live Mozilla Sync runtime in each process; a second
+profile must run in a separate process.
 The first sync backs up and imports legacy bookmark/history data, verifies
 counts, then lets the Mozilla engines merge local and remote records.
 
@@ -81,17 +84,28 @@ header passes a GLib-backed syntax check, and the source release gate passes.
 Generated Kotlin and Swift bindings are checked in CI against the portable
 UniFFI contract and the concrete `MozillaSyncRuntime` API.
 
-The first real cross-platform data bridge is now present for Tabs. Generated
-Kotlin and Swift bindings expose typed UniFFI methods; Vala, C# and WinCairo
-use the stable C ABI with bounded JSON. The core writes only regular local
-HTTP(S) tabs to the upstream Tabs store, reports how many private tabs it
+The first real cross-platform data bridges are now present for Tabs and Places.
+Generated Kotlin and Swift bindings expose typed UniFFI methods; Vala, C# and
+WinCairo use the stable C ABI with bounded JSON. The core writes only regular
+local HTTP(S) tabs to the upstream Tabs store, reports how many private tabs it
 skipped, and returns sanitized remote tabs grouped by device. It never opens a
-remote tab. The
-native Linux CI smoke test opens the production runtime and exercises both C
-entry points against the pinned Mozilla store.
+remote tab.
+
+The Places bridge creates, reads, updates and deletes bookmark-tree records,
+records regular local history visits, returns bounded recent history and
+deletes an exact visit. Private history is excluded before the first database
+write, and bookmark mutations originating in private mode are rejected by the
+shared core. History retries are idempotent by canonical URL and timestamp,
+including after a partially committed upstream batch. Xanh-created
+bookmark/history URLs are canonical HTTP(S); non-web
+bookmarks received from Firefox remain manageable but are explicitly marked
+non-openable. Bookmark trees are traversed with bounded, non-recursive child
+queries instead of Application Services' unbounded deepest-tree fetch. Native
+Linux CI opens the production runtime and round-trips all
+three data bridges against the pinned Mozilla stores through the C ABI.
 
 The platform boundary tests currently pass locally: 13 Apple tests cover the
-contract and device-only Keychain/LocalAuthentication policy, while 20 Windows
+contract and device-only Keychain/LocalAuthentication policy, while 21 Windows
 tests cover the contract, P/Invoke surface and DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application
@@ -108,7 +122,7 @@ evidence is still required:
 - message/FFI fuzzing, secret-redaction review and an independent security
   review;
 - complete Linux, Apple and Windows runtime UI/native packaging integrations,
-  including host wiring for the new Tabs data bridge;
+  including host wiring for the Tabs and Places data bridges;
 - an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
   and the equivalent bridge/vault/package evidence for WinCairo.
 

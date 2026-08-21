@@ -4,7 +4,7 @@
 //! the local logins key are secrets and must only be stored in Keychain,
 //! Keystore, DPAPI/Windows Hello, or Secret Service.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -13,7 +13,15 @@ use std::time::UNIX_EPOCH;
 use fxa_client::{DeviceConfig, FirefoxAccount, FxaConfig, FxaEvent, FxaServer, FxaState};
 use logins::encryption::{ManagedEncryptorDecryptor, StaticKeyManager};
 use logins::LoginStore;
-use places::PlacesApi;
+use places::{
+    BookmarkPosition as PlacesBookmarkPosition, BookmarkType as PlacesBookmarkType,
+    BookmarkUpdateInfo as PlacesBookmarkUpdateInfo, ConnectionType, Guid,
+    InsertableBookmark as PlacesInsertableBookmark,
+    InsertableBookmarkFolder as PlacesInsertableFolder,
+    InsertableBookmarkItem as PlacesInsertableItem,
+    InsertableBookmarkSeparator as PlacesInsertableSeparator, PlacesApi, PlacesConnection,
+    PlacesDb, PlacesTimestamp, VisitObservation, VisitTransitionSet, VisitType,
+};
 use sync_manager::manager::SyncManager;
 use sync_manager::{
     DeviceSettings, ServiceStatus, SyncAuthInfo, SyncEngineSelection, SyncParams,
@@ -23,14 +31,45 @@ use tabs::{ClientRemoteTabs, RemoteTabRecord, TabsDeviceType, TabsStore};
 use url::Url;
 
 use crate::{
-    sanitized_web_url, truncate, validate_local_tabs, AccountServer, AccountState, DeviceKind,
-    LocalTab, LocalTabsUpdateResult, RemoteDeviceKind, RemoteTab, RemoteTabsDevice, SyncConfig,
-    SyncEngine, SyncError, SyncReason, SyncStatus, MAX_DEVICE_ID_LENGTH, MAX_DEVICE_NAME_LENGTH,
-    MAX_ICON_URL_LENGTH, MAX_REMOTE_DEVICES, MAX_REMOTE_TABS_PER_DEVICE, MAX_REMOTE_TABS_TOTAL,
-    MAX_TITLE_LENGTH, MAX_URL_HISTORY, MAX_URL_LENGTH,
+    sanitized_title, sanitized_web_url, truncate, validate_bookmark_delete,
+    validate_bookmark_update, validate_history_delete, validate_history_limit,
+    validate_local_history, validate_local_tabs, validate_new_bookmark, AccountServer,
+    AccountState, BookmarkKind, BookmarkRecord, BookmarkRoot, BookmarkUpdate, DeviceKind,
+    HistoryTransition, HistoryVisitRecord, LocalHistoryUpdateResult, LocalHistoryVisit, LocalTab,
+    LocalTabsUpdateResult, NewBookmark, RemoteDeviceKind, RemoteTab, RemoteTabsDevice, SyncConfig,
+    SyncEngine, SyncError, SyncReason, SyncStatus, MAX_BOOKMARK_ITEMS, MAX_BOOKMARK_JSON_BYTES,
+    MAX_DEVICE_ID_LENGTH, MAX_DEVICE_NAME_LENGTH, MAX_ICON_URL_LENGTH, MAX_PLACES_URL_LENGTH,
+    MAX_REMOTE_DEVICES, MAX_REMOTE_TABS_PER_DEVICE, MAX_REMOTE_TABS_TOTAL, MAX_TITLE_LENGTH,
+    MAX_URL_HISTORY, MAX_URL_LENGTH,
 };
 
 const SYNC_SCOPE: &str = "https://identity.mozilla.com/apps/oldsync";
+
+// Application Services 155 keeps the registered Places, Tabs and Logins
+// engines in process-global weak registries. A second live runtime would
+// replace those registrations and could make account A sync profile B.
+static MOZILLA_RUNTIME_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+struct MozillaRuntimeLease;
+
+impl MozillaRuntimeLease {
+    fn acquire() -> Result<Self, SyncError> {
+        MOZILLA_RUNTIME_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self)
+            .map_err(|_| {
+                SyncError::InvalidConfig(
+                    "only one Mozilla Sync runtime may be open in a process".into(),
+                )
+            })
+    }
+}
+
+impl Drop for MozillaRuntimeLease {
+    fn drop(&mut self) {
+        MOZILLA_RUNTIME_ACTIVE.store(false, Ordering::Release);
+    }
+}
 
 /// Initializes NSS and the other process-wide services required by Mozilla
 /// Application Services. The upstream initializer is safe to call more than
@@ -46,9 +85,12 @@ pub struct MozillaBackend {
     manager: SyncManager,
     profile_dir: PathBuf,
     places: Option<Arc<PlacesApi>>,
+    places_writer: Option<Arc<PlacesConnection>>,
+    places_reader: Option<PlacesDb>,
     logins: Option<Arc<LoginStore>>,
     tabs: Option<Arc<TabsStore>>,
     persisted_sync_state: Option<String>,
+    _runtime_lease: MozillaRuntimeLease,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
@@ -168,6 +210,42 @@ impl MozillaSyncRuntime {
         self.backend()?.remote_tabs()
     }
 
+    pub fn create_bookmark(&self, item: NewBookmark) -> Result<String, SyncError> {
+        self.backend()?.create_bookmark(item)
+    }
+
+    pub fn bookmark_tree(&self, root: BookmarkRoot) -> Result<Vec<BookmarkRecord>, SyncError> {
+        self.backend()?.bookmark_tree(root)
+    }
+
+    pub fn update_bookmark(&self, update: BookmarkUpdate) -> Result<(), SyncError> {
+        self.backend()?.update_bookmark(update)
+    }
+
+    pub fn delete_bookmark(&self, guid: String, is_private: bool) -> Result<bool, SyncError> {
+        self.backend()?.delete_bookmark(guid, is_private)
+    }
+
+    pub fn record_history(
+        &self,
+        visits: Vec<LocalHistoryVisit>,
+    ) -> Result<LocalHistoryUpdateResult, SyncError> {
+        self.backend()?.record_history(visits)
+    }
+
+    pub fn recent_history(&self, limit: u32) -> Result<Vec<HistoryVisitRecord>, SyncError> {
+        self.backend()?.recent_history(limit)
+    }
+
+    pub fn delete_history_visit(
+        &self,
+        url: String,
+        visited_at_epoch_millis: i64,
+    ) -> Result<(), SyncError> {
+        self.backend()?
+            .delete_history_visit(url, visited_at_epoch_millis)
+    }
+
     pub fn disconnect(&self, delete_local: bool) -> Result<(), SyncError> {
         self.backend()?.disconnect(delete_local)
     }
@@ -191,6 +269,7 @@ impl MozillaBackend {
     ) -> Result<Self, SyncError> {
         initialize_application_services();
         config.validate()?;
+        let runtime_lease = MozillaRuntimeLease::acquire()?;
         let fxa_config = to_fxa_config(&config)?;
         let account = if let Some(serialized) = account_json {
             validate_persisted_account_identity(serialized, &fxa_config)?;
@@ -210,6 +289,12 @@ impl MozillaBackend {
         let profile_dir = profile_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&profile_dir).map_err(backend_error)?;
         let places = PlacesApi::new(profile_dir.join("places.sqlite")).map_err(backend_error)?;
+        let places_writer = places
+            .new_connection(ConnectionType::ReadWrite)
+            .map_err(backend_error)?;
+        let places_reader = places
+            .open_connection(ConnectionType::ReadOnly)
+            .map_err(backend_error)?;
         let tabs = Arc::new(TabsStore::new(profile_dir.join("tabs.sqlite")));
         places.clone().register_with_sync_manager();
         tabs.clone().register_with_sync_manager();
@@ -220,9 +305,12 @@ impl MozillaBackend {
             manager: SyncManager::new(),
             profile_dir,
             places: Some(places),
+            places_writer: Some(places_writer),
+            places_reader: Some(places_reader),
             logins: None,
             tabs: Some(tabs),
             persisted_sync_state,
+            _runtime_lease: runtime_lease,
         };
         if let Some(key) = local_logins_key {
             backend.unlock_logins(key)?;
@@ -356,6 +444,152 @@ impl MozillaBackend {
         ))
     }
 
+    pub fn create_bookmark(&mut self, item: NewBookmark) -> Result<String, SyncError> {
+        let item = validate_new_bookmark(item)?;
+        let position = item.position.map_or(PlacesBookmarkPosition::Append, |pos| {
+            PlacesBookmarkPosition::Specific { pos }
+        });
+        let parent_guid = Guid::new(&item.parent_guid);
+        let date_added = item.date_added_epoch_millis.map(PlacesTimestamp);
+        let last_modified = item.last_modified_epoch_millis.map(PlacesTimestamp);
+        let places_item = match item.kind {
+            BookmarkKind::Bookmark => PlacesInsertableItem::Bookmark {
+                b: PlacesInsertableBookmark {
+                    parent_guid,
+                    position,
+                    date_added,
+                    last_modified,
+                    guid: None,
+                    url: Url::parse(item.url.as_deref().expect("validated bookmark URL"))
+                        .map_err(backend_error)?,
+                    title: item.title,
+                },
+            },
+            BookmarkKind::Folder => PlacesInsertableItem::Folder {
+                f: PlacesInsertableFolder {
+                    parent_guid,
+                    position,
+                    date_added,
+                    last_modified,
+                    guid: None,
+                    title: item.title,
+                    children: vec![],
+                },
+            },
+            BookmarkKind::Separator => PlacesInsertableItem::Separator {
+                s: PlacesInsertableSeparator {
+                    parent_guid,
+                    position,
+                    date_added,
+                    last_modified,
+                    guid: None,
+                },
+            },
+        };
+        self.places_writer()?
+            .bookmarks_insert(places_item)
+            .map(|guid| guid.as_str().to_owned())
+            .map_err(backend_error)
+    }
+
+    pub fn bookmark_tree(&mut self, root: BookmarkRoot) -> Result<Vec<BookmarkRecord>, SyncError> {
+        bounded_bookmark_tree(self.places_reader()?, &crate::bookmark_root_guid(root))
+    }
+
+    pub fn update_bookmark(&mut self, update: BookmarkUpdate) -> Result<(), SyncError> {
+        let update = validate_bookmark_update(update)?;
+        self.places_writer()?
+            .bookmarks_update(PlacesBookmarkUpdateInfo {
+                guid: Guid::new(&update.guid),
+                title: update.title,
+                url: update.url,
+                parent_guid: update.parent_guid.map(|guid| Guid::new(&guid)),
+                position: update.position,
+            })
+            .map_err(backend_error)
+    }
+
+    pub fn delete_bookmark(&mut self, guid: String, is_private: bool) -> Result<bool, SyncError> {
+        let guid = validate_bookmark_delete(&guid, is_private)?;
+        self.places_writer()?
+            .bookmarks_delete(Guid::new(&guid))
+            .map_err(backend_error)
+    }
+
+    pub fn record_history(
+        &mut self,
+        visits: Vec<LocalHistoryVisit>,
+    ) -> Result<LocalHistoryUpdateResult, SyncError> {
+        let (visits, result) = validate_local_history(visits)?;
+        let writer = self.places_writer()?;
+        for visit in visits {
+            let timestamp = PlacesTimestamp(visit.visited_at_epoch_millis);
+            let already_recorded = writer
+                .get_visit_infos(timestamp, timestamp, VisitTransitionSet::empty())
+                .map_err(backend_error)?
+                .into_iter()
+                .any(|existing| existing.url.as_str() == visit.url);
+            if already_recorded {
+                continue;
+            }
+            let observation = VisitObservation::new(Url::parse(&visit.url).map_err(backend_error)?)
+                .with_title(visit.title)
+                .with_visit_type(to_places_visit_type(visit.transition))
+                .with_at(timestamp)
+                .with_is_remote(false);
+            writer
+                .apply_observation(observation)
+                .map_err(backend_error)?;
+        }
+        Ok(result)
+    }
+
+    pub fn recent_history(&mut self, limit: u32) -> Result<Vec<HistoryVisitRecord>, SyncError> {
+        let limit = validate_history_limit(limit)?;
+        let visits = self
+            .places_writer()?
+            .get_visit_page(0, i64::from(limit), VisitTransitionSet::empty())
+            .map_err(backend_error)?;
+        Ok(visits
+            .into_iter()
+            .filter(|visit| !visit.is_hidden)
+            .filter_map(|visit| {
+                let url = sanitized_web_url(visit.url.as_str(), MAX_PLACES_URL_LENGTH)?;
+                let transition = from_places_visit_type(visit.visit_type)?;
+                Some(HistoryVisitRecord {
+                    url,
+                    title: sanitized_title(visit.title),
+                    visited_at_epoch_millis: i64::try_from(visit.timestamp.as_millis()).ok()?,
+                    transition,
+                    is_remote: visit.is_remote,
+                })
+            })
+            .collect())
+    }
+
+    pub fn delete_history_visit(
+        &mut self,
+        url: String,
+        visited_at_epoch_millis: i64,
+    ) -> Result<(), SyncError> {
+        let (url, timestamp) = validate_history_delete(&url, visited_at_epoch_millis)?;
+        self.places_writer()?
+            .delete_visit(url, PlacesTimestamp(timestamp))
+            .map_err(backend_error)
+    }
+
+    fn places_writer(&self) -> Result<&PlacesConnection, SyncError> {
+        self.places_writer
+            .as_deref()
+            .ok_or_else(|| SyncError::Backend("local Places store was deleted".into()))
+    }
+
+    fn places_reader(&self) -> Result<&PlacesDb, SyncError> {
+        self.places_reader
+            .as_ref()
+            .ok_or_else(|| SyncError::Backend("local Places store was deleted".into()))
+    }
+
     pub fn sync(
         &mut self,
         reason: SyncReason,
@@ -444,6 +678,8 @@ impl MozillaBackend {
             if let Some(tabs) = self.tabs.take() {
                 tabs.close_connection();
             }
+            self.places_reader.take();
+            self.places_writer.take();
             self.places.take();
             for database in ["places.sqlite", "logins.sqlite", "tabs.sqlite"] {
                 for suffix in ["", "-wal", "-shm"] {
@@ -469,6 +705,8 @@ impl Drop for MozillaBackend {
         if let Some(tabs) = self.tabs.take() {
             tabs.close_connection();
         }
+        self.places_reader.take();
+        self.places_writer.take();
         self.places.take();
     }
 }
@@ -551,6 +789,155 @@ fn to_device_type(kind: DeviceKind) -> fxa_client::DeviceType {
     }
 }
 
+fn bounded_bookmark_tree(db: &PlacesDb, root_guid: &str) -> Result<Vec<BookmarkRecord>, SyncError> {
+    let mut records = Vec::new();
+    let mut pending = vec![root_guid.to_owned()];
+    let mut seen = HashSet::new();
+    // JSON arrays add two brackets and one comma between records. Enforce the
+    // same aggregate budget before pushing so typed UniFFI callers cannot
+    // bypass the C ABI's post-serialization check.
+    let mut serialized_bytes = 2usize;
+    while let Some(guid) = pending.pop() {
+        if records.len() >= MAX_BOOKMARK_ITEMS {
+            return Err(SyncError::Backend(format!(
+                "bookmark tree exceeds {MAX_BOOKMARK_ITEMS} records"
+            )));
+        }
+        if !seen.insert(guid.clone()) {
+            return Err(SyncError::Backend(
+                "bookmark tree contains a repeated GUID".into(),
+            ));
+        }
+        let (record, is_folder) = read_bookmark_record(db, &guid)?
+            .ok_or_else(|| SyncError::Backend("Places bookmark item is missing".into()))?;
+        let record_bytes = serde_json::to_vec(&record).map_err(backend_error)?.len();
+        let separator_bytes = usize::from(!records.is_empty());
+        serialized_bytes = serialized_bytes
+            .checked_add(separator_bytes)
+            .and_then(|size| size.checked_add(record_bytes))
+            .filter(|size| *size <= MAX_BOOKMARK_JSON_BYTES)
+            .ok_or_else(|| {
+                SyncError::Backend(format!(
+                    "bookmark tree JSON exceeds {MAX_BOOKMARK_JSON_BYTES} bytes"
+                ))
+            })?;
+        records.push(record);
+        if is_folder {
+            let reserved = records.len() + pending.len();
+            let available = MAX_BOOKMARK_ITEMS.checked_sub(reserved).ok_or_else(|| {
+                SyncError::Backend(format!(
+                    "bookmark tree exceeds {MAX_BOOKMARK_ITEMS} records"
+                ))
+            })?;
+            let children = read_bookmark_children(db, &guid, available + 1)?;
+            if children.len() > available {
+                return Err(SyncError::Backend(format!(
+                    "bookmark tree exceeds {MAX_BOOKMARK_ITEMS} records"
+                )));
+            }
+            pending.extend(children.into_iter().rev());
+        }
+    }
+    Ok(records)
+}
+
+fn read_bookmark_record(
+    db: &PlacesDb,
+    guid: &str,
+) -> Result<Option<(BookmarkRecord, bool)>, SyncError> {
+    let mut statement = db
+        .prepare(
+            "SELECT b.guid, p.guid, b.position, b.type, NULLIF(b.title, ''), \
+                    b.dateAdded, b.lastModified, h.url \
+             FROM moz_bookmarks b \
+             LEFT JOIN moz_bookmarks p ON p.id = b.parent \
+             LEFT JOIN moz_places h ON h.id = b.fk \
+             WHERE b.guid = ?1 LIMIT 1",
+        )
+        .map_err(backend_error)?;
+    let mut rows = statement.query([guid]).map_err(backend_error)?;
+    let Some(row) = rows.next().map_err(backend_error)? else {
+        return Ok(None);
+    };
+    let item_type: PlacesBookmarkType = row.get(3).map_err(backend_error)?;
+    let raw_url: Option<String> = row.get(7).map_err(backend_error)?;
+    let canonical_url = raw_url
+        .as_deref()
+        .and_then(|value| Url::parse(value).ok())
+        .map(|url| url.to_string())
+        .filter(|url| url.len() <= MAX_PLACES_URL_LENGTH);
+    let is_openable = canonical_url
+        .as_deref()
+        .and_then(|url| sanitized_web_url(url, MAX_PLACES_URL_LENGTH))
+        .is_some();
+    let (kind, url) = match item_type {
+        PlacesBookmarkType::Bookmark => (BookmarkKind::Bookmark, canonical_url),
+        PlacesBookmarkType::Folder => (BookmarkKind::Folder, None),
+        PlacesBookmarkType::Separator => (BookmarkKind::Separator, None),
+    };
+    Ok(Some((
+        BookmarkRecord {
+            guid: row.get(0).map_err(backend_error)?,
+            parent_guid: row.get(1).map_err(backend_error)?,
+            position: row.get(2).map_err(backend_error)?,
+            kind,
+            title: if item_type == PlacesBookmarkType::Separator {
+                None
+            } else {
+                sanitized_title(row.get(4).map_err(backend_error)?)
+            },
+            url,
+            is_openable: item_type == PlacesBookmarkType::Bookmark && is_openable,
+            date_added_epoch_millis: row.get::<_, i64>(5).map_err(backend_error)?.max(0),
+            last_modified_epoch_millis: row.get::<_, i64>(6).map_err(backend_error)?.max(0),
+        },
+        item_type == PlacesBookmarkType::Folder,
+    )))
+}
+
+fn read_bookmark_children(
+    db: &PlacesDb,
+    parent_guid: &str,
+    limit: usize,
+) -> Result<Vec<String>, SyncError> {
+    let sql = format!(
+        "SELECT child.guid FROM moz_bookmarks child \
+         WHERE child.parent = (SELECT parent.id FROM moz_bookmarks parent WHERE parent.guid = ?1) \
+         ORDER BY child.position LIMIT {limit}"
+    );
+    let mut statement = db.prepare(&sql).map_err(backend_error)?;
+    let rows = statement
+        .query_map([parent_guid], |row| row.get(0))
+        .map_err(backend_error)?;
+    rows.collect::<Result<Vec<String>, _>>()
+        .map_err(backend_error)
+}
+
+fn to_places_visit_type(transition: HistoryTransition) -> VisitType {
+    match transition {
+        HistoryTransition::Link => VisitType::Link,
+        HistoryTransition::Typed => VisitType::Typed,
+        HistoryTransition::Bookmark => VisitType::Bookmark,
+        HistoryTransition::RedirectPermanent => VisitType::RedirectPermanent,
+        HistoryTransition::RedirectTemporary => VisitType::RedirectTemporary,
+        HistoryTransition::Download => VisitType::Download,
+        HistoryTransition::Reload => VisitType::Reload,
+    }
+}
+
+fn from_places_visit_type(transition: VisitType) -> Option<HistoryTransition> {
+    match transition {
+        VisitType::Link => Some(HistoryTransition::Link),
+        VisitType::Typed => Some(HistoryTransition::Typed),
+        VisitType::Bookmark => Some(HistoryTransition::Bookmark),
+        VisitType::RedirectPermanent => Some(HistoryTransition::RedirectPermanent),
+        VisitType::RedirectTemporary => Some(HistoryTransition::RedirectTemporary),
+        VisitType::Download => Some(HistoryTransition::Download),
+        VisitType::Reload => Some(HistoryTransition::Reload),
+        VisitType::Embed | VisitType::FramedLink | VisitType::UpdatePlace => None,
+    }
+}
+
 fn sanitize_remote_tabs(devices: Vec<ClientRemoteTabs>) -> Vec<RemoteTabsDevice> {
     let mut remaining_tabs = MAX_REMOTE_TABS_TOTAL;
     let mut sanitized: Vec<_> = devices
@@ -627,6 +1014,16 @@ fn backend_error(error: impl std::fmt::Display) -> SyncError {
 mod tests {
     use super::*;
 
+    fn test_config() -> SyncConfig {
+        SyncConfig {
+            server: AccountServer::Mozilla,
+            client_id: "xanh-places-test".into(),
+            redirect_uri: "xanh-browser://accounts/oauth".into(),
+            device_name: "Xanh Places Test".into(),
+            device_kind: DeviceKind::Desktop,
+        }
+    }
+
     fn upstream_tab(urls: &[&str]) -> RemoteTabRecord {
         RemoteTabRecord {
             title: "Remote".into(),
@@ -700,5 +1097,134 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].tabs.len(), MAX_REMOTE_TABS_TOTAL);
+    }
+
+    #[test]
+    fn places_bookmarks_and_history_round_trip_through_the_production_backend() {
+        let profile = tempfile::tempdir().unwrap();
+        let mut backend =
+            MozillaBackend::open(test_config(), profile.path(), None, None, None).unwrap();
+
+        let folder_guid = backend
+            .create_bookmark(NewBookmark {
+                parent_guid: crate::bookmark_root_guid(BookmarkRoot::Unfiled),
+                position: None,
+                kind: BookmarkKind::Folder,
+                title: Some("Imported".into()),
+                url: None,
+                date_added_epoch_millis: Some(1_700_000_000_000),
+                last_modified_epoch_millis: Some(1_700_000_000_001),
+                is_private: false,
+            })
+            .unwrap();
+        let bookmark_guid = backend
+            .create_bookmark(NewBookmark {
+                parent_guid: folder_guid.clone(),
+                position: None,
+                kind: BookmarkKind::Bookmark,
+                title: Some("Before".into()),
+                url: Some("https://example.com/old".into()),
+                date_added_epoch_millis: Some(1_700_000_000_002),
+                last_modified_epoch_millis: Some(1_700_000_000_003),
+                is_private: false,
+            })
+            .unwrap();
+        backend
+            .update_bookmark(BookmarkUpdate {
+                guid: bookmark_guid.clone(),
+                title: Some("After".into()),
+                url: Some("https://ex\nample.com/new".into()),
+                parent_guid: None,
+                position: None,
+                is_private: false,
+            })
+            .unwrap();
+
+        let tree = backend.bookmark_tree(BookmarkRoot::Unfiled).unwrap();
+        let bookmark = tree
+            .iter()
+            .find(|record| record.guid == bookmark_guid)
+            .unwrap();
+        assert_eq!(bookmark.title.as_deref(), Some("After"));
+        assert_eq!(bookmark.url.as_deref(), Some("https://example.com/new"));
+        assert!(bookmark.is_openable);
+
+        let history_result = backend
+            .record_history(vec![
+                LocalHistoryVisit {
+                    url: "https://example.com/regular".into(),
+                    title: Some("Regular".into()),
+                    visited_at_epoch_millis: 1_700_000_000_100,
+                    transition: HistoryTransition::Typed,
+                    is_private: false,
+                },
+                LocalHistoryVisit {
+                    url: "https://example.com/private".into(),
+                    title: Some("Private".into()),
+                    visited_at_epoch_millis: 1_700_000_000_101,
+                    transition: HistoryTransition::Link,
+                    is_private: true,
+                },
+            ])
+            .unwrap();
+        assert_eq!(history_result.accepted_count, 1);
+        assert_eq!(history_result.skipped_private_count, 1);
+        let retry_result = backend
+            .record_history(vec![LocalHistoryVisit {
+                url: "https://example.com/regular".into(),
+                title: Some("Regular".into()),
+                visited_at_epoch_millis: 1_700_000_000_100,
+                transition: HistoryTransition::Typed,
+                is_private: false,
+            }])
+            .unwrap();
+        assert_eq!(retry_result.accepted_count, 1);
+        let history = backend.recent_history(10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].url, "https://example.com/regular");
+        assert_eq!(history[0].transition, HistoryTransition::Typed);
+
+        backend
+            .delete_history_visit(history[0].url.clone(), history[0].visited_at_epoch_millis)
+            .unwrap();
+        assert!(backend.recent_history(10).unwrap().is_empty());
+        assert!(backend
+            .delete_bookmark(bookmark_guid.clone(), true)
+            .is_err());
+        assert!(backend.delete_bookmark(bookmark_guid, false).unwrap());
+        assert!(backend.delete_bookmark(folder_guid, false).unwrap());
+
+        let mut parent_guid = crate::bookmark_root_guid(BookmarkRoot::Unfiled);
+        let mut top_folder_guid = None;
+        for depth in 0..128 {
+            let guid = backend
+                .create_bookmark(NewBookmark {
+                    parent_guid,
+                    position: None,
+                    kind: BookmarkKind::Folder,
+                    title: Some(format!("Depth {depth}")),
+                    url: None,
+                    date_added_epoch_millis: None,
+                    last_modified_epoch_millis: None,
+                    is_private: false,
+                })
+                .unwrap();
+            top_folder_guid.get_or_insert_with(|| guid.clone());
+            parent_guid = guid;
+        }
+        let deep_tree = backend.bookmark_tree(BookmarkRoot::Unfiled).unwrap();
+        assert_eq!(deep_tree.len(), 129);
+        assert!(backend
+            .delete_bookmark(top_folder_guid.unwrap(), false)
+            .unwrap());
+
+        let second_profile = tempfile::tempdir().unwrap();
+        assert!(
+            MozillaBackend::open(test_config(), second_profile.path(), None, None, None).is_err()
+        );
+        drop(backend);
+        assert!(
+            MozillaBackend::open(test_config(), second_profile.path(), None, None, None).is_ok()
+        );
     }
 }

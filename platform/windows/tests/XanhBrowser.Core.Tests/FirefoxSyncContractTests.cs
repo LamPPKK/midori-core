@@ -96,4 +96,36 @@ public sealed class FirefoxSyncContractTests
             "xanh_sync_runtime_remote_tabs_json",
             EntryPoint(nameof(NativeMethods.RemoteTabsJson)));
     }
+
+    [TestMethod]
+    public void NativePlacesBridgeUsesTheReviewedCAbiSymbols()
+    {
+        string? EntryPoint(string method) => typeof(NativeMethods)
+            .GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)
+            ?.GetCustomAttribute<DllImportAttribute>()
+            ?.EntryPoint;
+
+        var expected = new Dictionary<string, string>
+        {
+            [nameof(NativeMethods.BookmarkRootGuid)] = "xanh_sync_bookmark_root_guid",
+            [nameof(NativeMethods.CreateBookmark)] = "xanh_sync_runtime_create_bookmark",
+            [nameof(NativeMethods.BookmarksJson)] = "xanh_sync_runtime_bookmarks_json",
+            [nameof(NativeMethods.UpdateBookmark)] = "xanh_sync_runtime_update_bookmark",
+            [nameof(NativeMethods.DeleteBookmark)] = "xanh_sync_runtime_delete_bookmark",
+            [nameof(NativeMethods.RecordHistory)] = "xanh_sync_runtime_record_history",
+            [nameof(NativeMethods.RecentHistoryJson)] = "xanh_sync_runtime_recent_history_json",
+            [nameof(NativeMethods.DeleteHistoryVisit)] = "xanh_sync_runtime_delete_history_visit",
+        };
+        foreach (var pair in expected)
+            Assert.AreEqual(pair.Value, EntryPoint(pair.Key), pair.Key);
+
+        var delete = typeof(NativeMethods).GetMethod(
+            nameof(NativeMethods.DeleteBookmark),
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        var privateFlag = delete.GetParameters()[2];
+        Assert.AreEqual(typeof(bool), privateFlag.ParameterType);
+        Assert.AreEqual(
+            UnmanagedType.I1,
+            privateFlag.GetCustomAttribute<MarshalAsAttribute>()?.Value);
+    }
 }

@@ -139,6 +139,12 @@ public sealed class NativeFirefoxSync : IFirefoxSyncRuntime
             throw new InvalidOperationException(NativeMethods.TakeLastError());
     }
 
+    public void ClearHistory()
+    {
+        if (!NativeMethods.ClearHistory(_handle))
+            throw new InvalidOperationException(NativeMethods.TakeLastError());
+    }
+
     public void Disconnect(bool deleteLocal)
     {
         if (!NativeMethods.Disconnect(_handle, deleteLocal))
@@ -244,6 +250,9 @@ internal static class NativeMethods
         SyncRuntimeHandle runtime,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string url,
         long visitedAtEpochMillis);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_clear_history")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool ClearHistory(SyncRuntimeHandle runtime);
     [DllImport(Library, EntryPoint = "xanh_sync_runtime_disconnect")]
     [return: MarshalAs(UnmanagedType.I1)]
     internal static extern bool Disconnect(SyncRuntimeHandle runtime, [MarshalAs(UnmanagedType.I1)] bool deleteLocal);

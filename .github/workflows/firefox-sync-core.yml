@@ -107,8 +107,12 @@ jobs:
           grep -R -F 'class MozillaSyncRuntime' target/bindings/swift
           grep -R -F 'createBookmark' target/bindings/kotlin
           grep -R -F 'createBookmark' target/bindings/swift
+          grep -R -F 'importLegacyBookmarks' target/bindings/kotlin
+          grep -R -F 'importLegacyBookmarks' target/bindings/swift
           grep -R -F 'recordHistory' target/bindings/kotlin
           grep -R -F 'recordHistory' target/bindings/swift
+          grep -R -F 'clearHistory' target/bindings/kotlin
+          grep -R -F 'clearHistory' target/bindings/swift
           grep -R -F 'generateLocalLoginsKey' target/bindings/kotlin
           grep -R -F 'generateLocalLoginsKey' target/bindings/swift
       - name: Compile and run the Linux Secret Service host boundary
@@ -152,6 +156,8 @@ jobs:
           core.xanh_sync_bookmark_root_guid.restype = ctypes.c_void_p
           core.xanh_sync_runtime_create_bookmark.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
           core.xanh_sync_runtime_create_bookmark.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_import_legacy_bookmarks.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_import_legacy_bookmarks.restype = ctypes.c_void_p
           core.xanh_sync_runtime_bookmarks_json.argtypes = [ctypes.c_void_p, ctypes.c_int32]
           core.xanh_sync_runtime_bookmarks_json.restype = ctypes.c_void_p
           core.xanh_sync_runtime_update_bookmark.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
@@ -168,6 +174,8 @@ jobs:
               ctypes.c_int64,
           ]
           core.xanh_sync_runtime_delete_history_visit.restype = ctypes.c_bool
+          core.xanh_sync_runtime_clear_history.argtypes = [ctypes.c_void_p]
+          core.xanh_sync_runtime_clear_history.restype = ctypes.c_bool
 
           version = core.xanh_sync_core_version()
           key = core.xanh_sync_generate_local_logins_key()
@@ -224,6 +232,27 @@ jobs:
               root = core.xanh_sync_bookmark_root_guid(2)
               assert root and ctypes.string_at(root).decode() == 'unfiled_____'
               core.xanh_sync_string_free(root)
+              legacy = json.dumps([{
+                  'url': 'https://example.com/legacy',
+                  'title': 'Legacy',
+                  'created_at_epoch_millis': 1700000000050,
+              }]).encode()
+              legacy_first = core.xanh_sync_runtime_import_legacy_bookmarks(runtime, legacy)
+              assert legacy_first
+              assert json.loads(ctypes.string_at(legacy_first)) == {
+                  'accepted_count': 1,
+                  'existing_count': 0,
+                  'created_count': 1,
+              }
+              core.xanh_sync_string_free(legacy_first)
+              legacy_retry = core.xanh_sync_runtime_import_legacy_bookmarks(runtime, legacy)
+              assert legacy_retry
+              assert json.loads(ctypes.string_at(legacy_retry)) == {
+                  'accepted_count': 1,
+                  'existing_count': 1,
+                  'created_count': 0,
+              }
+              core.xanh_sync_string_free(legacy_retry)
               folder = json.dumps({
                   'parent_guid': 'unfiled_____',
                   'position': None,
@@ -311,6 +340,14 @@ jobs:
                   history[0]['url'].encode(),
                   history[0]['visited_at_epoch_millis'],
               )
+              replacement_visit_ptr = core.xanh_sync_runtime_record_history(runtime, visits)
+              assert replacement_visit_ptr
+              core.xanh_sync_string_free(replacement_visit_ptr)
+              assert core.xanh_sync_runtime_clear_history(runtime)
+              cleared_history_ptr = core.xanh_sync_runtime_recent_history_json(runtime, 10)
+              assert cleared_history_ptr
+              assert json.loads(ctypes.string_at(cleared_history_ptr)) == []
+              core.xanh_sync_string_free(cleared_history_ptr)
               assert core.xanh_sync_runtime_delete_bookmark(runtime, bookmark_guid.encode(), True) == -1
               assert core.xanh_sync_runtime_delete_bookmark(runtime, bookmark_guid.encode(), False) == 1
               assert core.xanh_sync_runtime_delete_bookmark(runtime, folder_guid.encode(), False) == 1

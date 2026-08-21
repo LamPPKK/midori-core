@@ -113,7 +113,9 @@ not part of the public write contract. Recording is idempotent by canonical URL
 plus millisecond timestamp, so retrying a batch after an error cannot duplicate
 visits that Places already committed. `recent_history` returns only non-hidden
 canonical HTTP(S) visits and includes the upstream `is_remote` bit;
-`delete_history_visit` removes the exact URL and timestamp. History input is
+`delete_history_visit` removes the exact URL and timestamp.
+`clear_history` deletes the complete local Places visit range through the
+upstream API so the next history Sync can propagate removals. History input is
 capped at 8 MiB/1,000 records and output at 8
 MiB/500 records. Bookmark mutations are capped at 64 KiB, trees at 16 MiB and
 10,000 records, titles at 4,096 UTF-8 bytes and URLs at 8,192 bytes.

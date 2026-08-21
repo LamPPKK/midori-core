@@ -58,7 +58,9 @@ add_compile_options(
     -Wno-unused-but-set-variable)
 add_compile_definitions(GCR_API_SUBJECT_TO_CHANGE)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-    add_compile_options(-Wno-tautological-pointer-compare)
+    # Vala emits a destroy-notify ternary for manually resumed async workers;
+    # its value is intentionally discarded after invoking the notifier.
+    add_compile_options(-Wno-tautological-pointer-compare -Wno-unused-value)
 endif()
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     # Vala 0.56 emits these constructs for automatic properties, closure
@@ -71,6 +73,7 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         -Wno-cast-function-type
         -Wno-discarded-qualifiers
         -Wno-incompatible-pointer-types
+        -Wno-unused-value
         -Wno-unused-function)
 endif()
 include_directories(
@@ -98,6 +101,7 @@ target_link_libraries(xanh-browser-core PRIVATE PkgConfig::XANH)
 
 vala_precompile(XANH_APP_C xanh-browser
     desktop/address-resolver.vala
+    desktop/sync-data.vala
     desktop/profile-importer.vala
     desktop/plugin-manager.vala
     desktop/web-extension-bridge.vala
@@ -210,6 +214,7 @@ if(BUILD_TESTING)
     add_xanh_test(application-smoke-test SOURCE tests-modern/application-smoke-test.vala
         SUPPORT
             desktop/address-resolver.vala
+            desktop/sync-data.vala
             desktop/profile-importer.vala
             desktop/plugin-manager.vala
             desktop/web-extension-bridge.vala
@@ -222,6 +227,9 @@ if(BUILD_TESTING)
     set_tests_properties(application-smoke-test PROPERTIES
         ENVIRONMENT "XANH_PLUGIN_DIR=${CMAKE_CURRENT_BINARY_DIR}"
         TIMEOUT 20)
+    add_xanh_test(sync-data-policy-test SOURCE tests-modern/sync-data-policy-test.vala
+        SUPPORT desktop/sync-data.vala)
+    target_sources(sync-data-policy-test PRIVATE desktop/sync-host.c)
 endif()
 
 configure_file(

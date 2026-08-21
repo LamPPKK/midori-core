@@ -15,6 +15,7 @@ namespace Xanh {
 
     public class BrowserWindow : Gtk.ApplicationWindow, ExtensionHost {
         const string HOME = "https://duckduckgo.com/";
+        public const int MAX_SYNC_TABS = 200;
         BrowserDatabase database;
         PluginHost plugin_host;
         PluginManager plugins;
@@ -35,6 +36,7 @@ namespace Xanh {
         HashTable<string, bool> registered_extension_actions =
             new HashTable<string, bool> (str_hash, str_equal);
         bool extension_services_started;
+        bool clearing_data;
         uint64 next_tab_id = 1;
         uint session_save_source;
 
@@ -128,7 +130,10 @@ namespace Xanh {
             bookmark.tooltip_text = "Bookmark this page";
             bookmark.clicked.connect (() => {
                 var tab = active_tab ();
-                if (tab != null && plugin_host.bookmarks_enabled) plugin_host.bookmark_requested (tab.state);
+                if (tab != null && plugin_host.bookmarks_enabled) {
+                    plugin_host.bookmark_requested (tab.state);
+                    (application as BrowserApplication)?.save_synced_bookmark (tab.state);
+                }
             });
             header.pack_end (bookmark);
 
@@ -203,6 +208,7 @@ namespace Xanh {
             menu.append ("Clear Private Data", "win.clear-data");
             menu.append ("Import Legacy Profile", "win.import-profile");
             menu.append ("Firefox Sync", "win.firefox-sync");
+            menu.append ("Tabs from Other Devices", "win.remote-tabs");
             menu.append ("About Xanh Browser", "win.about");
             return menu;
         }
@@ -223,6 +229,7 @@ namespace Xanh {
             add_action (action ("import-profile", confirm_profile_import));
             add_action (action ("firefox-sync", () =>
                 (application as BrowserApplication)?.show_sync_settings (this)));
+            add_action (action ("remote-tabs", () => show_remote_tabs.begin ()));
             add_action (action ("about", show_about));
         }
 
@@ -445,8 +452,17 @@ namespace Xanh {
                         tab.state.uri = tab.view.uri ?? "about:blank";
                         tab.state.title = tab.view.title ?? tab.state.uri;
                     }
-                    try { database.record_history (tab.state.uri, tab.state.title, tab.state.private_mode); }
-                    catch (Error error) { warning ("Cannot record history: %s", error.message); }
+                    var browser_application = application as BrowserApplication;
+                    bool application_clear = browser_application != null &&
+                        browser_application.is_browsing_data_clear_in_progress ();
+                    if (!clearing_data && !application_clear) {
+                        try { database.record_history (
+                            tab.state.uri, tab.state.title, tab.state.private_mode); }
+                        catch (Error error) {
+                            warning ("Cannot record history: %s", error.message);
+                        }
+                        (application as BrowserApplication)?.record_synced_history (tab.state);
+                    }
                     plugin_host.page_loaded (tab.state);
                     update_chrome ();
                     schedule_session_save ();
@@ -692,7 +708,11 @@ namespace Xanh {
 
         void show_pages (string heading, bool bookmarks) {
             try {
-                var pages = bookmarks ? database.list_bookmarks () : database.list_history ();
+                var app = application as BrowserApplication;
+                bool use_places = app != null && app.synced_places_available ();
+                var pages = bookmarks
+                    ? (use_places ? database.list_places_bookmarks () : database.list_bookmarks ())
+                    : (use_places ? database.list_places_history () : database.list_history ());
                 var window = new Gtk.Window ();
                 window.title = heading;
                 window.transient_for = this;
@@ -774,6 +794,91 @@ namespace Xanh {
             } catch (Error error) {
                 show_message ("Downloads", error.message);
             }
+        }
+
+        async void show_remote_tabs () {
+            try {
+                var app = application as BrowserApplication;
+                if (app == null || !app.sync_connected ()) {
+                    show_message ("Tabs from Other Devices", "Connect Firefox Sync to view remote tabs.");
+                    return;
+                }
+                var devices = yield app.get_remote_tabs ();
+                var window = new Gtk.Window ();
+                window.title = "Tabs from Other Devices";
+                window.transient_for = this;
+                window.default_width = 680;
+                window.default_height = 520;
+                var list = new Gtk.ListBox ();
+                foreach (var device in devices) {
+                    foreach (var page in device.tabs) {
+                        var row = new Gtk.ListBoxRow ();
+                        var box = new Gtk.Box (Gtk.Orientation.VERTICAL, 2);
+                        var title = new Gtk.Label (page.title);
+                        title.halign = Gtk.Align.START;
+                        title.ellipsize = Pango.EllipsizeMode.END;
+                        var detail = new Gtk.Label ("%s · %s".printf (device.name, page.uri));
+                        detail.halign = Gtk.Align.START;
+                        detail.ellipsize = Pango.EllipsizeMode.END;
+                        detail.add_css_class ("dim-label");
+                        box.append (title);
+                        box.append (detail);
+                        row.set_child (box);
+                        row.set_data<string> ("uri", page.uri);
+                        list.append (row);
+                    }
+                }
+                if (devices.length () == 0) {
+                    var empty = new Gtk.Label ("No remote tabs are available.");
+                    empty.margin_top = 24;
+                    empty.margin_bottom = 24;
+                    list.append (empty);
+                }
+                list.row_activated.connect ((row) => {
+                    string? uri = row.get_data<string> ("uri");
+                    if (BrowserDatabase.is_web_uri (uri)) add_tab (uri, false);
+                    window.close ();
+                });
+                var scroll = new Gtk.ScrolledWindow ();
+                scroll.set_child (list);
+                window.set_child (scroll);
+                window.present ();
+            } catch (Error error) {
+                show_message ("Tabs from Other Devices", error.message);
+            }
+        }
+
+        public int append_sync_tabs (Json.Builder builder, int remaining) {
+            int64 now = new DateTime.now_utc ().to_unix () * 1000;
+            int emitted = 0;
+            for (int index = 0;
+                    index < notebook.get_n_pages () && emitted < remaining &&
+                    emitted < MAX_SYNC_TABS; index++) {
+                var view = notebook.get_nth_page (index) as WebKit.WebView;
+                if (view == null) continue;
+                var tab = find_tab (view);
+                if (tab == null || tab.state.private_mode ||
+                        !SyncDataCoordinator.is_sync_web_uri (tab.state.uri)) continue;
+                builder.begin_object ();
+                builder.set_member_name ("title");
+                builder.add_string_value (
+                    SyncDataCoordinator.sanitized_sync_title (tab.state.title));
+                builder.set_member_name ("url_history");
+                builder.begin_array ();
+                builder.add_string_value (tab.state.uri);
+                builder.end_array ();
+                builder.set_member_name ("icon_url");
+                builder.add_null_value ();
+                builder.set_member_name ("last_used_epoch_millis");
+                builder.add_int_value (now);
+                builder.set_member_name ("is_private");
+                builder.add_boolean_value (false);
+                builder.set_member_name ("is_pinned");
+                builder.add_boolean_value (false);
+                builder.end_object ();
+                emitted++;
+            }
+            return emitted;
         }
 
         void register_extension_action (WebExtensionBridge bridge, string extension_id,
@@ -880,22 +985,75 @@ namespace Xanh {
             dialog.cancel_button = 0;
             try {
                 if ((yield dialog.choose (this, null)) != 1) return;
-                yield network_session.get_website_data_manager ().clear (WebKit.WebsiteDataTypes.ALL, 0);
-                var private_managers = new List<WebKit.WebsiteDataManager> ();
-                tabs.foreach ((id, tab) => {
-                    if (tab.state.private_mode) {
-                        private_managers.append (tab.view.get_network_session ().get_website_data_manager ());
-                    }
-                });
-                foreach (var manager in private_managers) {
-                    yield manager.clear (WebKit.WebsiteDataTypes.ALL, 0);
+                var browser_application = application as BrowserApplication;
+                if (browser_application == null ||
+                        !browser_application.begin_browsing_data_clear ()) {
+                    show_message ("Clear Browsing Data", "A clear operation is already running.");
+                    return;
                 }
-                database.clear_private_data ();
-                reset_tabs_after_clear ();
-                show_message ("Private Data", "Browsing data was cleared.");
+                var clearing_windows = new List<BrowserWindow> ();
+                foreach (var window in browser_application.get_windows ()) {
+                    var browser = window as BrowserWindow;
+                    if (browser != null) {
+                        clearing_windows.append (browser);
+                        browser.prepare_for_data_clear ();
+                    }
+                }
+                string? sync_warning = null;
+                try {
+                    try { yield browser_application.clear_synced_history (); }
+                    catch (Error error) { sync_warning = error.message; }
+                    try { browser_application.clear_sync_migration_snapshots (); }
+                    catch (Error error) {
+                        sync_warning = append_clear_warning (sync_warning, error.message);
+                    }
+                    var managers = new List<WebKit.WebsiteDataManager> ();
+                    foreach (var browser in clearing_windows)
+                        browser.append_data_managers (managers);
+                    foreach (var manager in managers) {
+                        yield manager.clear (WebKit.WebsiteDataTypes.ALL, 0);
+                    }
+                    database.clear_private_data ();
+                    foreach (var browser in clearing_windows)
+                        browser.reset_tabs_after_clear ();
+                    if (sync_warning == null) {
+                        show_message ("Private Data", "Browsing data was cleared.");
+                    } else {
+                        show_message ("Browsing Data Partially Cleared",
+                            "Website and legacy browsing data were cleared, but some Firefox " +
+                            "Sync data cleanup remains pending: " + sync_warning);
+                    }
+                } finally {
+                    foreach (var browser in clearing_windows)
+                        browser.finish_data_clear ();
+                    browser_application.finish_browsing_data_clear ();
+                }
             } catch (Error error) {
                 show_message ("Unable to Clear Data", error.message);
             }
+        }
+
+        void prepare_for_data_clear () {
+            clearing_data = true;
+            tabs.foreach ((id, tab) => tab.view.stop_loading ());
+        }
+
+        void finish_data_clear () {
+            clearing_data = false;
+        }
+
+        void append_data_managers (List<WebKit.WebsiteDataManager> managers) {
+            managers.append (network_session.get_website_data_manager ());
+            tabs.foreach ((id, tab) => {
+                if (tab.state.private_mode) {
+                    managers.append (tab.view.get_network_session ()
+                        .get_website_data_manager ());
+                }
+            });
+        }
+
+        string append_clear_warning (string? current, string addition) {
+            return current == null ? addition : current + "; " + addition;
         }
 
         void reset_tabs_after_clear () {
@@ -937,6 +1095,7 @@ namespace Xanh {
             try {
                 if ((yield dialog.choose (this, null)) != 1) return;
                 var result = importer.import_once ();
+                (application as BrowserApplication)?.import_new_legacy_data ();
                 show_message ("Profile Import", "%d bookmarks, %d history entries and %d settings imported."
                     .printf (result.bookmarks, result.history, result.settings));
             } catch (Error error) {

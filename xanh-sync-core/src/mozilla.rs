@@ -16,9 +16,9 @@ use fxa_client::{
 use logins::encryption::{ManagedEncryptorDecryptor, StaticKeyManager};
 use logins::LoginStore;
 use places::{
-    BookmarkPosition as PlacesBookmarkPosition, BookmarkType as PlacesBookmarkType,
-    BookmarkUpdateInfo as PlacesBookmarkUpdateInfo, ConnectionType, Guid,
-    InsertableBookmark as PlacesInsertableBookmark,
+    BookmarkItem as PlacesBookmarkItem, BookmarkPosition as PlacesBookmarkPosition,
+    BookmarkType as PlacesBookmarkType, BookmarkUpdateInfo as PlacesBookmarkUpdateInfo,
+    ConnectionType, Guid, InsertableBookmark as PlacesInsertableBookmark,
     InsertableBookmarkFolder as PlacesInsertableFolder,
     InsertableBookmarkItem as PlacesInsertableItem,
     InsertableBookmarkSeparator as PlacesInsertableSeparator, PlacesApi, PlacesConnection,
@@ -35,14 +35,15 @@ use url::Url;
 use crate::{
     sanitized_title, sanitized_web_url, truncate, validate_bookmark_delete,
     validate_bookmark_update, validate_history_delete, validate_history_limit,
-    validate_local_history, validate_local_tabs, validate_new_bookmark, AccountServer,
-    AccountState, BookmarkKind, BookmarkRecord, BookmarkRoot, BookmarkUpdate, DeviceKind,
-    HistoryTransition, HistoryVisitRecord, LocalHistoryUpdateResult, LocalHistoryVisit, LocalTab,
-    LocalTabsUpdateResult, NewBookmark, RemoteDeviceKind, RemoteTab, RemoteTabsDevice, SyncConfig,
-    SyncEngine, SyncError, SyncReason, SyncStatus, MAX_BOOKMARK_ITEMS, MAX_BOOKMARK_JSON_BYTES,
-    MAX_DEVICE_ID_LENGTH, MAX_DEVICE_NAME_LENGTH, MAX_ICON_URL_LENGTH, MAX_PLACES_URL_LENGTH,
-    MAX_REMOTE_DEVICES, MAX_REMOTE_TABS_PER_DEVICE, MAX_REMOTE_TABS_TOTAL, MAX_TITLE_LENGTH,
-    MAX_URL_HISTORY, MAX_URL_LENGTH,
+    validate_legacy_bookmarks, validate_local_history, validate_local_tabs, validate_new_bookmark,
+    AccountServer, AccountState, BookmarkKind, BookmarkRecord, BookmarkRoot, BookmarkUpdate,
+    DeviceKind, HistoryTransition, HistoryVisitRecord, LegacyBookmark, LegacyBookmarkImportResult,
+    LocalHistoryUpdateResult, LocalHistoryVisit, LocalTab, LocalTabsUpdateResult, NewBookmark,
+    RemoteDeviceKind, RemoteTab, RemoteTabsDevice, SyncConfig, SyncEngine, SyncError, SyncReason,
+    SyncStatus, MAX_BOOKMARK_ITEMS, MAX_BOOKMARK_JSON_BYTES, MAX_DEVICE_ID_LENGTH,
+    MAX_DEVICE_NAME_LENGTH, MAX_ICON_URL_LENGTH, MAX_PLACES_URL_LENGTH, MAX_REMOTE_DEVICES,
+    MAX_REMOTE_TABS_PER_DEVICE, MAX_REMOTE_TABS_TOTAL, MAX_TITLE_LENGTH, MAX_URL_HISTORY,
+    MAX_URL_LENGTH,
 };
 
 const SYNC_SCOPE: &str = "https://identity.mozilla.com/apps/oldsync";
@@ -225,6 +226,13 @@ impl MozillaSyncRuntime {
         self.backend()?.create_bookmark(item)
     }
 
+    pub fn import_legacy_bookmarks(
+        &self,
+        bookmarks: Vec<LegacyBookmark>,
+    ) -> Result<LegacyBookmarkImportResult, SyncError> {
+        self.backend()?.import_legacy_bookmarks(bookmarks)
+    }
+
     pub fn bookmark_tree(&self, root: BookmarkRoot) -> Result<Vec<BookmarkRecord>, SyncError> {
         self.backend()?.bookmark_tree(root)
     }
@@ -255,6 +263,10 @@ impl MozillaSyncRuntime {
     ) -> Result<(), SyncError> {
         self.backend()?
             .delete_history_visit(url, visited_at_epoch_millis)
+    }
+
+    pub fn clear_history(&self) -> Result<(), SyncError> {
+        self.backend()?.clear_history()
     }
 
     pub fn disconnect(&self, delete_local: bool) -> Result<(), SyncError> {
@@ -503,6 +515,50 @@ impl MozillaBackend {
             .map_err(backend_error)
     }
 
+    pub fn import_legacy_bookmarks(
+        &mut self,
+        bookmarks: Vec<LegacyBookmark>,
+    ) -> Result<LegacyBookmarkImportResult, SyncError> {
+        let bookmarks = validate_legacy_bookmarks(bookmarks)?;
+        let accepted_count = u32::try_from(bookmarks.len())
+            .map_err(|_| SyncError::Migration("too many legacy bookmarks".into()))?;
+        let writer = self.places_writer()?;
+        let mut existing_count = 0u32;
+        let mut created_count = 0u32;
+
+        for bookmark in bookmarks {
+            let existing = writer
+                .bookmarks_get_all_with_url(bookmark.url.clone())
+                .map_err(backend_error)?;
+            if existing
+                .iter()
+                .any(|item| matches!(item, PlacesBookmarkItem::Bookmark { .. }))
+            {
+                existing_count = existing_count.saturating_add(1);
+                continue;
+            }
+            writer
+                .bookmarks_insert(PlacesInsertableItem::Bookmark {
+                    b: PlacesInsertableBookmark {
+                        parent_guid: Guid::new(&crate::bookmark_root_guid(BookmarkRoot::Unfiled)),
+                        position: PlacesBookmarkPosition::Append,
+                        date_added: Some(PlacesTimestamp(bookmark.created_at_epoch_millis)),
+                        last_modified: Some(PlacesTimestamp(bookmark.created_at_epoch_millis)),
+                        guid: None,
+                        url: Url::parse(&bookmark.url).map_err(backend_error)?,
+                        title: Some(bookmark.title),
+                    },
+                })
+                .map_err(backend_error)?;
+            created_count = created_count.saturating_add(1);
+        }
+        Ok(LegacyBookmarkImportResult {
+            accepted_count,
+            existing_count,
+            created_count,
+        })
+    }
+
     pub fn bookmark_tree(&mut self, root: BookmarkRoot) -> Result<Vec<BookmarkRecord>, SyncError> {
         bounded_bookmark_tree(self.places_reader()?, &crate::bookmark_root_guid(root))
     }
@@ -586,6 +642,12 @@ impl MozillaBackend {
         let (url, timestamp) = validate_history_delete(&url, visited_at_epoch_millis)?;
         self.places_writer()?
             .delete_visit(url, PlacesTimestamp(timestamp))
+            .map_err(backend_error)
+    }
+
+    pub fn clear_history(&mut self) -> Result<(), SyncError> {
+        self.places_writer()?
+            .delete_visits_between(PlacesTimestamp(0), PlacesTimestamp(i64::MAX as u64))
             .map_err(backend_error)
     }
 
@@ -696,9 +758,14 @@ impl MozillaBackend {
     }
 
     pub fn disconnect(&mut self, delete_local: bool) -> Result<(), SyncError> {
-        self.account
-            .process_event(FxaEvent::Disconnect)
-            .map_err(backend_error)?;
+        // Disconnect is deliberately idempotent. Native hosts persist a
+        // write-ahead removal intent and may repeat this operation after a
+        // crash between FxA, database, and secure-storage cleanup phases.
+        if self.account_state != AccountState::Disconnected {
+            self.account
+                .process_event(FxaEvent::Disconnect)
+                .map_err(backend_error)?;
+        }
         self.manager.disconnect();
         self.persisted_sync_state = None;
         self.account_state = AccountState::Disconnected;
@@ -714,7 +781,7 @@ impl MozillaBackend {
             self.places_writer.take();
             self.places.take();
             for database in ["places.sqlite", "logins.sqlite", "tabs.sqlite"] {
-                for suffix in ["", "-wal", "-shm"] {
+                for suffix in ["", "-wal", "-shm", "-journal"] {
                     let path = self.profile_dir.join(format!("{database}{suffix}"));
                     if let Err(error) = std::fs::remove_file(&path) {
                         if error.kind() != std::io::ErrorKind::NotFound {
@@ -1137,6 +1204,22 @@ mod tests {
         let mut backend =
             MozillaBackend::open(test_config(), profile.path(), None, None, None).unwrap();
 
+        let legacy = LegacyBookmark {
+            url: "https://example.com/legacy".into(),
+            title: "Legacy".into(),
+            created_at_epoch_millis: 1_700_000_000_000,
+        };
+        let first_import = backend
+            .import_legacy_bookmarks(vec![legacy.clone()])
+            .unwrap();
+        assert_eq!(first_import.accepted_count, 1);
+        assert_eq!(first_import.created_count, 1);
+        assert_eq!(first_import.existing_count, 0);
+        let retry_import = backend.import_legacy_bookmarks(vec![legacy]).unwrap();
+        assert_eq!(retry_import.accepted_count, 1);
+        assert_eq!(retry_import.created_count, 0);
+        assert_eq!(retry_import.existing_count, 1);
+
         let folder_guid = backend
             .create_bookmark(NewBookmark {
                 parent_guid: crate::bookmark_root_guid(BookmarkRoot::Unfiled),
@@ -1220,6 +1303,26 @@ mod tests {
             .delete_history_visit(history[0].url.clone(), history[0].visited_at_epoch_millis)
             .unwrap();
         assert!(backend.recent_history(10).unwrap().is_empty());
+        backend
+            .record_history(vec![
+                LocalHistoryVisit {
+                    url: "https://example.com/clear-me".into(),
+                    title: Some("Clear me".into()),
+                    visited_at_epoch_millis: 1_700_000_000_200,
+                    transition: HistoryTransition::Link,
+                    is_private: false,
+                },
+                LocalHistoryVisit {
+                    url: "https://example.com/legacy-timestamp".into(),
+                    title: Some("Legacy timestamp".into()),
+                    visited_at_epoch_millis: 1_000,
+                    transition: HistoryTransition::Link,
+                    is_private: false,
+                },
+            ])
+            .unwrap();
+        backend.clear_history().unwrap();
+        assert!(backend.recent_history(10).unwrap().is_empty());
         assert!(backend
             .delete_bookmark(bookmark_guid.clone(), true)
             .is_err());
@@ -1249,6 +1352,19 @@ mod tests {
         assert!(backend
             .delete_bookmark(top_folder_guid.unwrap(), false)
             .unwrap());
+
+        // A host may resume a durable Remove-from-device intent after the
+        // first call changed FxA state or deleted only part of the stores.
+        let rollback_journals: Vec<_> = ["places.sqlite", "logins.sqlite", "tabs.sqlite"]
+            .into_iter()
+            .map(|database| profile.path().join(format!("{database}-journal")))
+            .collect();
+        for journal in &rollback_journals {
+            std::fs::write(journal, b"stale rollback page").unwrap();
+        }
+        backend.disconnect(true).unwrap();
+        backend.disconnect(true).unwrap();
+        assert!(rollback_journals.iter().all(|journal| !journal.exists()));
 
         let second_profile = tempfile::tempdir().unwrap();
         assert!(

@@ -2,8 +2,10 @@
 #include "sync-host.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <glib/gstdio.h>
 #include <json-glib/json-glib.h>
+#include <unistd.h>
 
 #ifdef XANH_ENABLE_FIREFOX_SYNC
 #include <libsecret/secret.h>
@@ -17,6 +19,7 @@
 #define XANH_SYNC_INTERVAL_SECONDS (15 * 60)
 #define XANH_SYNC_LOCAL_DEBOUNCE_SECONDS 30
 #define XANH_SYNC_VAULT_TIMEOUT_SECONDS (5 * 60)
+#define XANH_SYNC_DISCONNECT_MARKER "disconnect-pending"
 
 struct _XanhSyncHost {
     GObject parent_instance;
@@ -40,6 +43,8 @@ struct _XanhSyncHost {
     gint vault_unlocked;
     gint vault_lock_pending;
     gint vault_lock_generation;
+    gint history_clear_generation;
+    gint destructive_generation;
     gboolean disconnect_cleanup_pending;
     gboolean disconnect_native_pending;
     gboolean disconnect_delete_local;
@@ -51,6 +56,52 @@ struct _XanhSyncHost {
 G_DEFINE_TYPE (XanhSyncHost, xanh_sync_host, G_TYPE_OBJECT)
 
 G_DEFINE_QUARK (xanh-sync-host-error-quark, xanh_sync_host_error)
+
+gboolean
+xanh_sync_write_durable_marker (const gchar *path,
+                                GError     **error)
+{
+    g_return_val_if_fail (path != NULL && *path != '\0', FALSE);
+    return g_file_set_contents_full (
+        path, "pending\n", -1,
+        G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE,
+        0600, error);
+}
+
+gboolean
+xanh_sync_remove_durable_marker (const gchar *path,
+                                 GError     **error)
+{
+    g_autofree gchar *parent = NULL;
+    gint directory_fd;
+    gint open_flags = O_RDONLY;
+
+    g_return_val_if_fail (path != NULL && *path != '\0', FALSE);
+    if (g_unlink (path) != 0 && errno != ENOENT) {
+        g_set_error (error, G_FILE_ERROR, g_file_error_from_errno (errno),
+                     "Cannot remove durable recovery marker");
+        return FALSE;
+    }
+    parent = g_path_get_dirname (path);
+#ifdef O_DIRECTORY
+    open_flags |= O_DIRECTORY;
+#endif
+    directory_fd = g_open (parent, open_flags, 0);
+    if (directory_fd < 0) {
+        g_set_error (error, G_FILE_ERROR, g_file_error_from_errno (errno),
+                     "Cannot open recovery marker directory for durability");
+        return FALSE;
+    }
+    if (fsync (directory_fd) != 0) {
+        gint saved_errno = errno;
+        close (directory_fd);
+        g_set_error (error, G_FILE_ERROR, g_file_error_from_errno (saved_errno),
+                     "Cannot make recovery marker removal durable");
+        return FALSE;
+    }
+    close (directory_fd);
+    return TRUE;
+}
 
 #ifdef XANH_ENABLE_FIREFOX_SYNC
 static const SecretSchema sync_secret_schema = {
@@ -65,10 +116,25 @@ static const SecretSchema sync_secret_schema = {
 
 typedef struct {
     gchar *redirect_uri;
+    gchar *payload;
     XanhSyncReason reason;
     gboolean delete_local;
     gint vault_lock_generation;
+    gint history_clear_generation;
+    gint destructive_generation;
+    gint root;
+    guint limit;
+    gint operation;
 } SyncTaskData;
+
+typedef enum {
+    SYNC_DATA_IMPORT_LEGACY_BOOKMARKS,
+    SYNC_DATA_LIST_BOOKMARKS,
+    SYNC_DATA_RECORD_HISTORY,
+    SYNC_DATA_LIST_HISTORY,
+    SYNC_DATA_UPDATE_LOCAL_TABS,
+    SYNC_DATA_LIST_REMOTE_TABS
+} SyncDataOperation;
 
 static void
 sync_task_data_free (SyncTaskData *data)
@@ -76,6 +142,7 @@ sync_task_data_free (SyncTaskData *data)
     if (data == NULL)
         return;
     g_clear_pointer (&data->redirect_uri, g_free);
+    g_clear_pointer (&data->payload, g_free);
     g_free (data);
 }
 #endif
@@ -342,6 +409,87 @@ store_secret (XanhSyncHost *self,
     return result;
 }
 
+static gchar *
+disconnect_marker_path (XanhSyncHost *self)
+{
+    return g_build_filename (self->profile_dir, XANH_SYNC_DISCONNECT_MARKER, NULL);
+}
+
+static gboolean
+persist_disconnect_intent (XanhSyncHost *self,
+                           gboolean      delete_local,
+                           GError      **error)
+{
+    g_autofree gchar *path = disconnect_marker_path (self);
+    const gchar *contents = delete_local ? "delete-local\n" : "keep-local\n";
+
+    if (!g_file_set_contents_full (path, contents, -1,
+            G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE,
+            0600, error)) {
+        if (error != NULL && *error != NULL)
+            g_prefix_error (error, "Cannot persist Firefox Sync disconnect intent: ");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean
+load_disconnect_intent (XanhSyncHost *self,
+                        gboolean     *pending,
+                        gboolean     *delete_local,
+                        GError      **error)
+{
+    g_autofree gchar *path = disconnect_marker_path (self);
+    g_autofree gchar *contents = NULL;
+
+    *pending = FALSE;
+    *delete_local = FALSE;
+    if (!g_file_test (path, G_FILE_TEST_EXISTS))
+        return TRUE;
+    if (!g_file_get_contents (path, &contents, NULL, error)) {
+        if (error != NULL && *error != NULL)
+            g_prefix_error (error, "Cannot read pending Firefox Sync disconnect: ");
+        return FALSE;
+    }
+    if (g_strcmp0 (contents, "delete-local\n") == 0)
+        *delete_local = TRUE;
+    else if (g_strcmp0 (contents, "keep-local\n") != 0) {
+        g_set_error_literal (error, XANH_SYNC_HOST_ERROR,
+                             XANH_SYNC_HOST_ERROR_CORE,
+                             "Pending Firefox Sync disconnect intent is invalid");
+        return FALSE;
+    }
+    *pending = TRUE;
+    return TRUE;
+}
+
+static gboolean
+remove_disconnect_intent (XanhSyncHost *self,
+                          GError      **error)
+{
+    g_autofree gchar *path = disconnect_marker_path (self);
+    return xanh_sync_remove_durable_marker (path, error);
+}
+
+static gboolean
+clear_disconnect_secure_state (XanhSyncHost *self,
+                               gboolean      delete_local,
+                               GCancellable *cancellable,
+                               GError      **error)
+{
+    const gchar *items[] = {
+        "account-json", "account-status", "sync-state", "last-sync", "next-allowed", NULL
+    };
+    guint index;
+
+    for (index = 0; items[index] != NULL; index++) {
+        if (!store_secret (self, items[index], NULL, cancellable, error))
+            return FALSE;
+    }
+    return !delete_local ||
+        store_secret (self, "logins-key", NULL, cancellable, error);
+}
+
 static gboolean
 parse_positive_epoch (const gchar *value,
                       gint64      *result)
@@ -419,7 +567,7 @@ static gboolean
 remove_local_logins_database (XanhSyncHost *self,
                               GError      **error)
 {
-    const gchar *suffixes[] = { "", "-wal", "-shm", NULL };
+    const gchar *suffixes[] = { "", "-wal", "-shm", "-journal", NULL };
     guint index;
 
     for (index = 0; suffixes[index] != NULL; index++) {
@@ -528,10 +676,16 @@ initialize_worker (GTask        *task,
     gint state;
     gint64 last_epoch = 0;
     gint64 next_epoch = 0;
+    gboolean disconnect_pending = FALSE;
+    gboolean disconnect_delete_local = FALSE;
 
     if (g_task_return_error_if_cancelled (task))
         return;
     g_mutex_lock (&self->operation_mutex);
+    if (g_task_return_error_if_cancelled (task)) {
+        finish_operation (self);
+        return;
+    }
     g_mutex_lock (&self->mutex);
     if (self->runtime != NULL) {
         g_mutex_unlock (&self->mutex);
@@ -552,6 +706,9 @@ initialize_worker (GTask        *task,
                      "Cannot protect Firefox Sync profile directory");
         goto fail;
     }
+    if (!load_disconnect_intent (self, &disconnect_pending,
+                                 &disconnect_delete_local, &error))
+        goto fail;
 
     account = lookup_secret (self, "account-json", cancellable, &error);
     if (error != NULL)
@@ -580,13 +737,37 @@ initialize_worker (GTask        *task,
         error = core_error ("Cannot initialize Firefox Account state");
         goto fail;
     }
-    if (g_strcmp0 (account_status, "auth-issues") == 0)
+    if (disconnect_pending) {
+        if (!xanh_sync_runtime_disconnect (runtime, disconnect_delete_local)) {
+            error = core_error ("Cannot resume pending Firefox Sync disconnect");
+            goto fail;
+        }
+        if (!clear_disconnect_secure_state (self, disconnect_delete_local,
+                                            cancellable, &error) ||
+            !remove_disconnect_intent (self, &error))
+            goto fail;
+        xanh_sync_runtime_free (runtime);
+        runtime = xanh_sync_runtime_open (
+            self->config_json, self->profile_dir, NULL, NULL, NULL);
+        if (runtime == NULL) {
+            error = core_error ("Cannot reopen Firefox Sync after pending disconnect");
+            goto fail;
+        }
+        state = xanh_sync_runtime_initialize (runtime);
+        if (state < 0) {
+            error = core_error ("Cannot initialize Firefox Sync after pending disconnect");
+            goto fail;
+        }
+    } else if (g_strcmp0 (account_status, "auth-issues") == 0) {
         state = 3;
+    }
     if (!persist_account (self, runtime, cancellable, &error))
         goto fail;
 
-    parse_positive_epoch (last, &last_epoch);
-    parse_positive_epoch (next, &next_epoch);
+    if (!disconnect_pending) {
+        parse_positive_epoch (last, &last_epoch);
+        parse_positive_epoch (next, &next_epoch);
+    }
     g_mutex_lock (&self->mutex);
     self->runtime = runtime;
     runtime = NULL;
@@ -799,6 +980,20 @@ sync_worker (GTask        *task,
         goto done;
     g_mutex_lock (&self->operation_mutex);
     operation_locked = TRUE;
+    if (data->history_clear_generation !=
+            g_atomic_int_get (&self->history_clear_generation)) {
+        g_set_error_literal (
+            &error, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "Firefox Sync was cancelled by Clear Browsing Data");
+        goto fail_unlocked;
+    }
+    if (data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation)) {
+        g_set_error_literal (
+            &error, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "Firefox Sync was cancelled by device-data removal");
+        goto fail_unlocked;
+    }
     g_mutex_lock (&self->mutex);
     if (!require_runtime_locked (self, &error))
         goto fail_locked;
@@ -829,6 +1024,15 @@ sync_worker (GTask        *task,
         set_status_locked (self, self->account_state == 3
             ? "Firefox Account needs attention" : "Firefox Sync failed");
         g_mutex_unlock (&self->mutex);
+        goto fail_unlocked;
+    }
+    if (data->history_clear_generation !=
+            g_atomic_int_get (&self->history_clear_generation) ||
+        data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation)) {
+        g_set_error_literal (
+            &error, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "Completed Firefox Sync was superseded by local data removal");
         goto fail_unlocked;
     }
     g_mutex_lock (&self->mutex);
@@ -870,6 +1074,161 @@ fail_unlocked:
 
 done:
     g_atomic_int_set (&self->sync_running, 0);
+}
+
+static void
+data_operation_worker (GTask        *task,
+                       gpointer      source_object,
+                       gpointer      task_data,
+                       GCancellable *cancellable)
+{
+    XanhSyncHost *self = XANH_SYNC_HOST (source_object);
+    SyncTaskData *data = task_data;
+    g_autoptr (GError) error = NULL;
+    gpointer runtime;
+    gchar *core_result = NULL;
+
+    if (g_task_return_error_if_cancelled (task))
+        return;
+    g_mutex_lock (&self->operation_mutex);
+    if (g_task_return_error_if_cancelled (task)) {
+        finish_operation (self);
+        return;
+    }
+    if ((SyncDataOperation) data->operation == SYNC_DATA_RECORD_HISTORY &&
+        data->history_clear_generation !=
+            g_atomic_int_get (&self->history_clear_generation)) {
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "History mutation was cancelled by Clear Browsing Data");
+        return;
+    }
+    if (data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation)) {
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "Firefox Sync data operation was cancelled by device-data removal");
+        return;
+    }
+    g_mutex_lock (&self->mutex);
+    if (!require_runtime_locked (self, &error)) {
+        g_mutex_unlock (&self->mutex);
+        finish_operation (self);
+        g_task_return_error (task, g_steal_pointer (&error));
+        return;
+    }
+    runtime = self->runtime;
+    g_mutex_unlock (&self->mutex);
+
+    switch ((SyncDataOperation) data->operation) {
+    case SYNC_DATA_IMPORT_LEGACY_BOOKMARKS:
+        core_result = xanh_sync_runtime_import_legacy_bookmarks (runtime, data->payload);
+        break;
+    case SYNC_DATA_LIST_BOOKMARKS:
+        core_result = xanh_sync_runtime_bookmarks_json (runtime, data->root);
+        break;
+    case SYNC_DATA_RECORD_HISTORY:
+        core_result = xanh_sync_runtime_record_history (runtime, data->payload);
+        break;
+    case SYNC_DATA_LIST_HISTORY:
+        core_result = xanh_sync_runtime_recent_history_json (runtime, data->limit);
+        break;
+    case SYNC_DATA_UPDATE_LOCAL_TABS:
+        core_result = xanh_sync_runtime_update_local_tabs (runtime, data->payload);
+        break;
+    case SYNC_DATA_LIST_REMOTE_TABS:
+        core_result = xanh_sync_runtime_remote_tabs_json (runtime);
+        break;
+    default:
+        break;
+    }
+    if (core_result == NULL) {
+        error = core_error ("Firefox Sync data operation failed");
+        finish_operation (self);
+        g_task_return_error (task, g_steal_pointer (&error));
+        return;
+    }
+    if (data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation) ||
+        ((SyncDataOperation) data->operation == SYNC_DATA_RECORD_HISTORY &&
+         data->history_clear_generation !=
+            g_atomic_int_get (&self->history_clear_generation))) {
+        xanh_sync_string_free (core_result);
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "Completed Firefox Sync data operation was superseded by device-data removal");
+        return;
+    }
+    gchar *result = g_strdup (core_result);
+    xanh_sync_string_free (core_result);
+    finish_operation (self);
+    g_task_return_pointer (task, result, g_free);
+}
+
+static void
+clear_history_worker (GTask        *task,
+                      gpointer      source_object,
+                      gpointer      task_data,
+                      GCancellable *cancellable)
+{
+    XanhSyncHost *self = XANH_SYNC_HOST (source_object);
+    g_autoptr (GError) error = NULL;
+    gpointer runtime;
+
+    (void) task_data;
+    if (g_task_return_error_if_cancelled (task))
+        return;
+    g_mutex_lock (&self->operation_mutex);
+    if (g_task_return_error_if_cancelled (task)) {
+        finish_operation (self);
+        return;
+    }
+    g_mutex_lock (&self->mutex);
+    if (!require_runtime_locked (self, &error)) {
+        g_mutex_unlock (&self->mutex);
+        finish_operation (self);
+        g_task_return_error (task, g_steal_pointer (&error));
+        return;
+    }
+    runtime = self->runtime;
+    g_mutex_unlock (&self->mutex);
+    if (!xanh_sync_runtime_clear_history (runtime)) {
+        error = core_error ("Firefox Sync history could not be cleared");
+        finish_operation (self);
+        g_task_return_error (task, g_steal_pointer (&error));
+        return;
+    }
+    finish_operation (self);
+    g_task_return_boolean (task, TRUE);
+}
+
+static void
+start_data_operation (XanhSyncHost      *self,
+                      SyncDataOperation  operation,
+                      const gchar       *payload,
+                      gint               root,
+                      guint              limit,
+                      GCancellable      *cancellable,
+                      GAsyncReadyCallback callback,
+                      gpointer           user_data)
+{
+    GTask *task = g_task_new (self, cancellable, callback, user_data);
+    SyncTaskData *data = g_new0 (SyncTaskData, 1);
+    data->payload = g_strdup (payload);
+    data->root = root;
+    data->limit = limit;
+    data->operation = operation;
+    data->destructive_generation =
+        g_atomic_int_get (&self->destructive_generation);
+    if (operation == SYNC_DATA_RECORD_HISTORY)
+        data->history_clear_generation =
+            g_atomic_int_get (&self->history_clear_generation);
+    g_task_set_task_data (task, data, (GDestroyNotify) sync_task_data_free);
+    g_task_run_in_thread (task, data_operation_worker);
+    g_object_unref (task);
 }
 
 static gboolean
@@ -1000,13 +1359,10 @@ disconnect_worker (GTask        *task,
     XanhSyncHost *self = XANH_SYNC_HOST (source_object);
     SyncTaskData *data = task_data;
     g_autoptr (GError) error = NULL;
-    const gchar *items[] = {
-        "account-json", "account-status", "sync-state", "last-sync", "next-allowed", NULL
-    };
-    guint index;
     gpointer runtime;
     gboolean delete_local;
     gboolean call_native;
+    gboolean start_disconnect;
 
     if (g_task_return_error_if_cancelled (task))
         return;
@@ -1015,13 +1371,23 @@ disconnect_worker (GTask        *task,
     if (!require_runtime_locked (self, &error))
         goto fail;
     runtime = self->runtime;
-    if (!self->disconnect_native_pending && !self->disconnect_cleanup_pending) {
-        self->disconnect_delete_local = data->delete_local;
-        self->disconnect_native_pending = self->account_state != 0;
-    }
-    delete_local = self->disconnect_delete_local;
-    call_native = self->disconnect_native_pending;
+    start_disconnect = !self->disconnect_native_pending &&
+                       !self->disconnect_cleanup_pending;
+    delete_local = start_disconnect ? data->delete_local
+                                    : self->disconnect_delete_local;
+    call_native = start_disconnect ? (self->account_state != 0 || delete_local)
+                                   : self->disconnect_native_pending;
     g_mutex_unlock (&self->mutex);
+
+    if (start_disconnect) {
+        if (!persist_disconnect_intent (self, delete_local, &error))
+            goto fail_unlocked;
+        g_mutex_lock (&self->mutex);
+        self->disconnect_delete_local = delete_local;
+        self->disconnect_native_pending = call_native;
+        self->disconnect_cleanup_pending = !call_native;
+        g_mutex_unlock (&self->mutex);
+    }
 
     if (call_native) {
         gboolean disconnected = xanh_sync_runtime_disconnect (runtime, delete_local);
@@ -1040,12 +1406,8 @@ disconnect_worker (GTask        *task,
     self->next_sync_allowed_epoch_seconds = 0;
     self->local_change_epoch_seconds = 0;
     g_mutex_unlock (&self->mutex);
-    for (index = 0; items[index] != NULL; index++) {
-        if (!store_secret (self, items[index], NULL, cancellable, &error))
-            goto fail_unlocked;
-    }
-    if (delete_local &&
-        !store_secret (self, "logins-key", NULL, cancellable, &error))
+    if (!clear_disconnect_secure_state (self, delete_local, cancellable, &error) ||
+        !remove_disconnect_intent (self, &error))
         goto fail_unlocked;
 
     g_mutex_lock (&self->mutex);
@@ -1381,6 +1743,10 @@ xanh_sync_host_sync_async (XanhSyncHost      *self,
     task = g_task_new (self, cancellable, callback, user_data);
     data = g_new0 (SyncTaskData, 1);
     data->reason = reason;
+    data->history_clear_generation =
+        g_atomic_int_get (&self->history_clear_generation);
+    data->destructive_generation =
+        g_atomic_int_get (&self->destructive_generation);
     g_task_set_task_data (task, data, (GDestroyNotify) sync_task_data_free);
     g_task_run_in_thread (task, sync_worker);
     g_object_unref (task);
@@ -1394,6 +1760,186 @@ gchar *
 xanh_sync_host_sync_finish (XanhSyncHost *self,
                             GAsyncResult *result,
                             GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+    return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_import_legacy_bookmarks_async (XanhSyncHost      *self,
+                                              const gchar       *bookmarks_json,
+                                              GCancellable      *cancellable,
+                                              GAsyncReadyCallback callback,
+                                              gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_data_operation (self, SYNC_DATA_IMPORT_LEGACY_BOOKMARKS,
+                          bookmarks_json, 0, 0, cancellable, callback, user_data);
+#else
+    (void) bookmarks_json;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gchar *
+xanh_sync_host_import_legacy_bookmarks_finish (XanhSyncHost *self,
+                                               GAsyncResult *result,
+                                               GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+    return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_bookmarks_json_async (XanhSyncHost      *self,
+                                     gint               root,
+                                     GCancellable      *cancellable,
+                                     GAsyncReadyCallback callback,
+                                     gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_data_operation (self, SYNC_DATA_LIST_BOOKMARKS,
+                          NULL, root, 0, cancellable, callback, user_data);
+#else
+    (void) root;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gchar *
+xanh_sync_host_bookmarks_json_finish (XanhSyncHost *self,
+                                      GAsyncResult *result,
+                                      GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+    return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_record_history_async (XanhSyncHost      *self,
+                                     const gchar       *visits_json,
+                                     GCancellable      *cancellable,
+                                     GAsyncReadyCallback callback,
+                                     gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_data_operation (self, SYNC_DATA_RECORD_HISTORY,
+                          visits_json, 0, 0, cancellable, callback, user_data);
+#else
+    (void) visits_json;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gchar *
+xanh_sync_host_record_history_finish (XanhSyncHost *self,
+                                      GAsyncResult *result,
+                                      GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+    return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_recent_history_json_async (XanhSyncHost      *self,
+                                          guint              limit,
+                                          GCancellable      *cancellable,
+                                          GAsyncReadyCallback callback,
+                                          gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_data_operation (self, SYNC_DATA_LIST_HISTORY,
+                          NULL, 0, limit, cancellable, callback, user_data);
+#else
+    (void) limit;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gchar *
+xanh_sync_host_recent_history_json_finish (XanhSyncHost *self,
+                                           GAsyncResult *result,
+                                           GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+    return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_clear_history_async (XanhSyncHost      *self,
+                                    GCancellable      *cancellable,
+                                    GAsyncReadyCallback callback,
+                                    gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    g_atomic_int_inc (&self->history_clear_generation);
+    GTask *task = g_task_new (self, cancellable, callback, user_data);
+    g_task_run_in_thread (task, clear_history_worker);
+    g_object_unref (task);
+#else
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gboolean
+xanh_sync_host_clear_history_finish (XanhSyncHost *self,
+                                     GAsyncResult *result,
+                                     GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+    return g_task_propagate_boolean (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_update_local_tabs_async (XanhSyncHost      *self,
+                                        const gchar       *tabs_json,
+                                        GCancellable      *cancellable,
+                                        GAsyncReadyCallback callback,
+                                        gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_data_operation (self, SYNC_DATA_UPDATE_LOCAL_TABS,
+                          tabs_json, 0, 0, cancellable, callback, user_data);
+#else
+    (void) tabs_json;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gchar *
+xanh_sync_host_update_local_tabs_finish (XanhSyncHost *self,
+                                         GAsyncResult *result,
+                                         GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+    return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_remote_tabs_json_async (XanhSyncHost      *self,
+                                       GCancellable      *cancellable,
+                                       GAsyncReadyCallback callback,
+                                       gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_data_operation (self, SYNC_DATA_LIST_REMOTE_TABS,
+                          NULL, 0, 0, cancellable, callback, user_data);
+#else
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gchar *
+xanh_sync_host_remote_tabs_json_finish (XanhSyncHost *self,
+                                        GAsyncResult *result,
+                                        GError      **error)
 {
     g_return_val_if_fail (g_task_is_valid (result, self), NULL);
     return g_task_propagate_pointer (G_TASK (result), error);
@@ -1507,6 +2053,10 @@ xanh_sync_host_disconnect_async (XanhSyncHost      *self,
 {
     g_return_if_fail (XANH_IS_SYNC_HOST (self));
 #ifdef XANH_ENABLE_FIREFOX_SYNC
+    if (delete_local) {
+        g_atomic_int_inc (&self->history_clear_generation);
+        g_atomic_int_inc (&self->destructive_generation);
+    }
     GTask *task = g_task_new (self, cancellable, callback, user_data);
     SyncTaskData *data = g_new0 (SyncTaskData, 1);
     data->delete_local = delete_local;

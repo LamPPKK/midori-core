@@ -188,7 +188,12 @@ On Linux, the optional native build now exposes account controls in the GTK
 menu, opens OAuth in the system browser, validates the registered callback and
 stores account/Sync/vault state in Secret Service. The ordinary desktop build
 fails closed when the native core or approved/self-hosted configuration is not
-present. Linux production remains gated until Places/Tabs/Logins UI migration,
+present. A connected build imports legacy bookmarks/history from a verified
+private SQLite snapshot, mirrors Places into the existing GTK panels, publishes
+regular local tabs and presents remote tabs by device for explicit opening.
+Clearing browsing data quiesces every open window, clears upstream Places
+history locally for the next Sync and removes migration snapshots. Linux
+production remains gated until the Logins credential UI,
 Sync-enabled Flatpak packaging, audited OS user-presence for password unlock,
 and the interoperability/security evidence are complete.
 

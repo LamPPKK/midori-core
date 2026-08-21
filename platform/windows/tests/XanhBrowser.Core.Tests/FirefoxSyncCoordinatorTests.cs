@@ -128,6 +128,7 @@ public sealed class FirefoxSyncCoordinatorTests
         var profile = Path.Combine(Path.GetTempPath(), $"xanh-sync-{Guid.NewGuid():N}");
         Directory.CreateDirectory(profile);
         await File.WriteAllTextAsync(Path.Combine(profile, "logins.sqlite"), "unreadable");
+        await File.WriteAllTextAsync(Path.Combine(profile, "logins.sqlite-journal"), "rollback");
         var runtime = new FakeRuntime
         {
             State = FirefoxAccountState.Connected,
@@ -142,6 +143,7 @@ public sealed class FirefoxSyncCoordinatorTests
 
         Assert.IsFalse(store.Values.ContainsKey(FirefoxSyncSecret.LoginsKey));
         Assert.IsFalse(File.Exists(Path.Combine(profile, "logins.sqlite")));
+        Assert.IsFalse(File.Exists(Path.Combine(profile, "logins.sqlite-journal")));
         Assert.IsFalse(runtime.VaultUnlocked);
         Directory.Delete(profile, recursive: true);
     }

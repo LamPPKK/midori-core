@@ -102,8 +102,40 @@ allowed historical material, never a shipping dependency or application ID.
    errors, media permissions, downloads, private mode, session recovery,
    profile import and every native plugin.
 
+4. For a Sync-enabled candidate, start with a populated pre-Sync profile and
+   verify that the private migration snapshot is mode `0600`, the stored
+   checksum matches it, all source rows are processed, every safe/eligible
+   record is acknowledged and rejected-row counts are audited before the
+   completion marker is committed. Verify retry creates no duplicate and
+   repeated imports retain at most one verified snapshot. Include
+   invalid/userinfo URLs, invalid
+   timestamps, oversized/control-character titles and more than 200 tabs;
+   valid records and the remaining engines must still sync. Confirm
+   Places-backed bookmark/history panels, local-tab publication, remote-tab
+   grouping with explicit opening, and that Clear Browsing Data empties local
+   Places history.
+   Repeat the clear while disconnected and verify local Places is cleared
+   immediately. Also force runtime initialization to fail, verify the UI reports
+   a partial clear, and confirm the pending deletion runs before later
+   migration/Sync. Kill the process after each native/local history-clear phase;
+   on restart, confirm legacy history/session, compatibility mirrors and
+   snapshots are emptied before the marker is acknowledged or Sync can run.
+   Repeat the interactive Clear if the process stopped during WebKit website-
+   data deletion. Verify Clear Browsing Data and Remove from This Device leave
+   no migration snapshots on disk, including when multiple windows are open.
+   Kill the process in turn after the write-ahead Remove marker, native
+   disconnect, Secret Service cleanup, SQLite reset and snapshot prune. Confirm
+   each restart preserves the original keep/delete choice and finishes all
+   remaining cleanup. Also inject a SQLite reset failure and verify the local
+   recovery markers survive until both the mirror and snapshots are removed.
+   Verify the application marker is atomically durable and mode `0600`, and
+   that a pending marker blocks scheduled, pre-sleep and manual Sync as well as
+   reconnect until cleanup acknowledgement succeeds.
+
 Verification: tests must pass without warnings, WebKitGTK must be 2.52.6 or
-newer, and `ldd` must contain no GTK3, WebKitGTK 4.0 or libsoup 2 library.
+newer, and `ldd` must contain no GTK3, WebKitGTK 4.0 or libsoup 2 library. Sync
+evidence must belong to the exact candidate commit and must not contain account
+state, tokens, scoped keys or the Logins key.
 
 ## 3. Build and inspect Flatpak
 

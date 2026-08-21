@@ -15,7 +15,8 @@ typedef enum {
     XANH_SYNC_HOST_ERROR_SECRET_SERVICE,
     XANH_SYNC_HOST_ERROR_INVALID_REDIRECT,
     XANH_SYNC_HOST_ERROR_BUSY,
-    XANH_SYNC_HOST_ERROR_BACKED_OFF
+    XANH_SYNC_HOST_ERROR_BACKED_OFF,
+    XANH_SYNC_HOST_ERROR_HISTORY_CLEARED
 } XanhSyncHostError;
 
 #define XANH_SYNC_HOST_ERROR (xanh_sync_host_error_quark ())
@@ -31,6 +32,11 @@ typedef enum {
 } XanhSyncReason;
 
 XanhSyncHost *xanh_sync_host_new (const gchar *profile_dir);
+
+/* Atomically persists a non-secret local recovery marker with file and parent
+ * directory durability before a destructive native operation begins. */
+gboolean xanh_sync_write_durable_marker (const gchar *path, GError **error);
+gboolean xanh_sync_remove_durable_marker (const gchar *path, GError **error);
 
 gboolean xanh_sync_host_is_configured (XanhSyncHost *self);
 gboolean xanh_sync_host_is_ready (XanhSyncHost *self);
@@ -91,6 +97,75 @@ void xanh_sync_host_sync_async (
     GAsyncReadyCallback callback,
     gpointer user_data);
 gchar *xanh_sync_host_sync_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+
+void xanh_sync_host_import_legacy_bookmarks_async (
+    XanhSyncHost *self,
+    const gchar *bookmarks_json,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gchar *xanh_sync_host_import_legacy_bookmarks_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_bookmarks_json_async (
+    XanhSyncHost *self,
+    gint root,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gchar *xanh_sync_host_bookmarks_json_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_record_history_async (
+    XanhSyncHost *self,
+    const gchar *visits_json,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gchar *xanh_sync_host_record_history_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_recent_history_json_async (
+    XanhSyncHost *self,
+    guint limit,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gchar *xanh_sync_host_recent_history_json_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_clear_history_async (
+    XanhSyncHost *self,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gboolean xanh_sync_host_clear_history_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_update_local_tabs_async (
+    XanhSyncHost *self,
+    const gchar *tabs_json,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gchar *xanh_sync_host_update_local_tabs_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_remote_tabs_json_async (
+    XanhSyncHost *self,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gchar *xanh_sync_host_remote_tabs_json_finish (
     XanhSyncHost *self,
     GAsyncResult *result,
     GError **error);

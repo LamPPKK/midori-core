@@ -108,6 +108,7 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
         .appending(path: "xanh-apple-sync-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
     try Data("unreadable".utf8).write(to: profile.appending(path: "logins.sqlite"))
+    try Data("rollback".utf8).write(to: profile.appending(path: "logins.sqlite-journal"))
     defer { try? FileManager.default.removeItem(at: profile) }
     let coordinator = try makeCoordinator(
         runtime: runtime,
@@ -123,6 +124,9 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
 
     #expect(await secrets.value(.loginsKey) == nil)
     #expect(!FileManager.default.fileExists(atPath: profile.appending(path: "logins.sqlite").path))
+    #expect(!FileManager.default.fileExists(
+        atPath: profile.appending(path: "logins.sqlite-journal").path
+    ))
     #expect(!runtime.isVaultUnlocked)
 }
 

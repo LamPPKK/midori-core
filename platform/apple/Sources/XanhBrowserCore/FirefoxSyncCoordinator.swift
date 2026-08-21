@@ -454,7 +454,7 @@ public actor XanhFirefoxSyncCoordinator {
     }
 
     private func deleteUnreadableLoginsDatabase() throws {
-        for suffix in ["", "-wal", "-shm"] {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
             let url = profileDirectory.appending(path: "logins.sqlite\(suffix)")
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)

@@ -7,6 +7,8 @@ use crate::{canonical_web_url, SyncError};
 pub(crate) const MAX_BOOKMARK_ITEMS: usize = 10_000;
 pub(crate) const MAX_BOOKMARK_JSON_BYTES: usize = 16 * 1_024 * 1_024;
 pub(crate) const MAX_BOOKMARK_MUTATION_JSON_BYTES: usize = 64 * 1_024;
+pub(crate) const MAX_LEGACY_BOOKMARK_BATCH: usize = 10_000;
+pub(crate) const MAX_LEGACY_BOOKMARK_JSON_BYTES: usize = 16 * 1_024 * 1_024;
 pub(crate) const MAX_HISTORY_BATCH: usize = 1_000;
 pub(crate) const MAX_HISTORY_INPUT_JSON_BYTES: usize = 8 * 1_024 * 1_024;
 pub(crate) const MAX_HISTORY_RESULTS: u32 = 500;
@@ -83,6 +85,24 @@ pub struct BookmarkRecord {
     pub last_modified_epoch_millis: i64,
 }
 
+/// A bookmark from Xanh's pre-Places compatibility database. Migration uses
+/// a dedicated record so hosts cannot accidentally omit the private-browsing
+/// context required by ordinary bookmark mutations.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, uniffi::Record)]
+#[serde(deny_unknown_fields)]
+pub struct LegacyBookmark {
+    pub url: String,
+    pub title: String,
+    pub created_at_epoch_millis: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct LegacyBookmarkImportResult {
+    pub accepted_count: u32,
+    pub existing_count: u32,
+    pub created_count: u32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, uniffi::Enum)]
 #[serde(rename_all = "kebab-case")]
 pub enum HistoryTransition {
@@ -146,6 +166,13 @@ pub(crate) struct ValidatedHistoryVisit {
     pub title: Option<String>,
     pub visited_at_epoch_millis: u64,
     pub transition: HistoryTransition,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ValidatedLegacyBookmark {
+    pub url: String,
+    pub title: String,
+    pub created_at_epoch_millis: u64,
 }
 
 pub(crate) fn validate_new_bookmark(
@@ -297,6 +324,33 @@ pub(crate) fn validate_history_limit(limit: u32) -> Result<u32, SyncError> {
         )));
     }
     Ok(limit)
+}
+
+pub(crate) fn validate_legacy_bookmarks(
+    bookmarks: Vec<LegacyBookmark>,
+) -> Result<Vec<ValidatedLegacyBookmark>, SyncError> {
+    if bookmarks.len() > MAX_LEGACY_BOOKMARK_BATCH {
+        return Err(SyncError::Migration(format!(
+            "legacy bookmark payload exceeds {MAX_LEGACY_BOOKMARK_BATCH} records"
+        )));
+    }
+    bookmarks
+        .into_iter()
+        .map(|bookmark| {
+            let url =
+                canonical_web_url(&bookmark.url, MAX_PLACES_URL_LENGTH, "legacy bookmark URL")?;
+            let title = sanitized_title(Some(bookmark.title)).unwrap_or_default();
+            let created_at_epoch_millis = validate_timestamp(
+                bookmark.created_at_epoch_millis,
+                "legacy bookmark creation timestamp",
+            )?;
+            Ok(ValidatedLegacyBookmark {
+                url,
+                title,
+                created_at_epoch_millis,
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn validate_history_delete(
@@ -496,5 +550,23 @@ mod tests {
         let mut ambiguous = encoded;
         ambiguous["private"] = serde_json::Value::Bool(true);
         assert!(serde_json::from_value::<LocalHistoryVisit>(ambiguous).is_err());
+    }
+
+    #[test]
+    fn legacy_bookmarks_are_bounded_canonical_and_title_safe() {
+        let migrated = validate_legacy_bookmarks(vec![LegacyBookmark {
+            url: "https://ex\nample.com\\folder/../safe".into(),
+            title: "😀".repeat(1_025),
+            created_at_epoch_millis: 1_700_000_000_000,
+        }])
+        .unwrap();
+        assert_eq!(migrated[0].url, "https://example.com/safe");
+        assert_eq!(migrated[0].title.len(), MAX_PLACES_TITLE_BYTES);
+        assert!(validate_legacy_bookmarks(vec![LegacyBookmark {
+            url: "https://user:secret@example.com/".into(),
+            title: "unsafe".into(),
+            created_at_epoch_millis: 1,
+        }])
+        .is_err());
     }
 }

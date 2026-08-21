@@ -36,13 +36,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added the Linux GTK Firefox Sync host boundary with system-browser OAuth,
   exact callback validation, asynchronous native operations, Secret Service
   persistence, server-aware scheduling, vault expiry and keep/delete
-  disconnect controls. Linux data migration and production packaging remain
-  release-gated.
+  disconnect controls. Its data coordinator imports legacy bookmarks/history
+  from a verified private SQLite snapshot, preserves rollback tables,
+  mirrors Places into GTK panels, publishes regular local tabs, presents remote
+  tabs by device and clears Places history plus bounded migration snapshots
+  across every open window with browsing data. Linux Logins UI
+  and production packaging remain release-gated.
 - Hardened the Linux host so network work never holds the GTK state lock,
   focus-loss vault locking is deferred safely across native operations,
-  disconnect retries preserve their original keep/delete intent, auth failures
-  require account attention, and production gates require concrete evidence
-  files instead of boolean claims.
+  crash-safe disconnect retries persist their original keep/delete intent
+  before native cleanup, history/snapshot clears use write-ahead markers, auth
+  failures require account attention, and production gates require concrete
+  evidence files instead of boolean claims.
 - Added Apple and Windows Firefox Sync coordinators and settings surfaces with
   system-browser OAuth, per-edition callbacks, single-flight operations,
   backoff-aware scheduling, secure state, remote-tab presentation, five-minute

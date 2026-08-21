@@ -1,6 +1,19 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 [CCode (cheader_filename = "sync-host.h")]
 namespace Xanh {
+    [CCode (cname = "XanhSyncHostError", cprefix = "XANH_SYNC_HOST_ERROR_")]
+    public errordomain SyncHostError {
+        UNAVAILABLE,
+        CORE,
+        SECRET_SERVICE,
+        INVALID_REDIRECT,
+        BUSY,
+        BACKED_OFF,
+        HISTORY_CLEARED;
+        [CCode (cname = "xanh_sync_host_error_quark")]
+        public static GLib.Quark quark ();
+    }
+
     [CCode (cname = "XanhSyncReason", cprefix = "XANH_SYNC_REASON_")]
     public enum SyncReason {
         STARTUP,
@@ -14,6 +27,10 @@ namespace Xanh {
     public class SyncHost : GLib.Object {
         [CCode (cname = "xanh_sync_host_new")]
         public SyncHost (string profile_dir);
+        [CCode (cname = "xanh_sync_write_durable_marker")]
+        public static bool write_durable_marker (string path) throws GLib.Error;
+        [CCode (cname = "xanh_sync_remove_durable_marker")]
+        public static bool remove_durable_marker (string path) throws GLib.Error;
         public bool is_configured ();
         public bool is_ready ();
         public int account_state ();
@@ -29,6 +46,25 @@ namespace Xanh {
         public void mark_local_change (int64 now_epoch_seconds = 0);
         public async string sync_async (
             SyncReason reason,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async string import_legacy_bookmarks_async (
+            string bookmarks_json,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async string bookmarks_json_async (
+            int root,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async string record_history_async (
+            string visits_json,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async string recent_history_json_async (
+            uint limit,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async bool clear_history_async (
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async string update_local_tabs_async (
+            string tabs_json,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async string remote_tabs_json_async (
             GLib.Cancellable? cancellable = null) throws GLib.Error;
         public async bool unlock_vault_async (GLib.Cancellable? cancellable = null) throws GLib.Error;
         public bool lock_vault () throws GLib.Error;

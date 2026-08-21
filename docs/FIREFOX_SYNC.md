@@ -13,8 +13,34 @@ device. Remote tabs are grouped by device and are never opened automatically.
 Because Application Services 155 stores engine registrations process-wide,
 Xanh permits exactly one live Mozilla Sync runtime in each process; a second
 profile must run in a separate process.
-The first sync backs up and imports legacy bookmark/history data, verifies
-counts, then lets the Mozilla engines merge local and remote records.
+The first sync backs up and imports legacy bookmark/history data, verifies that
+all source rows were processed and every eligible record was acknowledged, then
+lets the Mozilla engines merge local and remote records. Rejected unsafe-row
+counts are emitted only as redacted local diagnostics. On Linux,
+the import reads only from the verified immutable SQLite snapshot, marks
+completion with its SHA-256 checksum and retains the legacy tables intact for
+the rollback release cycle without treating them as a conflict resolver. The
+coordinator retains at most the current verified snapshot; Clear Browsing Data
+and “Remove from This Device” delete every migration snapshot and its checksum
+metadata. The history deletion intent stays set until native Places, legacy
+history/session rows, the compatibility mirror and migration snapshots are all
+empty; migration and Sync remain blocked while it is pending. Snapshot deletion
+is likewise write-ahead, so a process stop cannot lose a confirmed clear.
+Failed cleanup is visible as a partial clear and is retried from non-secret
+local markers. WebKit website-data deletion remains an interactive platform
+operation; after a process stop during that phase, the user must repeat Clear
+Browsing Data. “Remove from This Device” additionally atomically writes and fsyncs an
+application-level mode-0600 intent (including its parent directory) before
+calling the native host; the host writes its own durable keep/delete phase
+marker before changing Firefox Account state. Initialization
+repeats the idempotent native, Secret Service, snapshot and compatibility-
+mirror cleanup, and clears the application marker only after every phase has
+completed. Failure to acknowledge that marker blocks reconnect and Sync, so a
+stale removal intent cannot later delete newly created account data. Concurrent
+startup/Settings recovery is coalesced, and the host is reopened in a clean
+disconnected state before the marker is acknowledged. Marker removal fsyncs
+the parent directory; an acknowledgement error remains fail-closed in memory
+and is retried before reconnect.
 
 Sync is single-flight and runs after sign-in, on foreground when the last sync
 is at least 15 minutes old, 30 seconds after local changes, on “Sync now”, and
@@ -85,9 +111,17 @@ UI but never loads a privileged password-fill script.
 Linux now has an asynchronous GTK host for account initialization, system-
 browser OAuth, exact callback routing, Secret Service persistence, manual/
 startup/scheduled/pre-sleep Sync, server backoff, vault lock and keep/delete
-disconnect. The standard build remains fail-closed unless the native core and
-an approved Mozilla or HTTPS self-hosted configuration are supplied. Apple and
-Windows now have platform coordinators and settings UI, but remain fail-closed
+disconnect. Its bounded data coordinator migrates legacy bookmarks/history,
+publishes regular tabs, refreshes bookmark/history compatibility panels from
+Places, and groups remote tabs by device behind explicit user activation.
+Clearing browsing data deletes local Places visits through the upstream API so
+the history engine can propagate removals, including while the account is
+disconnected but its local runtime remains available. If that runtime cannot be
+opened, Xanh reports the partial clear, persists a non-secret pending-clear
+marker and retries it before later migration or Sync. The standard build remains
+fail-closed unless the native core and an approved Mozilla or HTTPS self-hosted
+configuration are supplied. Apple and Windows now have platform coordinators
+and settings UI, but remain fail-closed
 until their pinned native artifacts and credential bridges are packaged and
 reviewed. WPE and WinCairo remain integration boundaries rather than production
 enablement. Environment flags are attestations backed by test evidence, not
@@ -121,15 +155,25 @@ queries instead of Application Services' unbounded deepest-tree fetch. Native
 Linux CI opens the production runtime and round-trips all
 three data bridges against the pinned Mozilla stores through the C ABI.
 
-The Linux GTK host now consumes that C ABI without blocking the UI thread.
+The Linux GTK host runs native C ABI/network calls and SQLite snapshot/hash
+preparation away from the UI thread; size-bounded JSON assembly and panel updates
+remain on GTK's main context.
 OAuth is handed to `Gtk.UriLauncher`, the desktop file registers the dedicated
 `xanh-browser` callback scheme, and the exact callback origin/path plus
 code/state are revalidated before reaching Rust. Secure state is keyed by a
 SHA-256 profile identifier in Secret Service; no account state or local Logins
 key is written to the profile directory. Disabled-build policy tests and a
-production-link boundary test run in CI. Places/Tabs/Logins host data
-presentation and migration are still separate release work; therefore this is
-not yet Linux production enablement.
+production-link boundary test run in CI. Its first-run migration creates a
+mode-0600 SQLite snapshot inside a mode-0700 directory without a world-readable
+creation window, verifies complete source traversal and eligible-record
+acknowledgements before committing a checksum marker, and is safe to retry.
+Places data is exposed through separate
+compatibility mirrors so the rollback tables remain intact; local tabs are
+published with a global, regular-only 200-record/4-MiB-safe host bound across
+all open windows. Malformed
+legacy rows are skipped per record without blocking later Sync, and remote tabs
+are only opened after row activation. Logins credential presentation remains
+separate release work, so this is not yet Linux production enablement.
 
 The current Linux preview asks Secret Service for the Logins key. A locked
 collection can show the desktop keyring prompt, but an already-unlocked
@@ -164,9 +208,9 @@ evidence is still required:
   exact release commit;
 - message/FFI fuzzing, secret-redaction review and an independent security
   review;
-- complete Linux Places/Tabs/Logins data presentation, migration and
-  Sync-enabled Flatpak packaging, plus Apple/Windows native packaging and
-  reviewed isolated credential bridges;
+- complete the Linux Logins credential UI and Sync-enabled Flatpak packaging,
+  plus Apple/Windows native packaging and reviewed isolated credential
+  bridges;
 - an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
   and the equivalent bridge/vault/package evidence for WinCairo.
 

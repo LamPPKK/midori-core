@@ -527,7 +527,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
     private void DeleteUnreadableLoginsDatabase()
     {
-        foreach (var suffix in new[] { "", "-wal", "-shm" })
+        foreach (var suffix in new[] { "", "-wal", "-shm", "-journal" })
         {
             var path = Path.Combine(_profileDirectory, $"logins.sqlite{suffix}");
             if (File.Exists(path)) File.Delete(path);

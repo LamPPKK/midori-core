@@ -12,9 +12,10 @@ use crate::{
 
 #[cfg(feature = "mozilla")]
 use crate::{
-    AccountState, BookmarkUpdate, LocalHistoryVisit, LocalTab, NewBookmark, SyncEngine, SyncReason,
-    MAX_BOOKMARK_JSON_BYTES, MAX_BOOKMARK_MUTATION_JSON_BYTES, MAX_HISTORY_INPUT_JSON_BYTES,
-    MAX_HISTORY_OUTPUT_JSON_BYTES, MAX_LOCAL_TABS_JSON_BYTES, MAX_REMOTE_TABS_JSON_BYTES,
+    AccountState, BookmarkUpdate, LegacyBookmark, LocalHistoryVisit, LocalTab, NewBookmark,
+    SyncEngine, SyncReason, MAX_BOOKMARK_JSON_BYTES, MAX_BOOKMARK_MUTATION_JSON_BYTES,
+    MAX_HISTORY_INPUT_JSON_BYTES, MAX_HISTORY_OUTPUT_JSON_BYTES, MAX_LEGACY_BOOKMARK_JSON_BYTES,
+    MAX_LOCAL_TABS_JSON_BYTES, MAX_REMOTE_TABS_JSON_BYTES,
 };
 #[cfg(feature = "mozilla")]
 use std::collections::HashMap;
@@ -538,6 +539,45 @@ pub extern "C" fn xanh_sync_runtime_create_bookmark(
 }
 
 #[no_mangle]
+pub extern "C" fn xanh_sync_runtime_import_legacy_bookmarks(
+    runtime: *mut c_void,
+    bookmarks_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "mozilla")]
+    {
+        let result = (|| {
+            let mut runtime = unsafe { lock_runtime(runtime) }?;
+            // SAFETY: pointer validation is centralized in `required_string`.
+            let bookmarks_json = unsafe { required_string(bookmarks_json, "bookmarks_json") }?;
+            if bookmarks_json.len() > MAX_LEGACY_BOOKMARK_JSON_BYTES {
+                return Err(format!(
+                    "bookmarks_json exceeds {MAX_LEGACY_BOOKMARK_JSON_BYTES} bytes"
+                ));
+            }
+            let bookmarks: Vec<LegacyBookmark> =
+                serde_json::from_str(&bookmarks_json).map_err(|error| error.to_string())?;
+            let result = runtime
+                .import_legacy_bookmarks(bookmarks)
+                .map_err(|error| error.to_string())?;
+            serde_json::to_string(&result).map_err(|error| error.to_string())
+        })();
+        match result {
+            Ok(json) => owned_string(json),
+            Err(error) => {
+                set_last_error(error);
+                ptr::null_mut()
+            }
+        }
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = (runtime, bookmarks_json);
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        ptr::null_mut()
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn xanh_sync_runtime_bookmarks_json(runtime: *mut c_void, root: i32) -> *mut c_char {
     #[cfg(feature = "mozilla")]
     {
@@ -733,6 +773,26 @@ pub extern "C" fn xanh_sync_runtime_delete_history_visit(
     #[cfg(not(feature = "mozilla"))]
     {
         let _ = (runtime, url, visited_at_epoch_millis);
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        false
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xanh_sync_runtime_clear_history(runtime: *mut c_void) -> bool {
+    #[cfg(feature = "mozilla")]
+    {
+        unsafe { lock_runtime(runtime) }
+            .and_then(|mut runtime| runtime.clear_history().map_err(|error| error.to_string()))
+            .map(|_| true)
+            .unwrap_or_else(|error| {
+                set_last_error(error);
+                false
+            })
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = runtime;
         set_last_error("xanh-sync-core was built without the mozilla feature");
         false
     }

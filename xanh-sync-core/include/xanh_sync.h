@@ -63,6 +63,12 @@ char *xanh_sync_bookmark_root_guid(int32_t root);
  * true only for canonical
  * HTTP(S) URLs accepted by Xanh navigation policy. */
 char *xanh_sync_runtime_create_bookmark(void *runtime, const char *bookmark_json);
+/* Idempotently imports a bounded legacy bookmark batch by canonical URL. The
+ * return value is a LegacyBookmarkImportResult JSON object. */
+char *xanh_sync_runtime_import_legacy_bookmarks(
+    void *runtime,
+    const char *bookmarks_json
+);
 char *xanh_sync_runtime_bookmarks_json(void *runtime, int32_t root);
 bool xanh_sync_runtime_update_bookmark(void *runtime, const char *update_json);
 /* Returns 1 when deleted, 0 when absent and -1 on error. */
@@ -80,6 +86,9 @@ bool xanh_sync_runtime_delete_history_visit(
     const char *url,
     int64_t visited_at_epoch_millis
 );
+/* Deletes all local Places history through the upstream API so tombstones can
+ * be propagated by the next history Sync. */
+bool xanh_sync_runtime_clear_history(void *runtime);
 bool xanh_sync_runtime_disconnect(void *runtime, bool delete_local);
 
 #ifdef __cplusplus

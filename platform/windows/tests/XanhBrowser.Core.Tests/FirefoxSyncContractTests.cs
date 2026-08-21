@@ -116,6 +116,7 @@ public sealed class FirefoxSyncContractTests
             [nameof(NativeMethods.RecordHistory)] = "xanh_sync_runtime_record_history",
             [nameof(NativeMethods.RecentHistoryJson)] = "xanh_sync_runtime_recent_history_json",
             [nameof(NativeMethods.DeleteHistoryVisit)] = "xanh_sync_runtime_delete_history_visit",
+            [nameof(NativeMethods.ClearHistory)] = "xanh_sync_runtime_clear_history",
         };
         foreach (var pair in expected)
             Assert.AreEqual(pair.Value, EntryPoint(pair.Key), pair.Key);

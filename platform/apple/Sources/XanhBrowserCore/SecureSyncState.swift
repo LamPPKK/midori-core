@@ -73,7 +73,7 @@ public final class XanhSecureSyncState: @unchecked Sendable {
 
 @MainActor
 public final class XanhVaultSession {
-    public static let timeout: TimeInterval = 5 * 60
+    public nonisolated static let timeout: TimeInterval = 5 * 60
     public private(set) var unlockedAt: Date?
 
     public init() {}
@@ -100,4 +100,57 @@ public final class XanhVaultSession {
     }
 
     public func lock() { unlockedAt = nil }
+}
+
+public actor XanhKeychainFirefoxSyncSecretStore: XanhFirefoxSyncSecretStore {
+    private let storage: XanhSecureSyncState
+
+    public init(service: String) {
+        storage = XanhSecureSyncState(service: service)
+    }
+
+    public func read(_ secret: XanhSyncSecret) async throws -> String? {
+        guard let data = try storage.load(account: secret.rawValue) else { return nil }
+        guard let value = String(data: data, encoding: .utf8) else {
+            throw XanhSyncContractError.invalidConfiguration("Keychain Sync state is not UTF-8")
+        }
+        return value
+    }
+
+    public func write(_ value: String, for secret: XanhSyncSecret) async throws {
+        try storage.store(
+            Data(value.utf8),
+            account: secret.rawValue,
+            userPresence: secret == .loginsKey
+        )
+    }
+
+    public func delete(_ secret: XanhSyncSecret) async throws {
+        try storage.delete(account: secret.rawValue)
+    }
+
+    public func readLoginsKeyWithUserPresence(reason: String) async throws -> String? {
+        if let data = try storage.load(account: XanhSyncSecret.loginsKey.rawValue, prompt: reason) {
+            guard let value = String(data: data, encoding: .utf8) else {
+                throw XanhSyncContractError.invalidConfiguration("Keychain Logins key is not UTF-8")
+            }
+            return value
+        }
+
+        // A missing item has nothing for Keychain to authenticate. Require
+        // device-owner authentication before allowing the first key to be
+        // generated and protected with a user-presence access control list.
+        let context = LAContext()
+        var evaluationError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &evaluationError) else {
+            throw evaluationError ?? XanhSyncContractError.vaultLocked
+        }
+        guard try await context.evaluatePolicy(
+            .deviceOwnerAuthentication,
+            localizedReason: reason
+        ) else {
+            throw XanhSyncContractError.vaultLocked
+        }
+        return nil
+    }
 }

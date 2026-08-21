@@ -12,6 +12,8 @@ public sealed record FirefoxSyncConfiguration(
     string RedirectUri,
     string DeviceName)
 {
+    public bool IsMozillaHosted => TokenServerUri is null;
+
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(ClientId) || string.IsNullOrWhiteSpace(DeviceName))
@@ -20,11 +22,38 @@ public sealed record FirefoxSyncConfiguration(
             || redirect.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
             || string.IsNullOrWhiteSpace(redirect.Host)
             || !string.IsNullOrEmpty(redirect.UserInfo)
+            || !string.IsNullOrEmpty(redirect.Query)
             || !string.IsNullOrEmpty(redirect.Fragment))
             throw new ArgumentException(
-                "Redirect URI must be an absolute non-cleartext callback without userinfo or a fragment.");
+                "Redirect URI must be an absolute non-cleartext callback without userinfo, query or fragment.");
         RequireHttpsOrigin(AccountsUri, nameof(AccountsUri));
         if (TokenServerUri is not null) RequireHttpsOrigin(TokenServerUri, nameof(TokenServerUri));
+        if (IsMozillaHosted
+            && !AccountsUri.GetLeftPart(UriPartial.Authority)
+                .Equals("https://accounts.firefox.com", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                "A custom Accounts server also requires its HTTPS Token Server URL.");
+    }
+
+    public string ToNativeJson()
+    {
+        Validate();
+        object server = IsMozillaHosted
+            ? new { kind = "mozilla" }
+            : new
+            {
+                kind = "self-hosted",
+                accounts_url = AccountsUri.AbsoluteUri.TrimEnd('/'),
+                token_server_url = TokenServerUri!.AbsoluteUri,
+            };
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            server,
+            client_id = ClientId,
+            redirect_uri = RedirectUri,
+            device_name = DeviceName,
+            device_kind = "desktop",
+        });
     }
 
     private static void RequireHttpsOrigin(Uri uri, string name)

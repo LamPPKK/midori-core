@@ -56,8 +56,10 @@ jobs:
           ios_info='_build/apple-ios/Build/Products/Release-iphonesimulator/Xanh Browser.app/Info.plist'
           test "$(plutil -extract CFBundleIdentifier raw "$mac_info")" = io.github.lamppkk.xanhbrowser.macos
           test "$(plutil -extract CFBundleShortVersionString raw "$mac_info")" = 1.0.0
+          test "$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$mac_info")" = xanh-browser-macos
           test "$(plutil -extract CFBundleIdentifier raw "$ios_info")" = io.github.lamppkk.xanhbrowser
           test "$(plutil -extract CFBundleShortVersionString raw "$ios_info")" = 1.0.0
+          test "$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$ios_info")" = xanh-browser-ios
       - uses: actions/upload-artifact@v4
         with:
           name: xanh-browser-apple-unsigned

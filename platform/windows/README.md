@@ -45,6 +45,33 @@ working tree. The same file can be imported by both Android Lite editions.
 See [`../../docs/PORTABLE_BACKUP.md`](../../docs/PORTABLE_BACKUP.md) for the
 wire format and safe provider workflow.
 
+## Firefox Sync host
+
+The WinUI command bar contains Firefox Sync setup, manual Sync, per-engine
+switches, remote-tab presentation, vault controls and keep/delete disconnect.
+OAuth opens in the system browser and returns through the registered
+`xanh-browser-windows://accounts/oauth` protocol. AppLifecycle redirects that
+callback to the one live Xanh Browser instance. Opaque state is encrypted with
+user-bound DPAPI, while unlocking the local Logins key requires Windows Hello
+or the device PIN and expires after five minutes/backgrounding.
+
+The normal unsigned verification artifact does not carry the Rust native DLL
+and therefore fails closed. Supply an architecture-matched DLL explicitly:
+
+```powershell
+dotnet publish src/XanhBrowser.Windows/XanhBrowser.Windows.csproj `
+  --configuration Release --runtime win-x64 --self-contained true `
+  -p:Platform=x64 `
+  -p:XanhSyncNativeDll=C:\artifacts\win-x64\xanh_sync_core.dll
+```
+
+For an approved Mozilla-hosted build, also pass
+`-p:XanhFirefoxSyncMozillaHosted=true`,
+`-p:XanhFxaProductionApproved=1` and `-p:XanhFxaClientId=<registered-id>`.
+The build fails if any required value or DLL is missing. Without written
+Mozilla approval, distribute only the HTTPS self-hosted configuration and run
+`../../scripts/verify-sync-release.sh windows` with the required evidence.
+
 ## Security baseline
 
 - Only valid `http`, `https` and `about:blank` navigation reaches WebView2.

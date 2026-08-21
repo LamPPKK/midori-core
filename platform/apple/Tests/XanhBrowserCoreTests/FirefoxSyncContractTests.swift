@@ -28,6 +28,7 @@ import Testing
         "http://example.test/oauth",
         "javascript:alert(1)",
         "xanh-browser://user@accounts/oauth",
+        "xanh-browser://accounts/oauth?code=preset",
         "xanh-browser://accounts/oauth#secret",
     ] {
         #expect(throws: XanhSyncContractError.self) {

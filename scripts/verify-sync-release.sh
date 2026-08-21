@@ -51,6 +51,12 @@ case "$edition" in
     test -f desktop/sync-host.c
     test -f desktop/sync-host.vapi
     grep -F 'x-scheme-handler/xanh-browser' data-xanh/io.github.lamppkk.xanhbrowser.desktop >/dev/null
+    test -f platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift
+    grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
+    grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
+    test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
+    grep -F 'xanh-browser-windows://accounts/oauth' \
+      platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs >/dev/null
     ;;
   linux)
     verify_native_core
@@ -69,6 +75,11 @@ case "$edition" in
   windows)
     verify_native_core
     test -f platform/windows/src/XanhBrowser.Windows/WindowsSyncSecretStore.cs
+    test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
+    grep -F 'XanhSyncNativeDll' \
+      platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj >/dev/null
+    grep -F 'xanh-browser-windows://accounts/oauth' \
+      platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs >/dev/null
     test "${XANH_WINDOWS_HELLO_TESTED:-0}" = 1
     test "${XANH_WEBVIEW2_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;
@@ -76,6 +87,11 @@ case "$edition" in
     test -d platform/apple/MozillaRustComponents.xcframework
     test -f platform/apple/MozillaRustComponents.checksum
     (cd platform/apple && shasum -a 256 -c MozillaRustComponents.checksum)
+    test -f platform/apple/Generated/xanh_sync_core.swift
+    grep -F 'class MozillaSyncRuntime' platform/apple/Generated/xanh_sync_core.swift >/dev/null
+    grep -F 'XANH_SYNC_SWIFT_FLAGS' platform/apple/project.yml >/dev/null
+    grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
+    grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     test "${XANH_APPLE_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;
   android)

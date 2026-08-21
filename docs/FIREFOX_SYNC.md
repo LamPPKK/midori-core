@@ -27,6 +27,17 @@ OAuth runs in the system browser with PKCE/state handling in `fxa-client`.
 Xanh never displays or collects a Mozilla password in a WebView. Each signed
 edition needs its own production client ID and registered redirect URI.
 
+The callback endpoints are deliberately distinct so one installed edition
+cannot claim another edition's OAuth response:
+
+- Linux: `xanh-browser://accounts/oauth`
+- Android standard: `xanh-browser-android://accounts/oauth`
+- Android Lite System WebView: `xanh-browser-lite://accounts/oauth`
+- Android Lite WPE: `xanh-browser-wpe://accounts/oauth`
+- macOS: `xanh-browser-macos://accounts/oauth`
+- iOS/iPadOS: `xanh-browser-ios://accounts/oauth`
+- Windows WebView2: `xanh-browser-windows://accounts/oauth`
+
 Mozilla-hosted Accounts is preferred. Self-hosted mode requires an HTTPS
 Accounts URL, HTTPS Token Server URL and a client ID issued by that deployment.
 The confirmation dialog displays the Accounts domain before leaving Xanh.
@@ -75,8 +86,10 @@ Linux now has an asynchronous GTK host for account initialization, system-
 browser OAuth, exact callback routing, Secret Service persistence, manual/
 startup/scheduled/pre-sleep Sync, server backoff, vault lock and keep/delete
 disconnect. The standard build remains fail-closed unless the native core and
-an approved Mozilla or HTTPS self-hosted configuration are supplied. Apple,
-Windows, WPE and WinCairo remain integration boundaries rather than production
+an approved Mozilla or HTTPS self-hosted configuration are supplied. Apple and
+Windows now have platform coordinators and settings UI, but remain fail-closed
+until their pinned native artifacts and credential bridges are packaged and
+reviewed. WPE and WinCairo remain integration boundaries rather than production
 enablement. Environment flags are attestations backed by test evidence, not
 switches that make an incomplete integration safe.
 
@@ -125,9 +138,18 @@ remains production-blocked until the release evidence demonstrates an audited
 OS authentication/user-presence mechanism in addition to Secret Service
 storage.
 
-The platform boundary tests currently pass locally: 13 Apple tests cover the
-contract and device-only Keychain/LocalAuthentication policy, while 21 Windows
-tests cover the contract, P/Invoke surface and DPAPI/Windows Hello policy. The
+Apple now provides system-browser OAuth callback routing, a single-flight actor,
+engine switches, server backoff, remote-tab presentation, Keychain/
+LocalAuthentication vault state and restart-safe keep/delete disconnect intent.
+Windows provides the equivalent WinUI coordinator, single-instance protocol
+activation, DPAPI/Windows Hello persistence and architecture-specific native
+DLL packaging input. Both hosts keep Mozilla-hosted mode disabled unless the
+build carries an approved client ID; HTTPS self-hosted setup remains available.
+
+The platform boundary tests currently pass locally: 19 Apple tests cover the
+contract, coordinator and device-only Keychain/LocalAuthentication policy,
+while 28 Windows tests cover the contract, coordinator, P/Invoke surface and
+DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application
 Services native libraries appear only in the on-demand Sync split.
@@ -143,8 +165,8 @@ evidence is still required:
 - message/FFI fuzzing, secret-redaction review and an independent security
   review;
 - complete Linux Places/Tabs/Logins data presentation, migration and
-  Sync-enabled Flatpak packaging, plus Apple and Windows runtime UI/native
-  packaging integrations;
+  Sync-enabled Flatpak packaging, plus Apple/Windows native packaging and
+  reviewed isolated credential bridges;
 - an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
   and the equivalent bridge/vault/package evidence for WinCairo.
 

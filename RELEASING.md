@@ -238,7 +238,10 @@ than repackaging it as a monolithic APK.
    distributed, and submit the signed archives to App Store Connect.
 4. For Sync builds, package the pinned official Application Services
    XCFramework/checksum, verify non-synchronizing `ThisDeviceOnly` Keychain
-   entries and LocalAuthentication lock/background behavior, then run
+   entries and LocalAuthentication lock/background behavior, build with
+   `XANH_SYNC_SWIFT_FLAGS=-DXANH_ENABLE_FIREFOX_SYNC`, and confirm the callback
+   is `xanh-browser-macos://accounts/oauth` or
+   `xanh-browser-ios://accounts/oauth` for the target. Then run
    `./scripts/verify-sync-release.sh apple`.
 
 Verification: both archives must report the intended bundle ID/version, contain
@@ -263,9 +266,15 @@ or the notarized distribution channel on clean devices.
 3. Sign every executable and package with the dedicated certificate, verify the
    timestamp and signature on a separate clean system, then run Microsoft
    Defender and SmartScreen submission checks.
-4. For Sync builds, package the native C ABI DLL under the application-local
-   runtime directory, protect account state with DPAPI and vault access with
-   Windows Hello, then run `./scripts/verify-sync-release.sh windows`.
+4. For Sync builds, pass the architecture-matched C ABI DLL using
+   `-p:XanhSyncNativeDll=<path>`. An approved Mozilla-hosted build must also use
+   `-p:XanhFirefoxSyncMozillaHosted=true`,
+   `-p:XanhFxaProductionApproved=1` and
+   `-p:XanhFxaClientId=<registered-id>`; otherwise keep the build self-hosted.
+   Confirm the registered callback is
+   `xanh-browser-windows://accounts/oauth`, protect account state with DPAPI
+   and vault access with Windows Hello, then run
+   `./scripts/verify-sync-release.sh windows`.
 
 Verification: x64 and ARM64 packages must install cleanly, retain a valid
 signature after download, and use the serviced Evergreen Runtime rather than a

@@ -3,7 +3,52 @@ using Microsoft.Win32.SafeHandles;
 
 namespace XanhBrowser.Core;
 
-public sealed class NativeFirefoxSync : IDisposable
+public interface IFirefoxSyncRuntime : IDisposable
+{
+    FirefoxAccountState Initialize();
+    FirefoxAccountState AccountState { get; }
+    string BeginOAuth();
+    FirefoxAccountState CompleteOAuth(string code, string state);
+    string AccountJson();
+    string? PersistedState();
+    bool VaultUnlocked { get; }
+    void UnlockVault(string localLoginsKey);
+    void LockVault();
+    string Sync(FirefoxSyncReason reason, string enginesJson);
+    string RemoteTabsJson();
+    void Disconnect(bool deleteLocal);
+}
+
+public interface IFirefoxSyncRuntimeFactory
+{
+    IFirefoxSyncRuntime Open(
+        string configurationJson,
+        string profileDirectory,
+        string? localLoginsKey,
+        string? accountJson,
+        string? persistedSyncState);
+
+    string GenerateLocalLoginsKey();
+}
+
+public sealed class NativeFirefoxSyncFactory : IFirefoxSyncRuntimeFactory
+{
+    public IFirefoxSyncRuntime Open(
+        string configurationJson,
+        string profileDirectory,
+        string? localLoginsKey,
+        string? accountJson,
+        string? persistedSyncState) => new NativeFirefoxSync(
+            configurationJson,
+            profileDirectory,
+            localLoginsKey,
+            accountJson,
+            persistedSyncState);
+
+    public string GenerateLocalLoginsKey() => NativeFirefoxSync.GenerateLocalLoginsKey();
+}
+
+public sealed class NativeFirefoxSync : IFirefoxSyncRuntime
 {
     private readonly SyncRuntimeHandle _handle;
 

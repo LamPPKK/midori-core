@@ -43,6 +43,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   disconnect retries preserve their original keep/delete intent, auth failures
   require account attention, and production gates require concrete evidence
   files instead of boolean claims.
+- Added Apple and Windows Firefox Sync coordinators and settings surfaces with
+  system-browser OAuth, per-edition callbacks, single-flight operations,
+  backoff-aware scheduling, secure state, remote-tab presentation, five-minute
+  vault locking and restart-safe keep/delete disconnect retries.
+- Added fail-closed Apple XCFramework and Windows native-DLL packaging
+  boundaries. Mozilla-hosted metadata is embedded only when a separately
+  approved client ID is supplied; self-hosted configuration remains the
+  production fallback.
 
 ### Changed
 

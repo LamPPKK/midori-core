@@ -12,65 +12,71 @@ namespace XanhBrowser.Windows;
 /// Password-vault access additionally requires an explicit Windows Hello/PIN
 /// verification and expires after five minutes or when the host calls Lock.
 /// </summary>
-internal sealed class WindowsSyncSecretStore
+internal sealed class WindowsSyncSecretStore : IFirefoxSyncSecretStore
 {
-    private const string AccountState = "account-state";
-    private const string SyncState = "sync-state";
-    private const string LoginsKey = "logins-key";
-    private readonly FirefoxSyncVaultSession _vault = new();
-
-    public Task StoreAccountStateAsync(string value) => StoreAsync(AccountState, value);
-    public Task StoreSyncStateAsync(string value) => StoreAsync(SyncState, value);
-    public Task<string?> ReadAccountStateAsync() => ReadAsync(AccountState);
-    public Task<string?> ReadSyncStateAsync() => ReadAsync(SyncState);
-
-    public async Task<string?> UnlockLoginsKeyAsync(Func<string> createKey, string reason)
+    public async Task<bool> VerifyUserPresenceAsync(
+        string reason,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var availability = await UserConsentVerifier.CheckAvailabilityAsync();
-        if (availability != UserConsentVerifierAvailability.Available) return null;
+        if (availability != UserConsentVerifierAvailability.Available) return false;
         var result = await UserConsentVerifier.RequestVerificationAsync(reason);
-        if (result != UserConsentVerificationResult.Verified) return null;
-
-        var key = await ReadAsync(LoginsKey);
-        if (key is null)
-        {
-            key = createKey();
-            await StoreAsync(LoginsKey, key);
-        }
-        _vault.Unlock(DateTimeOffset.UtcNow);
-        return key;
+        cancellationToken.ThrowIfCancellationRequested();
+        return result == UserConsentVerificationResult.Verified;
     }
 
-    public bool TouchVault() => _vault.Touch(DateTimeOffset.UtcNow);
-    public void LockVault() => _vault.Lock();
-
-    public async Task DeleteAllAsync()
+    public Task<string?> ReadAsync(
+        FirefoxSyncSecret secret,
+        CancellationToken cancellationToken = default)
     {
-        LockVault();
-        var folder = await GetFolderAsync();
-        foreach (var name in new[] { AccountState, SyncState, LoginsKey })
-        {
-            var file = await folder.TryGetItemAsync(FileName(name)) as StorageFile;
-            if (file is not null) await file.DeleteAsync(StorageDeleteOption.PermanentDelete);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return ReadProtectedAsync(FileName(secret), cancellationToken);
     }
 
-    private static async Task StoreAsync(string name, string value)
+    public Task WriteAsync(
+        FirefoxSyncSecret secret,
+        string value,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return StoreProtectedAsync(FileName(secret), value, cancellationToken);
+    }
+
+    public async Task DeleteAsync(
+        FirefoxSyncSecret secret,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var folder = await GetFolderAsync();
+        var file = await folder.TryGetItemAsync(FileName(secret)) as StorageFile;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (file is not null) await file.DeleteAsync(StorageDeleteOption.PermanentDelete);
+    }
+
+    private static async Task StoreProtectedAsync(
+        string name,
+        string value,
+        CancellationToken cancellationToken)
     {
         var clear = CryptographicBuffer.ConvertStringToBinary(value, BinaryStringEncoding.Utf8);
         var encrypted = await new DataProtectionProvider("LOCAL=user").ProtectAsync(clear);
+        cancellationToken.ThrowIfCancellationRequested();
         var folder = await GetFolderAsync();
-        var file = await folder.CreateFileAsync(FileName(name), CreationCollisionOption.ReplaceExisting);
+        var file = await folder.CreateFileAsync(name, CreationCollisionOption.ReplaceExisting);
         await FileIO.WriteBufferAsync(file, encrypted);
     }
 
-    private static async Task<string?> ReadAsync(string name)
+    private static async Task<string?> ReadProtectedAsync(
+        string name,
+        CancellationToken cancellationToken)
     {
         var folder = await GetFolderAsync();
-        var file = await folder.TryGetItemAsync(FileName(name)) as StorageFile;
+        var file = await folder.TryGetItemAsync(name) as StorageFile;
         if (file is null) return null;
         var encrypted = await FileIO.ReadBufferAsync(file);
         var clear = await new DataProtectionProvider().UnprotectAsync(encrypted);
+        cancellationToken.ThrowIfCancellationRequested();
         CryptographicBuffer.CopyToByteArray(clear, out var bytes);
         return Encoding.UTF8.GetString(bytes);
     }
@@ -80,5 +86,14 @@ internal sealed class WindowsSyncSecretStore
             "FirefoxSync",
             CreationCollisionOption.OpenIfExists);
 
-    private static string FileName(string name) => $"{name}.dpapi";
+    private static string FileName(FirefoxSyncSecret secret) => secret switch
+    {
+        FirefoxSyncSecret.AccountState => "account-state.dpapi",
+        FirefoxSyncSecret.SyncState => "sync-state.dpapi",
+        FirefoxSyncSecret.LoginsKey => "logins-key.dpapi",
+        FirefoxSyncSecret.Schedule => "schedule.dpapi",
+        FirefoxSyncSecret.EngineSelection => "engine-selection.dpapi",
+        FirefoxSyncSecret.DisconnectIntent => "disconnect-intent.dpapi",
+        _ => throw new ArgumentOutOfRangeException(nameof(secret)),
+    };
 }

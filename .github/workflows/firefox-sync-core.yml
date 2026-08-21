@@ -109,6 +109,8 @@ jobs:
           grep -R -F 'createBookmark' target/bindings/swift
           grep -R -F 'recordHistory' target/bindings/kotlin
           grep -R -F 'recordHistory' target/bindings/swift
+          grep -R -F 'generateLocalLoginsKey' target/bindings/kotlin
+          grep -R -F 'generateLocalLoginsKey' target/bindings/swift
       - name: Compile and run the Linux Secret Service host boundary
         run: |
           read -r -a host_cflags <<< "$(pkg-config --cflags gio-2.0 json-glib-1.0 libsecret-1)"

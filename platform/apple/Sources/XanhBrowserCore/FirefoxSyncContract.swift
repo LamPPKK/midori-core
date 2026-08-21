@@ -52,9 +52,10 @@ public struct XanhSyncConfiguration: Codable, Equatable, Sendable {
               redirectURI.host != nil,
               redirectURI.user == nil,
               redirectURI.password == nil,
+              redirectURI.query == nil,
               redirectURI.fragment == nil else {
             throw XanhSyncContractError.invalidConfiguration(
-                "redirect URI must be an absolute non-cleartext callback without userinfo or a fragment"
+                "redirect URI must be an absolute non-cleartext callback without userinfo, query or fragment"
             )
         }
         if case let .selfHosted(accountsURL, tokenServerURL) = server {
@@ -77,14 +78,25 @@ public struct XanhSyncConfiguration: Codable, Equatable, Sendable {
     }
 }
 
-public enum XanhSyncContractError: Error, Equatable, Sendable {
+public enum XanhSyncContractError: Error, Equatable, Sendable, LocalizedError {
     case invalidConfiguration(String)
+    case busy
     case vaultLocked
     case bridgeRejected
     case nativeCoreUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case let .invalidConfiguration(message): message
+        case .busy: "Another Firefox Sync operation is still running"
+        case .vaultLocked: "The password vault is locked"
+        case .bridgeRejected: "The password request was rejected"
+        case .nativeCoreUnavailable: "The pinned Firefox Sync native runtime is not packaged"
+        }
+    }
 }
 
-public struct XanhSyncSchedule: Equatable, Sendable {
+public struct XanhSyncSchedule: Codable, Equatable, Sendable {
     public static let foregroundInterval: TimeInterval = 15 * 60
     public static let localChangeDebounce: TimeInterval = 30
 

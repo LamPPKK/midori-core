@@ -5,7 +5,9 @@ import WebKit
 @MainActor
 struct BrowserView: View {
     @State private var workspace = BrowserWorkspace()
+    @State private var firefoxSync = FirefoxSyncViewModel()
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         let tab = workspace.selectedTab
@@ -34,6 +36,26 @@ struct BrowserView: View {
             guard let externalURL else { return }
             openURL(externalURL)
             tab.externalURL = nil
+        }
+        .onChange(of: scenePhase) { _, phase in
+            Task {
+                if phase == .active { await firefoxSync.syncIfDue(.startup) }
+                else { await firefoxSync.lockVault() }
+            }
+        }
+        .onOpenURL { url in
+            Task { await firefoxSync.handleOAuthCallback(url) }
+        }
+        .sheet(isPresented: $firefoxSync.isShowingSettings) {
+            FirefoxSyncSettingsView(model: firefoxSync)
+        }
+        .task {
+            await firefoxSync.initializeIfConfigured()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                await firefoxSync.lockVaultIfIdle()
+                await firefoxSync.syncIfDue(.scheduled)
+            }
         }
         .task(id: tab.id) {
             do {
@@ -100,9 +122,24 @@ struct BrowserView: View {
                     .labelStyle(.iconOnly)
                     .disabled(true)
             }
+
+            Button("Firefox Sync", systemImage: syncIcon) {
+                firefoxSync.isShowingSettings = true
+            }
+            .labelStyle(.iconOnly)
+            .help(firefoxSync.snapshot.detail)
         }
         .padding(10)
         .background(.bar)
+    }
+
+    private var syncIcon: String {
+        switch firefoxSync.snapshot.accountState {
+        case .connected: "arrow.triangle.2.circlepath.circle.fill"
+        case .authIssues: "exclamationmark.arrow.triangle.2.circlepath"
+        case .authenticating: "person.badge.clock"
+        case .disconnected: "arrow.triangle.2.circlepath.circle"
+        }
     }
 }
 

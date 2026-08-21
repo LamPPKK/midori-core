@@ -21,6 +21,23 @@
                 Click="NewPrivateTab_Click"
                 Icon="ProtectedDocument"
                 Label="New private tab" />
+            <AppBarSeparator />
+            <AppBarButton
+                x:Name="FirefoxSyncButton"
+                Click="FirefoxSync_Click"
+                Icon="Sync"
+                Label="Set up Sync" />
+            <AppBarButton
+                Click="FirefoxSyncSettings_Click"
+                Icon="Setting"
+                Label="Sync settings" />
+            <TextBlock
+                x:Name="FirefoxSyncStatus"
+                MaxWidth="260"
+                Margin="8,0"
+                Text="Firefox Sync is not configured"
+                TextTrimming="CharacterEllipsis"
+                VerticalAlignment="Center" />
         </CommandBar>
 
         <TabView

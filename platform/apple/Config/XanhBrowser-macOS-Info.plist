@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Xanh Browser</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>io.github.lamppkk.xanhbrowser.macos.firefox-sync</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>xanh-browser-macos</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Xanh Browser shares the camera only with a website after you approve its request.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Xanh Browser shares location only with a website after you approve its request.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Xanh Browser shares the microphone only with a website after you approve its request.</string>
+	<key>XanhFirefoxSyncClientID</key>
+	<string>$(XANH_FXA_CLIENT_ID)</string>
+	<key>XanhFirefoxSyncProductionApproved</key>
+	<string>$(XANH_FXA_PRODUCTION_APPROVED)</string>
+</dict>
+</plist>

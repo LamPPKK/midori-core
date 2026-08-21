@@ -10,11 +10,11 @@ settings:
     CURRENT_PROJECT_VERSION: 10000
     SWIFT_VERSION: 6.0
     SWIFT_STRICT_CONCURRENCY: complete
-    GENERATE_INFOPLIST_FILE: YES
-    INFOPLIST_KEY_CFBundleDisplayName: Xanh Browser
-    INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: Xanh Browser shares location only with a website after you approve its request.
-    INFOPLIST_KEY_NSCameraUsageDescription: Xanh Browser shares the camera only with a website after you approve its request.
-    INFOPLIST_KEY_NSMicrophoneUsageDescription: Xanh Browser shares the microphone only with a website after you approve its request.
+    GENERATE_INFOPLIST_FILE: NO
+    XANH_FXA_CLIENT_ID: ""
+    XANH_FXA_PRODUCTION_APPROVED: "0"
+    XANH_SYNC_SWIFT_FLAGS: ""
+    OTHER_SWIFT_FLAGS: $(inherited) $(XANH_SYNC_SWIFT_FLAGS)
 targets:
   XanhBrowser-iOS:
     type: application
@@ -22,6 +22,34 @@ targets:
     sources:
       - App
       - Sources/XanhBrowserCore
+      - Generated
+    info:
+      path: Config/XanhBrowser-iOS-Info.plist
+      properties:
+        CFBundleDisplayName: Xanh Browser
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: io.github.lamppkk.xanhbrowser.firefox-sync
+            CFBundleURLSchemes:
+              - xanh-browser-ios
+        NSCameraUsageDescription: Xanh Browser shares the camera only with a website after you approve its request.
+        NSLocationWhenInUseUsageDescription: Xanh Browser shares location only with a website after you approve its request.
+        NSMicrophoneUsageDescription: Xanh Browser shares the microphone only with a website after you approve its request.
+        UIApplicationSupportsIndirectInputEvents: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        XanhFirefoxSyncClientID: $(XANH_FXA_CLIENT_ID)
+        XanhFirefoxSyncProductionApproved: $(XANH_FXA_PRODUCTION_APPROVED)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.lamppkk.xanhbrowser
@@ -29,16 +57,30 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-iOS
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
   XanhBrowser-macOS:
     type: application
     platform: macOS
     sources:
       - App
       - Sources/XanhBrowserCore
+      - Generated
+    info:
+      path: Config/XanhBrowser-macOS-Info.plist
+      properties:
+        CFBundleDisplayName: Xanh Browser
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: io.github.lamppkk.xanhbrowser.macos.firefox-sync
+            CFBundleURLSchemes:
+              - xanh-browser-macos
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSCameraUsageDescription: Xanh Browser shares the camera only with a website after you approve its request.
+        NSLocationUsageDescription: Xanh Browser shares location only with a website after you approve its request.
+        NSMicrophoneUsageDescription: Xanh Browser shares the microphone only with a website after you approve its request.
+        XanhFirefoxSyncClientID: $(XANH_FXA_CLIENT_ID)
+        XanhFirefoxSyncProductionApproved: $(XANH_FXA_PRODUCTION_APPROVED)
     entitlements:
       path: Config/XanhBrowserMac.entitlements
       properties:

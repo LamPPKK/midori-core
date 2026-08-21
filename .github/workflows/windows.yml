@@ -43,6 +43,11 @@ jobs:
           if (-not (Test-Path $executable)) { throw "Missing $executable" }
           $version = (Get-Item $executable).VersionInfo.ProductVersion
           if (-not $version.StartsWith('1.0.0')) { throw "Unexpected product version: $version" }
+          if (Test-Path '_artifact/${{ matrix.rid }}/xanh_sync_core.dll') {
+            throw 'Ordinary verification artifacts must not silently include the gated Firefox Sync runtime'
+          }
+          Select-String -Path platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs `
+            -SimpleMatch 'xanh-browser-windows://accounts/oauth' | Out-Null
       - uses: actions/upload-artifact@v4
         with:
           name: xanh-browser-windows-${{ matrix.rid }}-unsigned

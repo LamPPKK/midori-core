@@ -46,10 +46,11 @@ impl SyncConfig {
             || redirect.host_str().is_none()
             || !redirect.username().is_empty()
             || redirect.password().is_some()
+            || redirect.query().is_some()
             || redirect.fragment().is_some()
         {
             return Err(SyncError::InvalidConfig(
-                "redirect_uri must be an absolute non-cleartext callback without userinfo or a fragment"
+                "redirect_uri must be an absolute non-cleartext callback without userinfo, query or fragment"
                     .into(),
             ));
         }
@@ -135,6 +136,7 @@ mod tests {
             "http://example.test/oauth",
             "javascript:alert(1)",
             "xanh-browser://user@accounts/oauth",
+            "xanh-browser://accounts/oauth?code=preset",
             "xanh-browser://accounts/oauth#secret",
         ] {
             let mut value = config(AccountServer::Mozilla);

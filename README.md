@@ -192,6 +192,14 @@ present. Linux production remains gated until Places/Tabs/Logins UI migration,
 Sync-enabled Flatpak packaging, audited OS user-presence for password unlock,
 and the interoperability/security evidence are complete.
 
+Apple and Windows now include native settings/coordinator hosts for
+system-browser OAuth, engine selection, backoff-aware Sync, remote tabs,
+device-bound secure state and five-minute password-vault locking. Their
+ordinary verification artifacts intentionally omit the native Mozilla runtime;
+production remains blocked until the pinned XCFramework/DLL, isolated
+credential bridges and platform interoperability/security evidence are
+packaged and reviewed. Each platform uses its own registered callback scheme.
+
 Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
 the Application Services runtime; the base app loads it only after the user
 chooses Firefox Sync. CI builds both base-only and `lite-with-sync` bundles,

@@ -80,6 +80,15 @@ pub(crate) fn initialize_application_services() {
     init_rust_components::initialize();
 }
 
+/// Creates the random device-local key used to encrypt the Logins database.
+/// Hosts must wrap this value with Keychain, Keystore, DPAPI or Secret Service
+/// and must never write it to the profile directory.
+#[uniffi::export]
+pub fn generate_local_logins_key() -> Result<String, SyncError> {
+    initialize_application_services();
+    logins::encryption::create_key().map_err(backend_error)
+}
+
 pub struct MozillaBackend {
     config: SyncConfig,
     account: FirefoxAccount,

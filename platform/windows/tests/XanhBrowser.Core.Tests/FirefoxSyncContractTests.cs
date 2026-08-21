@@ -36,6 +36,7 @@ public sealed class FirefoxSyncContractTests
             "http://example.test/oauth",
             "javascript:alert(1)",
             "xanh-browser://user@accounts/oauth",
+            "xanh-browser://accounts/oauth?code=preset",
             "xanh-browser://accounts/oauth#secret",
         })
         {

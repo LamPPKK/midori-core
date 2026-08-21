@@ -31,13 +31,15 @@
                 Click="FirefoxSyncSettings_Click"
                 Icon="Setting"
                 Label="Sync settings" />
-            <TextBlock
-                x:Name="FirefoxSyncStatus"
-                MaxWidth="260"
-                Margin="8,0"
-                Text="Firefox Sync is not configured"
-                TextTrimming="CharacterEllipsis"
-                VerticalAlignment="Center" />
+            <AppBarElementContainer>
+                <TextBlock
+                    x:Name="FirefoxSyncStatus"
+                    MaxWidth="260"
+                    Margin="8,0"
+                    Text="Firefox Sync is not configured"
+                    TextTrimming="CharacterEllipsis"
+                    VerticalAlignment="Center" />
+            </AppBarElementContainer>
         </CommandBar>
 
         <TabView

@@ -21,6 +21,15 @@ verify_native_core() {
   test "$actual" = "$XANH_SYNC_NATIVE_SHA256"
 }
 
+require_evidence() {
+  name="$1"
+  value="${!name:-}"
+  if [[ -z "$value" || ! -f "$value" ]]; then
+    echo "Missing release evidence file: $name" >&2
+    exit 1
+  fi
+}
+
 case "$edition" in
   source)
     test -f xanh-sync-core/Cargo.lock
@@ -39,11 +48,23 @@ case "$edition" in
     grep -F 'xanh_sync_runtime_record_history' xanh-sync-core/include/xanh_sync.h >/dev/null
     grep -F 'xanh_sync_runtime_recent_history_json' xanh-sync-core/include/xanh_sync.h >/dev/null
     grep -F 'xanh_sync_runtime_delete_history_visit' xanh-sync-core/include/xanh_sync.h >/dev/null
+    test -f desktop/sync-host.c
+    test -f desktop/sync-host.vapi
+    grep -F 'x-scheme-handler/xanh-browser' data-xanh/io.github.lamppkk.xanhbrowser.desktop >/dev/null
     ;;
   linux)
     verify_native_core
-    test "${XANH_LINUX_SECRET_SERVICE_OK:-0}" = 1
-    test "${XANH_LINUX_SYNC_UI_OK:-0}" = 1
+    test -f desktop/sync-host.c
+    test -f desktop/sync-host.vapi
+    grep -F 'XANH_ENABLE_FIREFOX_SYNC' CMakeLists.txt >/dev/null
+    grep -F 'x-scheme-handler/xanh-browser' data-xanh/io.github.lamppkk.xanhbrowser.desktop >/dev/null
+    require_evidence XANH_LINUX_SYNC_BUILD_EVIDENCE
+    require_evidence XANH_LINUX_SECRET_SERVICE_EVIDENCE
+    require_evidence XANH_LINUX_INTEROP_EVIDENCE
+    require_evidence XANH_LINUX_DATA_MIGRATION_EVIDENCE
+    require_evidence XANH_LINUX_FLATPAK_EVIDENCE
+    require_evidence XANH_LINUX_USER_PRESENCE_EVIDENCE
+    require_evidence XANH_LINUX_SECURITY_REVIEW_EVIDENCE
     ;;
   windows)
     verify_native_core

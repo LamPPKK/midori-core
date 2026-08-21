@@ -10,7 +10,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 
-use fxa_client::{DeviceConfig, FirefoxAccount, FxaConfig, FxaEvent, FxaServer, FxaState};
+use fxa_client::{
+    DeviceConfig, FirefoxAccount, FxaConfig, FxaError, FxaEvent, FxaServer, FxaState,
+};
 use logins::encryption::{ManagedEncryptorDecryptor, StaticKeyManager};
 use logins::LoginStore;
 use places::{
@@ -599,11 +601,21 @@ impl MozillaBackend {
         if self.places.is_none() || self.tabs.is_none() {
             return Err(SyncError::Backend("local Sync stores were deleted".into()));
         }
-        let token = self
-            .account
-            .get_access_token(SYNC_SCOPE, false)
-            .map_err(backend_error)?;
-        let key = token.key.ok_or(SyncError::AuthenticationRequired)?;
+        let token = match self.account.get_access_token(SYNC_SCOPE, false) {
+            Ok(token) => token,
+            Err(FxaError::Authentication | FxaError::SyncScopedKeyMissingInServerResponse) => {
+                self.mark_auth_issues();
+                return Ok((SyncStatus::AuthError, None));
+            }
+            Err(error) => return Err(backend_error(error)),
+        };
+        let key = match token.key {
+            Some(key) => key,
+            None => {
+                self.mark_auth_issues();
+                return Ok((SyncStatus::AuthError, None));
+            }
+        };
         let tokenserver_url = Url::parse(
             &self
                 .account
@@ -655,12 +667,23 @@ impl MozillaBackend {
             ServiceStatus::BackedOff => SyncStatus::BackedOff,
             ServiceStatus::OtherError => SyncStatus::Partial,
         };
+        if status == SyncStatus::AuthError {
+            self.mark_auth_issues();
+        }
         let next_allowed = result.next_sync_allowed_at.and_then(|time| {
             time.duration_since(UNIX_EPOCH)
                 .ok()
                 .map(|duration| duration.as_secs())
         });
         Ok((status, next_allowed))
+    }
+
+    fn mark_auth_issues(&mut self) {
+        // Persist the upstream FxA transition directly so restart does not
+        // silently turn a known authorization failure back into a connected
+        // scheduler loop.
+        self.account.on_auth_issues();
+        self.account_state = AccountState::AuthIssues;
     }
 
     pub fn disconnect(&mut self, delete_local: bool) -> Result<(), SyncError> {

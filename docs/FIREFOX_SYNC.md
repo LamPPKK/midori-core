@@ -47,9 +47,10 @@ are excluded from logs, crash diagnostics and `.xanhbackup`.
 - Apple: Keychain items are non-synchronizing and `ThisDeviceOnly`; the vault
   uses LocalAuthentication.
 - Windows: the native adapter is paired with local DPAPI/Windows Hello storage.
-- Linux: production integration must pair the native adapter with Secret
-  Service; locked or missing Secret Service disables passwords without
-  exposing a fallback plaintext key. This host integration remains gated.
+- Linux: the native host stores account JSON, Sync metadata and the Logins key
+  in Secret Service under a per-profile identifier. Missing or locked Secret
+  Service fails closed without a plaintext fallback; the vault locks after five
+  minutes and whenever the GTK window loses focus.
 
 The vault locks after five minutes idle and immediately when the app is
 backgrounded. Fill requires an HTTPS exact-origin top frame, a currently valid
@@ -70,13 +71,16 @@ APK contains neither the Rust runtime nor native Application Services
 libraries until the user enables Sync. The WPE feature reuses the management
 UI but never loads a privileged password-fill script.
 
-The current Linux, Apple, Windows, WPE and WinCairo adapters are integration
-boundaries, not production enablement. Their release gates stay closed until
-the platform UI, secure-state lifecycle, native packaging and required bridge
-tests are present. Environment flags are attestations backed by test evidence,
-not switches that make an incomplete integration safe.
+Linux now has an asynchronous GTK host for account initialization, system-
+browser OAuth, exact callback routing, Secret Service persistence, manual/
+startup/scheduled/pre-sleep Sync, server backoff, vault lock and keep/delete
+disconnect. The standard build remains fail-closed unless the native core and
+an approved Mozilla or HTTPS self-hosted configuration are supplied. Apple,
+Windows, WPE and WinCairo remain integration boundaries rather than production
+enablement. Environment flags are attestations backed by test evidence, not
+switches that make an incomplete integration safe.
 
-## Implementation snapshot (2026-08-21)
+## Implementation snapshot (2026-08-22)
 
 The shared implementation is pinned and reproducible: Rust unit tests pass,
 the `mozilla` feature builds and passes Clippy with warnings denied, the C ABI
@@ -104,6 +108,23 @@ queries instead of Application Services' unbounded deepest-tree fetch. Native
 Linux CI opens the production runtime and round-trips all
 three data bridges against the pinned Mozilla stores through the C ABI.
 
+The Linux GTK host now consumes that C ABI without blocking the UI thread.
+OAuth is handed to `Gtk.UriLauncher`, the desktop file registers the dedicated
+`xanh-browser` callback scheme, and the exact callback origin/path plus
+code/state are revalidated before reaching Rust. Secure state is keyed by a
+SHA-256 profile identifier in Secret Service; no account state or local Logins
+key is written to the profile directory. Disabled-build policy tests and a
+production-link boundary test run in CI. Places/Tabs/Logins host data
+presentation and migration are still separate release work; therefore this is
+not yet Linux production enablement.
+
+The current Linux preview asks Secret Service for the Logins key. A locked
+collection can show the desktop keyring prompt, but an already-unlocked
+collection does not prove fresh user presence. Linux password Sync therefore
+remains production-blocked until the release evidence demonstrates an audited
+OS authentication/user-presence mechanism in addition to Secret Service
+storage.
+
 The platform boundary tests currently pass locally: 13 Apple tests cover the
 contract and device-only Keychain/LocalAuthentication policy, while 21 Windows
 tests cover the contract, P/Invoke surface and DPAPI/Windows Hello policy. The
@@ -121,8 +142,9 @@ evidence is still required:
   exact release commit;
 - message/FFI fuzzing, secret-redaction review and an independent security
   review;
-- complete Linux, Apple and Windows runtime UI/native packaging integrations,
-  including host wiring for the Tabs and Places data bridges;
+- complete Linux Places/Tabs/Logins data presentation, migration and
+  Sync-enabled Flatpak packaging, plus Apple and Windows runtime UI/native
+  packaging integrations;
 - an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
   and the equivalent bridge/vault/package evidence for WinCairo.
 
@@ -133,9 +155,19 @@ Mozilla-hosted Firefox compatibility.
 WPE remains blocked while WPEView lacks an isolated document-start/message
 bridge and while every native library has not passed 16 KiB page-size checks.
 WinCairo remains blocked until its isolated bridge, vault and packaged native
-core pass security tests. `scripts/verify-sync-release.sh` enforces these
-conditions; setting a flag without the corresponding audit evidence is not a
-valid release process.
+core pass security tests. `scripts/verify-sync-release.sh` is a fail-closed
+mechanical prerequisite check, not an audit substitute. Its Linux production
+mode requires evidence files for the Sync-enabled build, Secret Service,
+four-engine interoperability, data migration, Flatpak and security review;
+release reviewers must still validate that those files belong to the exact
+release commit and satisfy this checklist.
+
+The Linux gate accepts paths through `XANH_LINUX_SYNC_BUILD_EVIDENCE`,
+`XANH_LINUX_SECRET_SERVICE_EVIDENCE`, `XANH_LINUX_INTEROP_EVIDENCE`,
+`XANH_LINUX_DATA_MIGRATION_EVIDENCE`, `XANH_LINUX_FLATPAK_EVIDENCE` and
+`XANH_LINUX_USER_PRESENCE_EVIDENCE` and
+`XANH_LINUX_SECURITY_REVIEW_EVIDENCE`. Merely creating placeholder files is a
+release-process failure even though the shell gate can only verify presence.
 
 ## Required interoperability testing
 

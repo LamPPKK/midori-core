@@ -66,6 +66,9 @@ namespace Xanh {
                 var tab = tabs.lookup (state.id);
                 if (tab != null) update_tab_label (tab);
             });
+            notify["is-active"].connect (() => {
+                if (!is_active) (application as BrowserApplication)?.lock_sync_vault ();
+            });
             close_request.connect (on_close_request);
         }
 
@@ -199,6 +202,7 @@ namespace Xanh {
             menu.append ("Toggle Images", "win.toggle-images");
             menu.append ("Clear Private Data", "win.clear-data");
             menu.append ("Import Legacy Profile", "win.import-profile");
+            menu.append ("Firefox Sync", "win.firefox-sync");
             menu.append ("About Xanh Browser", "win.about");
             return menu;
         }
@@ -217,6 +221,8 @@ namespace Xanh {
             add_action (action ("toggle-images", toggle_images));
             add_action (action ("clear-data", confirm_clear_data));
             add_action (action ("import-profile", confirm_profile_import));
+            add_action (action ("firefox-sync", () =>
+                (application as BrowserApplication)?.show_sync_settings (this)));
             add_action (action ("about", show_about));
         }
 
@@ -613,6 +619,7 @@ namespace Xanh {
             plugin_host.shutting_down ();
             if (plugin_host.session_enabled) persist_session ();
             plugins.shutdown ();
+            (application as BrowserApplication)?.window_closing ();
             return false;
         }
 

@@ -184,6 +184,14 @@ Mozilla approval or a documented self-hosted deployment, signed artifacts and
 the interoperability/security matrix remain mandatory. Sync tokens, scoped
 keys and passwords are never included in `.xanhbackup`.
 
+On Linux, the optional native build now exposes account controls in the GTK
+menu, opens OAuth in the system browser, validates the registered callback and
+stores account/Sync/vault state in Secret Service. The ordinary desktop build
+fails closed when the native core or approved/self-hosted configuration is not
+present. Linux production remains gated until Places/Tabs/Logins UI migration,
+Sync-enabled Flatpak packaging, audited OS user-presence for password unlock,
+and the interoperability/security evidence are complete.
+
 Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
 the Application Services runtime; the base app loads it only after the user
 chooses Firefox Sync. CI builds both base-only and `lite-with-sync` bundles,

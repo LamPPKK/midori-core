@@ -107,9 +107,14 @@ vala_precompile(XANH_APP_C xanh-browser
 PACKAGES ${XANH_VALA_PACKAGES}
 OPTIONS ${XANH_VALA_OPTIONS}
 DIRECTORY desktop-app
-CUSTOM_VAPIS "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi")
+CUSTOM_VAPIS
+    "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
+    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi")
 
-add_executable(xanh-browser ${XANH_APP_C} desktop/sync-link-check.c)
+add_executable(xanh-browser
+    ${XANH_APP_C}
+    desktop/sync-link-check.c
+    desktop/sync-host.c)
 target_include_directories(xanh-browser PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
 target_link_libraries(xanh-browser PRIVATE xanh-browser-core PkgConfig::XANH)
 
@@ -123,6 +128,8 @@ if(XANH_ENABLE_FIREFOX_SYNC)
         INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/xanh-sync-core/include")
     target_link_libraries(xanh-browser PRIVATE xanh-sync-core-native)
     target_compile_definitions(xanh-browser PRIVATE XANH_ENABLE_FIREFOX_SYNC=1)
+    pkg_check_modules(XANH_SECRET REQUIRED IMPORTED_TARGET libsecret-1>=0.20)
+    target_link_libraries(xanh-browser PRIVATE PkgConfig::XANH_SECRET)
 endif()
 
 function(add_xanh_plugin target source manifest)
@@ -161,7 +168,9 @@ function(add_xanh_test target)
     PACKAGES ${XANH_VALA_PACKAGES}
     OPTIONS ${XANH_VALA_OPTIONS}
     DIRECTORY "tests/${target}"
-    CUSTOM_VAPIS "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi")
+    CUSTOM_VAPIS
+        "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
+        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi")
     add_executable(${target} ${${target}_C})
     target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
     target_link_libraries(${target} PRIVATE xanh-browser-core PkgConfig::XANH)
@@ -169,6 +178,13 @@ function(add_xanh_test target)
 endfunction()
 
 if(BUILD_TESTING)
+    add_executable(sync-host-test
+        tests-modern/sync-host-test.c
+        desktop/sync-host.c)
+    target_include_directories(sync-host-test PRIVATE desktop)
+    target_link_libraries(sync-host-test PRIVATE PkgConfig::XANH)
+    add_test(NAME sync-host-test COMMAND sync-host-test)
+
     add_executable(webkit-version-test tests-modern/webkit-version-test.c)
     target_compile_definitions(webkit-version-test PRIVATE
         XANH_REQUIRED_WEBKIT_MAJOR=${XANH_WEBKITGTK_MIN_MAJOR}
@@ -199,6 +215,7 @@ if(BUILD_TESTING)
             desktop/web-extension-bridge.vala
             desktop/browser-window.vala
             desktop/application.vala)
+    target_sources(application-smoke-test PRIVATE desktop/sync-host.c)
     add_dependencies(application-smoke-test
         xanh-adblock xanh-bookmarks xanh-session xanh-colorful-tabs
         xanh-status-clock xanh-status-features)

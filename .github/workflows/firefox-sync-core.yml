@@ -57,8 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.97.1
-      - name: Install NSS build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libnss3-dev libnspr4-dev
+      - name: Install NSS and Linux host build dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libnss3-dev libnspr4-dev libsecret-1-dev libjson-glib-dev
       - name: Prepare the NSS layout required by Application Services
         run: |
           mkdir -p "$RUNNER_TEMP/nss/lib" "$RUNNER_TEMP/nss/include"
@@ -107,6 +109,19 @@ jobs:
           grep -R -F 'createBookmark' target/bindings/swift
           grep -R -F 'recordHistory' target/bindings/kotlin
           grep -R -F 'recordHistory' target/bindings/swift
+      - name: Compile and run the Linux Secret Service host boundary
+        run: |
+          read -r -a host_cflags <<< "$(pkg-config --cflags gio-2.0 json-glib-1.0 libsecret-1)"
+          read -r -a host_libs <<< "$(pkg-config --libs gio-2.0 json-glib-1.0 libsecret-1)"
+          cc -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter \
+            -DXANH_ENABLE_FIREFOX_SYNC=1 \
+            -Idesktop -Ixanh-sync-core/include \
+            tests-modern/sync-host-production-test.c desktop/sync-host.c \
+            "${host_cflags[@]}" "${host_libs[@]}" \
+            -Lxanh-sync-core/target/release -lxanh_sync_core \
+            -o "$RUNNER_TEMP/xanh-sync-host-production-test"
+          LD_LIBRARY_PATH="$RUNNER_TEMP/nss/lib:$GITHUB_WORKSPACE/xanh-sync-core/target/release" \
+            "$RUNNER_TEMP/xanh-sync-host-production-test"
       - name: Smoke-test the stable C ABI without exposing the generated key
         run: |
           LD_LIBRARY_PATH="$RUNNER_TEMP/nss/lib" python3 - <<'PY'

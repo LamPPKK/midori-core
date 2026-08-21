@@ -33,6 +33,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   history and native Application Services round-trip tests. Bookmark traversal
   is non-recursive and bounded; private delete requests fail closed, and a
   process-wide runtime lease prevents cross-profile Sync-engine registration.
+- Added the Linux GTK Firefox Sync host boundary with system-browser OAuth,
+  exact callback validation, asynchronous native operations, Secret Service
+  persistence, server-aware scheduling, vault expiry and keep/delete
+  disconnect controls. Linux data migration and production packaging remain
+  release-gated.
+- Hardened the Linux host so network work never holds the GTK state lock,
+  focus-loss vault locking is deferred safely across native operations,
+  disconnect retries preserve their original keep/delete intent, auth failures
+  require account attention, and production gates require concrete evidence
+  files instead of boolean claims.
 
 ### Changed
 

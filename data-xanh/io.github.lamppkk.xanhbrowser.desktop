@@ -7,6 +7,6 @@ Exec=xanh-browser %U
 Icon=io.github.lamppkk.xanhbrowser
 Terminal=false
 Categories=Network;WebBrowser;
-MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/xanh-browser;
 StartupNotify=true
 DBusActivatable=true

@@ -68,4 +68,20 @@ import Testing
         isPrivate: false,
         userSelected: true
     ).isAllowed)
+    let userInfoOrigin = try #require(URL(string: "https://user@example.org"))
+    #expect(!XanhCredentialContext(
+        documentURL: valid.documentURL,
+        topFrameOrigin: userInfoOrigin,
+        frameOrigin: valid.frameOrigin,
+        isPrivate: false,
+        userSelected: true
+    ).isAllowed)
+    let originWithPath = try #require(URL(string: "https://example.org/path"))
+    #expect(!XanhCredentialContext(
+        documentURL: valid.documentURL,
+        topFrameOrigin: valid.topFrameOrigin,
+        frameOrigin: originWithPath,
+        isPrivate: false,
+        userSelected: true
+    ).isAllowed)
 }

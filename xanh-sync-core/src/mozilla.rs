@@ -14,7 +14,7 @@ use fxa_client::{
     DeviceConfig, FirefoxAccount, FxaConfig, FxaError, FxaEvent, FxaServer, FxaState,
 };
 use logins::encryption::{ManagedEncryptorDecryptor, StaticKeyManager};
-use logins::LoginStore;
+use logins::{Login, LoginEntry, LoginStore};
 use places::{
     BookmarkItem as PlacesBookmarkItem, BookmarkPosition as PlacesBookmarkPosition,
     BookmarkType as PlacesBookmarkType, BookmarkUpdateInfo as PlacesBookmarkUpdateInfo,
@@ -33,14 +33,17 @@ use tabs::{ClientRemoteTabs, RemoteTabRecord, TabsDeviceType, TabsStore};
 use url::Url;
 
 use crate::{
-    sanitized_title, sanitized_web_url, truncate, validate_bookmark_delete,
-    validate_bookmark_update, validate_history_delete, validate_history_limit,
-    validate_legacy_bookmarks, validate_local_history, validate_local_tabs, validate_new_bookmark,
-    AccountServer, AccountState, BookmarkKind, BookmarkRecord, BookmarkRoot, BookmarkUpdate,
-    DeviceKind, HistoryTransition, HistoryVisitRecord, LegacyBookmark, LegacyBookmarkImportResult,
-    LocalHistoryUpdateResult, LocalHistoryVisit, LocalTab, LocalTabsUpdateResult, NewBookmark,
-    RemoteDeviceKind, RemoteTab, RemoteTabsDevice, SyncConfig, SyncEngine, SyncError, SyncReason,
-    SyncStatus, MAX_BOOKMARK_ITEMS, MAX_BOOKMARK_JSON_BYTES, MAX_DEVICE_ID_LENGTH,
+    sanitize_credential_record, sanitize_credential_records, sanitized_title, sanitized_web_url,
+    truncate, validate_bookmark_delete, validate_bookmark_update, validate_credential_action,
+    validate_credential_context, validate_credential_update, validate_history_delete,
+    validate_history_limit, validate_legacy_bookmarks, validate_local_history, validate_local_tabs,
+    validate_new_bookmark, validate_new_credential, AccountServer, AccountState, BookmarkKind,
+    BookmarkRecord, BookmarkRoot, BookmarkUpdate, CredentialContext, CredentialRecord,
+    CredentialUpdate, DeviceKind, HistoryTransition, HistoryVisitRecord, LegacyBookmark,
+    LegacyBookmarkImportResult, LocalHistoryUpdateResult, LocalHistoryVisit, LocalTab,
+    LocalTabsUpdateResult, NewBookmark, NewCredential, RemoteDeviceKind, RemoteTab,
+    RemoteTabsDevice, SyncConfig, SyncEngine, SyncError, SyncReason, SyncStatus,
+    ValidatedCredentialFields, MAX_BOOKMARK_ITEMS, MAX_BOOKMARK_JSON_BYTES, MAX_DEVICE_ID_LENGTH,
     MAX_DEVICE_NAME_LENGTH, MAX_ICON_URL_LENGTH, MAX_PLACES_URL_LENGTH, MAX_REMOTE_DEVICES,
     MAX_REMOTE_TABS_PER_DEVICE, MAX_REMOTE_TABS_TOTAL, MAX_TITLE_LENGTH, MAX_URL_HISTORY,
     MAX_URL_LENGTH,
@@ -188,6 +191,40 @@ impl MozillaSyncRuntime {
     pub fn lock_vault(&self) -> Result<(), SyncError> {
         self.backend()?.lock_logins();
         Ok(())
+    }
+
+    pub fn credentials(
+        &self,
+        context: CredentialContext,
+    ) -> Result<Vec<CredentialRecord>, SyncError> {
+        self.backend()?.credentials(context)
+    }
+
+    pub fn add_credential(&self, credential: NewCredential) -> Result<CredentialRecord, SyncError> {
+        self.backend()?.add_credential(credential)
+    }
+
+    pub fn update_credential(
+        &self,
+        credential: CredentialUpdate,
+    ) -> Result<CredentialRecord, SyncError> {
+        self.backend()?.update_credential(credential)
+    }
+
+    pub fn delete_credential(
+        &self,
+        id: String,
+        context: CredentialContext,
+    ) -> Result<bool, SyncError> {
+        self.backend()?.delete_credential(id, context)
+    }
+
+    pub fn touch_credential(
+        &self,
+        id: String,
+        context: CredentialContext,
+    ) -> Result<(), SyncError> {
+        self.backend()?.touch_credential(id, context)
     }
 
     pub fn sync(
@@ -430,6 +467,77 @@ impl MozillaBackend {
         }
     }
 
+    pub fn credentials(
+        &mut self,
+        context: CredentialContext,
+    ) -> Result<Vec<CredentialRecord>, SyncError> {
+        let origin = validate_credential_context(&context, self.vault_unlocked())?;
+        let host = Url::parse(&origin)
+            .map_err(backend_error)?
+            .host_str()
+            .ok_or_else(|| SyncError::InvalidBridgeMessage("credential origin has no host".into()))?
+            .to_owned();
+        let records = self
+            .logins_store()?
+            .get_by_base_domain(&host)
+            .map_err(backend_error)?
+            .into_iter()
+            .filter_map(login_to_credential_record)
+            .collect();
+        Ok(sanitize_credential_records(records, &origin))
+    }
+
+    pub fn add_credential(
+        &mut self,
+        credential: NewCredential,
+    ) -> Result<CredentialRecord, SyncError> {
+        let fields = validate_new_credential(credential, self.vault_unlocked())?;
+        let origin = fields.origin.clone();
+        let login = self
+            .logins_store()?
+            .add_or_update(to_login_entry(fields))
+            .map_err(backend_error)?;
+        validated_login_for_origin(login, &origin)
+    }
+
+    pub fn update_credential(
+        &mut self,
+        credential: CredentialUpdate,
+    ) -> Result<CredentialRecord, SyncError> {
+        let (id, fields) = validate_credential_update(credential, self.vault_unlocked())?;
+        let origin = fields.origin.clone();
+        let store = self.logins_store()?;
+        ensure_login_for_origin(store, &id, &origin)?;
+        let login = store
+            .update(&id, to_login_entry(fields))
+            .map_err(backend_error)?;
+        validated_login_for_origin(login, &origin)
+    }
+
+    pub fn delete_credential(
+        &mut self,
+        id: String,
+        context: CredentialContext,
+    ) -> Result<bool, SyncError> {
+        let (id, origin) = validate_credential_action(&id, &context, self.vault_unlocked())?;
+        let store = self.logins_store()?;
+        if login_for_origin(store, &id, &origin)?.is_none() {
+            return Ok(false);
+        }
+        store.delete(&id).map_err(backend_error)
+    }
+
+    pub fn touch_credential(
+        &mut self,
+        id: String,
+        context: CredentialContext,
+    ) -> Result<(), SyncError> {
+        let (id, origin) = validate_credential_action(&id, &context, self.vault_unlocked())?;
+        let store = self.logins_store()?;
+        ensure_login_for_origin(store, &id, &origin)?;
+        store.touch(&id).map_err(backend_error)
+    }
+
     pub fn update_local_tabs(
         &mut self,
         tabs: Vec<LocalTab>,
@@ -657,6 +765,10 @@ impl MozillaBackend {
             .ok_or_else(|| SyncError::Backend("local Places store was deleted".into()))
     }
 
+    fn logins_store(&self) -> Result<&LoginStore, SyncError> {
+        self.logins.as_deref().ok_or(SyncError::VaultLocked)
+    }
+
     fn places_reader(&self) -> Result<&PlacesDb, SyncError> {
         self.places_reader
             .as_ref()
@@ -796,6 +908,75 @@ impl MozillaBackend {
         }
         Ok(())
     }
+}
+
+fn to_login_entry(fields: ValidatedCredentialFields) -> LoginEntry {
+    LoginEntry {
+        origin: fields.origin.clone(),
+        form_action_origin: Some(fields.origin),
+        http_realm: None,
+        username_field: fields.username_field,
+        password_field: fields.password_field,
+        username: fields.username,
+        password: fields.password,
+    }
+}
+
+fn login_to_credential_record(login: Login) -> Option<CredentialRecord> {
+    if login.http_realm.is_some() {
+        return None;
+    }
+    Some(CredentialRecord {
+        id: login.id,
+        origin: login.origin,
+        form_action_origin: login.form_action_origin?,
+        username_field: login.username_field,
+        password_field: login.password_field,
+        username: login.username,
+        password: login.password,
+        time_created_epoch_millis: login.time_created,
+        time_password_changed_epoch_millis: login.time_password_changed,
+        time_last_used_epoch_millis: login.time_last_used,
+        times_used: login.times_used,
+    })
+}
+
+fn validated_login_for_origin(
+    login: Login,
+    expected_origin: &str,
+) -> Result<CredentialRecord, SyncError> {
+    login_to_credential_record(login)
+        .and_then(|record| sanitize_credential_record(record, expected_origin))
+        .ok_or_else(|| {
+            SyncError::Backend("Logins returned a credential outside the Xanh policy".into())
+        })
+}
+
+fn ensure_login_for_origin(
+    store: &LoginStore,
+    id: &str,
+    expected_origin: &str,
+) -> Result<(), SyncError> {
+    login_for_origin(store, id, expected_origin)?
+        .map(|_| ())
+        .ok_or_else(|| {
+            SyncError::InvalidBridgeMessage("credential is unavailable for this origin".into())
+        })
+}
+
+fn login_for_origin(
+    store: &LoginStore,
+    id: &str,
+    expected_origin: &str,
+) -> Result<Option<CredentialRecord>, SyncError> {
+    let Some(login) = store.get(id).map_err(backend_error)? else {
+        return Ok(None);
+    };
+    validated_login_for_origin(login, expected_origin)
+        .map(Some)
+        .map_err(|_| {
+            SyncError::InvalidBridgeMessage("credential is unavailable for this origin".into())
+        })
 }
 
 impl Drop for MozillaBackend {
@@ -1201,8 +1382,15 @@ mod tests {
     #[test]
     fn places_bookmarks_and_history_round_trip_through_the_production_backend() {
         let profile = tempfile::tempdir().unwrap();
-        let mut backend =
-            MozillaBackend::open(test_config(), profile.path(), None, None, None).unwrap();
+        let logins_key = generate_local_logins_key().unwrap();
+        let mut backend = MozillaBackend::open(
+            test_config(),
+            profile.path(),
+            Some(logins_key.clone()),
+            None,
+            None,
+        )
+        .unwrap();
 
         let legacy = LegacyBookmark {
             url: "https://example.com/legacy".into(),
@@ -1328,6 +1516,64 @@ mod tests {
             .is_err());
         assert!(backend.delete_bookmark(bookmark_guid, false).unwrap());
         assert!(backend.delete_bookmark(folder_guid, false).unwrap());
+
+        let credential_context = CredentialContext {
+            document_url: "https://example.com/login".into(),
+            top_frame_origin: "https://example.com".into(),
+            frame_origin: "https://example.com".into(),
+            is_private: false,
+            user_selected: true,
+        };
+        let new_credential = NewCredential {
+            context: credential_context.clone(),
+            username_field: "email".into(),
+            password_field: "password".into(),
+            username: "person@example.com".into(),
+            password: "initial secret".into(),
+        };
+        let added = backend.add_credential(new_credential.clone()).unwrap();
+        let retried = backend.add_credential(new_credential).unwrap();
+        assert_eq!(retried.id, added.id);
+        let listed = backend.credentials(credential_context.clone()).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].password, "initial secret");
+
+        let updated = backend
+            .update_credential(CredentialUpdate {
+                id: added.id.clone(),
+                context: credential_context.clone(),
+                username_field: "email".into(),
+                password_field: "new-password".into(),
+                username: "person@example.com".into(),
+                password: "updated secret".into(),
+            })
+            .unwrap();
+        assert_eq!(updated.password, "updated secret");
+        backend
+            .touch_credential(added.id.clone(), credential_context.clone())
+            .unwrap();
+        assert!(backend.credentials(credential_context.clone()).unwrap()[0].times_used >= 1);
+
+        let mut wrong_origin = credential_context.clone();
+        wrong_origin.document_url = "https://other.example/login".into();
+        wrong_origin.top_frame_origin = "https://other.example".into();
+        wrong_origin.frame_origin = "https://other.example".into();
+        assert!(backend
+            .delete_credential(added.id.clone(), wrong_origin)
+            .is_err());
+        let mut private = credential_context.clone();
+        private.is_private = true;
+        assert!(backend.credentials(private).is_err());
+
+        backend.lock_logins();
+        assert!(matches!(
+            backend.credentials(credential_context.clone()),
+            Err(SyncError::VaultLocked)
+        ));
+        backend.unlock_logins(logins_key).unwrap();
+        assert!(backend
+            .delete_credential(added.id, credential_context)
+            .unwrap());
 
         let mut parent_guid = crate::bookmark_root_guid(BookmarkRoot::Unfiled);
         let mut top_folder_guid = None;

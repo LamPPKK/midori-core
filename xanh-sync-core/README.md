@@ -46,9 +46,9 @@ cargo build --release --features mozilla --manifest-path xanh-sync-core/Cargo.to
 The release CI reads the UniFFI metadata from that exact native library and
 generates both Kotlin and Swift bindings with the locked `bindgen-cli` feature.
 This ensures `MozillaSyncRuntime` (OAuth, account state, vault, single-flight
-sync, local/remote Tabs data, Places bookmark/history data and disconnect) is
-present in the foreign-language contract; generated files are build artifacts,
-not hand-edited source.
+sync, local/remote Tabs data, Places bookmark/history data, bounded Logins CRUD
+and disconnect) is present in the foreign-language contract; generated files
+are build artifacts, not hand-edited source.
 
 Platform hosts replace the local Tabs state through `update_local_tabs` before
 a Tabs sync, then read remote records grouped by device through `remote_tabs`.
@@ -119,6 +119,39 @@ upstream API so the next history Sync can propagate removals. History input is
 capped at 8 MiB/1,000 records and output at 8
 MiB/500 records. Bookmark mutations are capped at 64 KiB, trees at 16 MiB and
 10,000 records, titles at 4,096 UTF-8 bytes and URLs at 8,192 bytes.
+
+## Logins credential bridge
+
+`credentials`, `add_credential`, `update_credential`, `delete_credential` and
+`touch_credential` operate on the same encrypted Logins store registered with
+the upstream Passwords Sync engine. All five operations require a strict
+`CredentialContext`: regular browsing, a native user action, an unlocked vault,
+an HTTPS document without userinfo, and canonical same-origin top/frame
+origins. The core derives the stored origin and form-action origin from that
+validated context; callers cannot supply a broader target. HTTP-auth records
+and Firefox records outside this exact-origin HTTPS subset are never returned
+to a Xanh fill bridge.
+
+New and updated form credentials use this JSON shape at the C boundary:
+
+```json
+{"context":{"document_url":"https://example.com/login","top_frame_origin":"https://example.com","frame_origin":"https://example.com","is_private":false,"user_selected":true},"username_field":"email","password_field":"password","username":"person@example.com","password":"secret"}
+```
+
+An update additionally requires `id`. Returned records include `id`, canonical
+`origin`/`form_action_origin`, the four form/secret fields and millisecond
+creation/password-change/last-use metadata plus `times_used`. Add uses the
+upstream add-or-update path so retrying the same origin/form/username does not
+create a duplicate. IDs are opaque safe ASCII. Inputs are capped at 64 KiB;
+queries return at most 100 validated records and 4 MiB. Usernames are capped at
+1,024 UTF-8 bytes, passwords at 4,096, field names at 256 and origins at 8,192.
+
+Every returned JSON string and generated-binding record contains plaintext
+secret material. Hosts must keep it inside the lifetime of an authenticated
+native credential picker, never log/cache it, and release C strings promptly.
+This core contract does not itself authorize an injected script: each platform
+must additionally validate its current tab ID/navigation nonce in an isolated
+world before requesting or filling a selected credential.
 
 `bindgen-context` is a metadata-only workspace member. It enables the pinned
 Application Services graph for `cargo metadata`, allowing UniFFI to locate the

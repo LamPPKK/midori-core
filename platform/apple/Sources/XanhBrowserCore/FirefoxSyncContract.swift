@@ -144,14 +144,26 @@ public struct XanhCredentialContext: Equatable, Sendable {
     }
 
     public var isAllowed: Bool {
-        guard !isPrivate, userSelected, documentURL.scheme?.lowercased() == "https",
-              documentURL.user == nil, documentURL.password == nil else { return false }
+        guard !isPrivate, userSelected, documentURL.xanhIsSecureHTTPS,
+              topFrameOrigin.xanhIsSecureOrigin,
+              frameOrigin.xanhIsSecureOrigin else { return false }
         return documentURL.xanhOrigin == topFrameOrigin.xanhOrigin
             && topFrameOrigin.xanhOrigin == frameOrigin.xanhOrigin
     }
 }
 
 private extension URL {
+    var xanhIsSecureHTTPS: Bool {
+        scheme?.lowercased() == "https" && host != nil && user == nil && password == nil
+    }
+
+    var xanhIsSecureOrigin: Bool {
+        xanhIsSecureHTTPS
+            && (path.isEmpty || path == "/")
+            && query == nil
+            && fragment == nil
+    }
+
     var xanhOrigin: String? {
         guard let scheme = scheme?.lowercased(), let host = host?.lowercased() else { return nil }
         return "\(scheme)://\(host):\(port ?? (scheme == "https" ? 443 : -1))"

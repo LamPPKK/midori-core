@@ -12,10 +12,11 @@ use crate::{
 
 #[cfg(feature = "mozilla")]
 use crate::{
-    AccountState, BookmarkUpdate, LegacyBookmark, LocalHistoryVisit, LocalTab, NewBookmark,
-    SyncEngine, SyncReason, MAX_BOOKMARK_JSON_BYTES, MAX_BOOKMARK_MUTATION_JSON_BYTES,
-    MAX_HISTORY_INPUT_JSON_BYTES, MAX_HISTORY_OUTPUT_JSON_BYTES, MAX_LEGACY_BOOKMARK_JSON_BYTES,
-    MAX_LOCAL_TABS_JSON_BYTES, MAX_REMOTE_TABS_JSON_BYTES,
+    AccountState, BookmarkUpdate, CredentialUpdate, LegacyBookmark, LocalHistoryVisit, LocalTab,
+    NewBookmark, NewCredential, SyncEngine, SyncReason, MAX_BOOKMARK_JSON_BYTES,
+    MAX_BOOKMARK_MUTATION_JSON_BYTES, MAX_CREDENTIAL_INPUT_JSON_BYTES,
+    MAX_CREDENTIAL_OUTPUT_JSON_BYTES, MAX_HISTORY_INPUT_JSON_BYTES, MAX_HISTORY_OUTPUT_JSON_BYTES,
+    MAX_LEGACY_BOOKMARK_JSON_BYTES, MAX_LOCAL_TABS_JSON_BYTES, MAX_REMOTE_TABS_JSON_BYTES,
 };
 #[cfg(feature = "mozilla")]
 use std::collections::HashMap;
@@ -793,6 +794,209 @@ pub extern "C" fn xanh_sync_runtime_clear_history(runtime: *mut c_void) -> bool 
     #[cfg(not(feature = "mozilla"))]
     {
         let _ = runtime;
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        false
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xanh_sync_runtime_credentials_json(
+    runtime: *mut c_void,
+    context_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "mozilla")]
+    {
+        let result = (|| {
+            let mut runtime = unsafe { lock_runtime(runtime) }?;
+            // SAFETY: pointer validation is centralized in `required_string`.
+            let context_json = unsafe { required_string(context_json, "context_json") }?;
+            if context_json.len() > MAX_CREDENTIAL_INPUT_JSON_BYTES {
+                return Err(format!(
+                    "context_json exceeds {MAX_CREDENTIAL_INPUT_JSON_BYTES} bytes"
+                ));
+            }
+            let context: CredentialContext =
+                serde_json::from_str(&context_json).map_err(|error| error.to_string())?;
+            let json = runtime
+                .credentials(context)
+                .and_then(|records| serde_json::to_string(&records).map_err(backend_error))
+                .map_err(|error| error.to_string())?;
+            if json.len() > MAX_CREDENTIAL_OUTPUT_JSON_BYTES {
+                return Err(format!(
+                    "credential JSON exceeds {MAX_CREDENTIAL_OUTPUT_JSON_BYTES} bytes"
+                ));
+            }
+            Ok(json)
+        })();
+        match result {
+            Ok(json) => owned_string(json),
+            Err(error) => {
+                set_last_error(error);
+                ptr::null_mut()
+            }
+        }
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = (runtime, context_json);
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        ptr::null_mut()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xanh_sync_runtime_add_credential(
+    runtime: *mut c_void,
+    credential_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "mozilla")]
+    {
+        credential_mutation_json(runtime, credential_json, |runtime, json| {
+            let credential: NewCredential =
+                serde_json::from_str(json).map_err(|error| error.to_string())?;
+            runtime
+                .add_credential(credential)
+                .map_err(|error| error.to_string())
+        })
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = (runtime, credential_json);
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        ptr::null_mut()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xanh_sync_runtime_update_credential(
+    runtime: *mut c_void,
+    credential_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "mozilla")]
+    {
+        credential_mutation_json(runtime, credential_json, |runtime, json| {
+            let credential: CredentialUpdate =
+                serde_json::from_str(json).map_err(|error| error.to_string())?;
+            runtime
+                .update_credential(credential)
+                .map_err(|error| error.to_string())
+        })
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = (runtime, credential_json);
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        ptr::null_mut()
+    }
+}
+
+#[cfg(feature = "mozilla")]
+fn credential_mutation_json<F>(
+    runtime: *mut c_void,
+    credential_json: *const c_char,
+    operation: F,
+) -> *mut c_char
+where
+    F: FnOnce(&mut Runtime, &str) -> Result<crate::CredentialRecord, String>,
+{
+    let result = (|| {
+        let mut runtime = unsafe { lock_runtime(runtime) }?;
+        // SAFETY: pointer validation is centralized in `required_string`.
+        let credential_json = unsafe { required_string(credential_json, "credential_json") }?;
+        if credential_json.len() > MAX_CREDENTIAL_INPUT_JSON_BYTES {
+            return Err(format!(
+                "credential_json exceeds {MAX_CREDENTIAL_INPUT_JSON_BYTES} bytes"
+            ));
+        }
+        let json = serde_json::to_string(&operation(&mut runtime, &credential_json)?)
+            .map_err(|error| error.to_string())?;
+        if json.len() > MAX_CREDENTIAL_OUTPUT_JSON_BYTES {
+            return Err(format!(
+                "credential JSON exceeds {MAX_CREDENTIAL_OUTPUT_JSON_BYTES} bytes"
+            ));
+        }
+        Ok(json)
+    })();
+    match result {
+        Ok(json) => owned_string(json),
+        Err(error) => {
+            set_last_error(error);
+            ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xanh_sync_runtime_delete_credential(
+    runtime: *mut c_void,
+    id: *const c_char,
+    context_json: *const c_char,
+) -> i32 {
+    #[cfg(feature = "mozilla")]
+    {
+        let result = (|| {
+            let mut runtime = unsafe { lock_runtime(runtime) }?;
+            let id = unsafe { required_string(id, "id") }?;
+            let context_json = unsafe { required_string(context_json, "context_json") }?;
+            if context_json.len() > MAX_CREDENTIAL_INPUT_JSON_BYTES {
+                return Err(format!(
+                    "context_json exceeds {MAX_CREDENTIAL_INPUT_JSON_BYTES} bytes"
+                ));
+            }
+            let context: CredentialContext =
+                serde_json::from_str(&context_json).map_err(|error| error.to_string())?;
+            runtime
+                .delete_credential(id, context)
+                .map_err(|error| error.to_string())
+        })();
+        match result {
+            Ok(true) => 1,
+            Ok(false) => 0,
+            Err(error) => {
+                set_last_error(error);
+                -1
+            }
+        }
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = (runtime, id, context_json);
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xanh_sync_runtime_touch_credential(
+    runtime: *mut c_void,
+    id: *const c_char,
+    context_json: *const c_char,
+) -> bool {
+    #[cfg(feature = "mozilla")]
+    {
+        let result = (|| {
+            let mut runtime = unsafe { lock_runtime(runtime) }?;
+            let id = unsafe { required_string(id, "id") }?;
+            let context_json = unsafe { required_string(context_json, "context_json") }?;
+            if context_json.len() > MAX_CREDENTIAL_INPUT_JSON_BYTES {
+                return Err(format!(
+                    "context_json exceeds {MAX_CREDENTIAL_INPUT_JSON_BYTES} bytes"
+                ));
+            }
+            let context: CredentialContext =
+                serde_json::from_str(&context_json).map_err(|error| error.to_string())?;
+            runtime
+                .touch_credential(id, context)
+                .map_err(|error| error.to_string())
+        })();
+        result.map(|_| true).unwrap_or_else(|error| {
+            set_last_error(error);
+            false
+        })
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = (runtime, id, context_json);
         set_last_error("xanh-sync-core was built without the mozilla feature");
         false
     }

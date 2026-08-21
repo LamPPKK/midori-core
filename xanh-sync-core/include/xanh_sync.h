@@ -89,6 +89,35 @@ bool xanh_sync_runtime_delete_history_visit(
 /* Deletes all local Places history through the upstream API so tombstones can
  * be propagated by the next history Sync. */
 bool xanh_sync_runtime_clear_history(void *runtime);
+/* Credential JSON is plaintext secret material. Never log, cache, or place it
+ * in `.xanhbackup`; release returned strings immediately after native UI use.
+ * Every operation requires a strict CredentialContext with an explicit user
+ * action, regular browsing, an unlocked vault and an exact HTTPS top/frame
+ * origin. Results are capped at 100 records/4 MiB. Add is retry-safe for the
+ * same origin/form/username through the upstream add-or-update operation. */
+char *xanh_sync_runtime_credentials_json(
+    void *runtime,
+    const char *context_json
+);
+char *xanh_sync_runtime_add_credential(
+    void *runtime,
+    const char *credential_json
+);
+char *xanh_sync_runtime_update_credential(
+    void *runtime,
+    const char *credential_json
+);
+/* Returns 1 when deleted, 0 when absent and -1 on error. */
+int32_t xanh_sync_runtime_delete_credential(
+    void *runtime,
+    const char *id,
+    const char *context_json
+);
+bool xanh_sync_runtime_touch_credential(
+    void *runtime,
+    const char *id,
+    const char *context_json
+);
 bool xanh_sync_runtime_disconnect(void *runtime, bool delete_local);
 
 #ifdef __cplusplus

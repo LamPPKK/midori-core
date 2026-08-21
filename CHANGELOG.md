@@ -33,6 +33,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   history and native Application Services round-trip tests. Bookmark traversal
   is non-recursive and bounded; private delete requests fail closed, and a
   process-wide runtime lease prevents cross-profile Sync-engine registration.
+- Added a bounded Logins CRUD contract across UniFFI and the stable C ABI. It
+  requires an unlocked vault and explicit native action, derives exact HTTPS
+  origins from same-origin frame context, excludes private/HTTP-auth/unsafe
+  records and keeps platform credential presentation release-gated.
 - Added the Linux GTK Firefox Sync host boundary with system-browser OAuth,
   exact callback validation, asynchronous native operations, Secret Service
   persistence, server-aware scheduling, vault expiry and keep/delete

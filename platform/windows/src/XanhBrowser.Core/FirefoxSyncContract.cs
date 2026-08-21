@@ -98,11 +98,19 @@ public sealed record CredentialAccessContext(
     public bool IsAllowed => !IsPrivate
         && UserSelected
         && IsSecure(DocumentUri)
+        && IsSecureOrigin(TopFrameOrigin)
+        && IsSecureOrigin(FrameOrigin)
         && Origin(DocumentUri) == Origin(TopFrameOrigin)
         && Origin(TopFrameOrigin) == Origin(FrameOrigin);
 
-    private static bool IsSecure(Uri uri) => uri.Scheme == Uri.UriSchemeHttps
+    private static bool IsSecure(Uri uri) => uri.IsAbsoluteUri
+        && uri.Scheme == Uri.UriSchemeHttps
         && string.IsNullOrEmpty(uri.UserInfo);
+
+    private static bool IsSecureOrigin(Uri uri) => IsSecure(uri)
+        && uri.AbsolutePath == "/"
+        && string.IsNullOrEmpty(uri.Query)
+        && string.IsNullOrEmpty(uri.Fragment);
 
     private static string Origin(Uri uri) => $"{uri.Scheme.ToLowerInvariant()}://{uri.IdnHost.ToLowerInvariant()}:{uri.Port}";
 }

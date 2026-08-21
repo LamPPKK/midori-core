@@ -113,6 +113,12 @@ jobs:
           grep -R -F 'recordHistory' target/bindings/swift
           grep -R -F 'clearHistory' target/bindings/kotlin
           grep -R -F 'clearHistory' target/bindings/swift
+          grep -R -F 'credentials' target/bindings/kotlin
+          grep -R -F 'credentials' target/bindings/swift
+          grep -R -F 'addCredential' target/bindings/kotlin
+          grep -R -F 'addCredential' target/bindings/swift
+          grep -R -F 'deleteCredential' target/bindings/kotlin
+          grep -R -F 'deleteCredential' target/bindings/swift
           grep -R -F 'generateLocalLoginsKey' target/bindings/kotlin
           grep -R -F 'generateLocalLoginsKey' target/bindings/swift
       - name: Compile and run the Linux Secret Service host boundary
@@ -176,10 +182,29 @@ jobs:
           core.xanh_sync_runtime_delete_history_visit.restype = ctypes.c_bool
           core.xanh_sync_runtime_clear_history.argtypes = [ctypes.c_void_p]
           core.xanh_sync_runtime_clear_history.restype = ctypes.c_bool
+          core.xanh_sync_runtime_credentials_json.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_credentials_json.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_add_credential.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_add_credential.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_update_credential.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_update_credential.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_delete_credential.argtypes = [
+              ctypes.c_void_p,
+              ctypes.c_char_p,
+              ctypes.c_char_p,
+          ]
+          core.xanh_sync_runtime_delete_credential.restype = ctypes.c_int32
+          core.xanh_sync_runtime_touch_credential.argtypes = [
+              ctypes.c_void_p,
+              ctypes.c_char_p,
+              ctypes.c_char_p,
+          ]
+          core.xanh_sync_runtime_touch_credential.restype = ctypes.c_bool
 
           version = core.xanh_sync_core_version()
           key = core.xanh_sync_generate_local_logins_key()
           assert version and key
+          key_value = ctypes.string_at(key)
           core.xanh_sync_string_free(version)
           core.xanh_sync_string_free(key)
 
@@ -192,7 +217,7 @@ jobs:
           }).encode()
           with tempfile.TemporaryDirectory() as profile:
               runtime = core.xanh_sync_runtime_open(
-                  config, profile.encode(), None, None, None
+                  config, profile.encode(), key_value, None, None
               )
               assert runtime
               with tempfile.TemporaryDirectory() as second_profile:
@@ -351,6 +376,64 @@ jobs:
               assert core.xanh_sync_runtime_delete_bookmark(runtime, bookmark_guid.encode(), True) == -1
               assert core.xanh_sync_runtime_delete_bookmark(runtime, bookmark_guid.encode(), False) == 1
               assert core.xanh_sync_runtime_delete_bookmark(runtime, folder_guid.encode(), False) == 1
+
+              credential_context = {
+                  'document_url': 'https://example.com/login',
+                  'top_frame_origin': 'https://example.com',
+                  'frame_origin': 'https://example.com',
+                  'is_private': False,
+                  'user_selected': True,
+              }
+              new_credential = json.dumps({
+                  'context': credential_context,
+                  'username_field': 'email',
+                  'password_field': 'password',
+                  'username': 'person@example.com',
+                  'password': 'initial secret',
+              }).encode()
+              credential_ptr = core.xanh_sync_runtime_add_credential(runtime, new_credential)
+              assert credential_ptr
+              credential = json.loads(ctypes.string_at(credential_ptr))
+              core.xanh_sync_string_free(credential_ptr)
+              assert credential['origin'] == 'https://example.com'
+              assert credential['password'] == 'initial secret'
+              credentials_ptr = core.xanh_sync_runtime_credentials_json(
+                  runtime,
+                  json.dumps(credential_context).encode(),
+              )
+              assert credentials_ptr
+              credentials = json.loads(ctypes.string_at(credentials_ptr))
+              core.xanh_sync_string_free(credentials_ptr)
+              assert [item['id'] for item in credentials] == [credential['id']]
+              update_credential = json.dumps({
+                  'id': credential['id'],
+                  'context': credential_context,
+                  'username_field': 'email',
+                  'password_field': 'password',
+                  'username': 'person@example.com',
+                  'password': 'updated secret',
+              }).encode()
+              updated_ptr = core.xanh_sync_runtime_update_credential(runtime, update_credential)
+              assert updated_ptr
+              updated = json.loads(ctypes.string_at(updated_ptr))
+              core.xanh_sync_string_free(updated_ptr)
+              assert updated['password'] == 'updated secret'
+              assert core.xanh_sync_runtime_touch_credential(
+                  runtime,
+                  credential['id'].encode(),
+                  json.dumps(credential_context).encode(),
+              )
+              private_context = dict(credential_context, is_private=True)
+              assert core.xanh_sync_runtime_delete_credential(
+                  runtime,
+                  credential['id'].encode(),
+                  json.dumps(private_context).encode(),
+              ) == -1
+              assert core.xanh_sync_runtime_delete_credential(
+                  runtime,
+                  credential['id'].encode(),
+                  json.dumps(credential_context).encode(),
+              ) == 1
               core.xanh_sync_runtime_free(runtime)
               with tempfile.TemporaryDirectory() as replacement_profile:
                   replacement = core.xanh_sync_runtime_open(

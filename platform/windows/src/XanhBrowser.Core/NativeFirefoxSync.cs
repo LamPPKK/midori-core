@@ -145,6 +145,31 @@ public sealed class NativeFirefoxSync : IFirefoxSyncRuntime
             throw new InvalidOperationException(NativeMethods.TakeLastError());
     }
 
+    // These JSON strings contain plaintext credentials. Callers must keep
+    // them inside the native credential UI lifetime and must never log them.
+    public string CredentialsJson(string contextJson) =>
+        NativeMethods.TakeOwned(NativeMethods.CredentialsJson(_handle, contextJson));
+
+    public string AddCredential(string credentialJson) =>
+        NativeMethods.TakeOwned(NativeMethods.AddCredential(_handle, credentialJson));
+
+    public string UpdateCredential(string credentialJson) =>
+        NativeMethods.TakeOwned(NativeMethods.UpdateCredential(_handle, credentialJson));
+
+    public bool DeleteCredential(string id, string contextJson)
+    {
+        var result = NativeMethods.DeleteCredential(_handle, id, contextJson);
+        return result >= 0
+            ? result == 1
+            : throw new InvalidOperationException(NativeMethods.TakeLastError());
+    }
+
+    public void TouchCredential(string id, string contextJson)
+    {
+        if (!NativeMethods.TouchCredential(_handle, id, contextJson))
+            throw new InvalidOperationException(NativeMethods.TakeLastError());
+    }
+
     public void Disconnect(bool deleteLocal)
     {
         if (!NativeMethods.Disconnect(_handle, deleteLocal))
@@ -253,6 +278,29 @@ internal static class NativeMethods
     [DllImport(Library, EntryPoint = "xanh_sync_runtime_clear_history")]
     [return: MarshalAs(UnmanagedType.I1)]
     internal static extern bool ClearHistory(SyncRuntimeHandle runtime);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_credentials_json")]
+    internal static extern nint CredentialsJson(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string contextJson);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_add_credential")]
+    internal static extern nint AddCredential(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string credentialJson);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_update_credential")]
+    internal static extern nint UpdateCredential(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string credentialJson);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_delete_credential")]
+    internal static extern int DeleteCredential(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string id,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string contextJson);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_touch_credential")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool TouchCredential(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string id,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string contextJson);
     [DllImport(Library, EntryPoint = "xanh_sync_runtime_disconnect")]
     [return: MarshalAs(UnmanagedType.I1)]
     internal static extern bool Disconnect(SyncRuntimeHandle runtime, [MarshalAs(UnmanagedType.I1)] bool deleteLocal);

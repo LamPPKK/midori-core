@@ -135,7 +135,8 @@ header passes a GLib-backed syntax check, and the source release gate passes.
 Generated Kotlin and Swift bindings are checked in CI against the portable
 UniFFI contract and the concrete `MozillaSyncRuntime` API.
 
-The first real cross-platform data bridges are now present for Tabs and Places.
+The cross-platform data bridges are now present for Tabs, Places and the shared
+Logins store contract.
 Generated Kotlin and Swift bindings expose typed UniFFI methods; Vala, C# and
 WinCairo use the stable C ABI with bounded JSON. The core writes only regular
 local HTTP(S) tabs to the upstream Tabs store, reports how many private tabs it
@@ -152,8 +153,18 @@ bookmark/history URLs are canonical HTTP(S); non-web
 bookmarks received from Firefox remain manageable but are explicitly marked
 non-openable. Bookmark trees are traversed with bounded, non-recursive child
 queries instead of Application Services' unbounded deepest-tree fetch. Native
-Linux CI opens the production runtime and round-trips all
-three data bridges against the pinned Mozilla stores through the C ABI.
+Linux CI opens the production runtime and round-trips all four Sync data types
+against the pinned Mozilla stores through the C ABI.
+
+The Logins boundary now provides bounded exact-origin form credential
+list/add/update/delete/touch operations through UniFFI and the stable C ABI.
+It derives both stored origins from a strict HTTPS same-origin context, requires
+an explicit native user action and an unlocked vault, rejects private browsing,
+and filters HTTP-auth, userinfo, cross-origin and oversized upstream records.
+Plaintext output is explicitly short-lived secret material. This is the shared
+storage/FFI contract only: no edition may enable filling until its native picker,
+fresh OS user-presence check and isolated tab-ID/navigation-nonce bridge pass
+the security gate.
 
 The Linux GTK host runs native C ABI/network calls and SQLite snapshot/hash
 preparation away from the UI thread; size-bounded JSON assembly and panel updates
@@ -172,8 +183,9 @@ compatibility mirrors so the rollback tables remain intact; local tabs are
 published with a global, regular-only 200-record/4-MiB-safe host bound across
 all open windows. Malformed
 legacy rows are skipped per record without blocking later Sync, and remote tabs
-are only opened after row activation. Logins credential presentation remains
-separate release work, so this is not yet Linux production enablement.
+are only opened after row activation. Linux still has no reviewed native Logins
+picker or isolated credential fill bridge, so this is not yet Linux production
+enablement.
 
 The current Linux preview asks Secret Service for the Logins key. A locked
 collection can show the desktop keyring prompt, but an already-unlocked

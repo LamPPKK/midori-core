@@ -67,6 +67,9 @@ public sealed class FirefoxSyncContractTests
         Assert.IsTrue(valid.IsAllowed);
         Assert.IsFalse((valid with { IsPrivate = true }).IsAllowed);
         Assert.IsFalse((valid with { FrameOrigin = new Uri("https://evil.example") }).IsAllowed);
+        Assert.IsFalse((valid with { TopFrameOrigin = new Uri("https://user@example.org") }).IsAllowed);
+        Assert.IsFalse((valid with { FrameOrigin = new Uri("https://example.org/path") }).IsAllowed);
+        Assert.IsFalse((valid with { FrameOrigin = new Uri("relative", UriKind.Relative) }).IsAllowed);
     }
 
     [TestMethod]
@@ -129,5 +132,25 @@ public sealed class FirefoxSyncContractTests
         Assert.AreEqual(
             UnmanagedType.I1,
             privateFlag.GetCustomAttribute<MarshalAsAttribute>()?.Value);
+    }
+
+    [TestMethod]
+    public void NativeLoginsBridgeUsesTheReviewedCAbiSymbols()
+    {
+        string? EntryPoint(string method) => typeof(NativeMethods)
+            .GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)
+            ?.GetCustomAttribute<DllImportAttribute>()
+            ?.EntryPoint;
+
+        var expected = new Dictionary<string, string>
+        {
+            [nameof(NativeMethods.CredentialsJson)] = "xanh_sync_runtime_credentials_json",
+            [nameof(NativeMethods.AddCredential)] = "xanh_sync_runtime_add_credential",
+            [nameof(NativeMethods.UpdateCredential)] = "xanh_sync_runtime_update_credential",
+            [nameof(NativeMethods.DeleteCredential)] = "xanh_sync_runtime_delete_credential",
+            [nameof(NativeMethods.TouchCredential)] = "xanh_sync_runtime_touch_credential",
+        };
+        foreach (var pair in expected)
+            Assert.AreEqual(pair.Value, EntryPoint(pair.Key), pair.Key);
     }
 }

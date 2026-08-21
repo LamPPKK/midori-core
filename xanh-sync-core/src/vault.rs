@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::SyncError;
+
 pub const VAULT_IDLE_TIMEOUT_SECONDS: u64 = 5 * 60;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -22,6 +24,7 @@ impl VaultState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, uniffi::Record)]
+#[serde(deny_unknown_fields)]
 pub struct CredentialContext {
     pub document_url: String,
     pub top_frame_origin: String,
@@ -31,27 +34,55 @@ pub struct CredentialContext {
 }
 
 pub fn credential_access_allowed(context: &CredentialContext, vault: VaultState) -> bool {
-    if context.is_private || !context.user_selected || matches!(vault, VaultState::Locked) {
-        return false;
+    credential_origin(context, vault).is_ok()
+}
+
+/// Validates the credential bridge context and returns the canonical HTTPS
+/// origin that may be used for a Logins operation. The caller must still bind
+/// the request to its current tab/navigation nonce before entering this core.
+pub fn credential_origin(
+    context: &CredentialContext,
+    vault: VaultState,
+) -> Result<String, SyncError> {
+    if matches!(vault, VaultState::Locked) {
+        return Err(SyncError::VaultLocked);
     }
-    let Ok(document) = Url::parse(&context.document_url) else {
-        return false;
-    };
-    let Ok(top) = Url::parse(&context.top_frame_origin) else {
-        return false;
-    };
-    let Ok(frame) = Url::parse(&context.frame_origin) else {
-        return false;
-    };
-    if document.scheme() != "https"
-        || top.scheme() != "https"
-        || frame.scheme() != "https"
-        || !document.username().is_empty()
-        || document.password().is_some()
+    if context.is_private {
+        return Err(SyncError::InvalidBridgeMessage(
+            "credential access is disabled in private browsing".into(),
+        ));
+    }
+    if !context.user_selected {
+        return Err(SyncError::InvalidBridgeMessage(
+            "credential access requires an explicit native user action".into(),
+        ));
+    }
+    let document = parse_https_url(&context.document_url, false)?;
+    let top = parse_https_url(&context.top_frame_origin, true)?;
+    let frame = parse_https_url(&context.frame_origin, true)?;
+    if !same_origin(&document, &top) || !same_origin(&top, &frame) {
+        return Err(SyncError::InvalidBridgeMessage(
+            "credential access requires an exact-origin top-level frame".into(),
+        ));
+    }
+    Ok(document.origin().ascii_serialization())
+}
+
+fn parse_https_url(value: &str, origin_only: bool) -> Result<Url, SyncError> {
+    let url = Url::parse(value).map_err(|_| {
+        SyncError::InvalidBridgeMessage("credential context contains an invalid URL".into())
+    })?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || (origin_only && (url.path() != "/" || url.query().is_some() || url.fragment().is_some()))
     {
-        return false;
+        return Err(SyncError::InvalidBridgeMessage(
+            "credential context is not a canonical HTTPS origin".into(),
+        ));
     }
-    same_origin(&document, &top) && same_origin(&top, &frame)
+    Ok(url)
 }
 
 fn same_origin(left: &Url, right: &Url) -> bool {
@@ -89,6 +120,19 @@ mod tests {
         value = context();
         value.document_url = "http://example.org/login".into();
         assert!(!credential_access_allowed(&value, unlocked));
+        value = context();
+        value.top_frame_origin = "https://user@example.org".into();
+        assert!(!credential_access_allowed(&value, unlocked));
+        value = context();
+        value.frame_origin = "https://example.org/path".into();
+        assert!(!credential_access_allowed(&value, unlocked));
+        value = context();
+        value.user_selected = false;
+        assert!(!credential_access_allowed(&value, unlocked));
+        assert_eq!(
+            credential_origin(&context(), unlocked).unwrap(),
+            "https://example.org"
+        );
     }
 
     #[test]

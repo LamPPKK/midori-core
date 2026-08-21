@@ -15,9 +15,6 @@ import io.github.lamppkk.xanhbrowser.sync.SyncEngine
 import io.github.lamppkk.xanhbrowser.sync.SyncReason
 import io.github.lamppkk.xanhbrowser.sync.SyncSnapshot
 import io.github.lamppkk.xanhbrowser.sync.XanhSyncRuntime
-import mozilla.appservices.places.BookmarkRoot
-import mozilla.appservices.places.uniffi.VisitObservation
-import mozilla.appservices.places.uniffi.VisitType
 import mozilla.appservices.remotetabs.ClientRemoteTabs
 import mozilla.appservices.remotetabs.RemoteTabRecord
 
@@ -109,25 +106,16 @@ internal class LiteSyncCoordinator private constructor(context: Context) {
     fun recordCurrentVisit(url: String?, title: String?) {
         val webUrl = url?.takeIf(::isWebUrl) ?: return
         val active = runtimeOrNull() ?: return
-        active.places().getWriter().noteObservation(
-            VisitObservation(
-                url = webUrl,
-                title = title.orEmpty(),
-                visitType = VisitType.LINK,
-                at = System.currentTimeMillis(),
-            ),
-        )
+        active.recordHistory(webUrl, title.orEmpty(), System.currentTimeMillis())
         active.recordLocalChange()
         scheduleLocalChange()
     }
 
     fun bookmarkCurrent(url: String?, title: String?): Boolean {
         val webUrl = url?.takeIf(::isWebUrl) ?: return false
-        val writer = runtimeOrNull()?.places()?.getWriter() ?: return false
-        if (writer.getBookmarksWithURL(webUrl).isEmpty()) {
-            writer.createBookmarkItem(BookmarkRoot.Mobile.id, webUrl, title?.ifBlank { webUrl } ?: webUrl)
-        }
-        runtimeOrNull()?.recordLocalChange()
+        val active = runtimeOrNull() ?: return false
+        active.saveBookmark(webUrl, title?.ifBlank { webUrl } ?: webUrl)
+        active.recordLocalChange()
         scheduleLocalChange()
         return true
     }

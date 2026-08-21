@@ -108,10 +108,9 @@ class LiteCredentialBridge private constructor(
         activity.lifecycleScope.launch {
             val runtime = LiteSyncCoordinator.get(activity).runtimeOrNull() ?: return@launch
             if (!runtime.touchVault()) return@launch
-            val store = runtime.loginsOrNull() ?: return@launch
             val requestedOrigin = canonicalOrigin(sourceOrigin.toString()) ?: return@launch
             val logins = withContext(Dispatchers.IO) {
-                store.list().filter { canonicalOrigin(it.origin) == requestedOrigin }
+                runtime.listLogins().filter { canonicalOrigin(it.origin) == requestedOrigin }
             }
             if (logins.isEmpty() || activity.isFinishing) return@launch
             AlertDialog.Builder(activity)
@@ -141,7 +140,9 @@ class LiteCredentialBridge private constructor(
                                 .toString(),
                         )
                     }
-                    activity.lifecycleScope.launch(Dispatchers.IO) { runCatching { store.touch(selected.id) } }
+                    activity.lifecycleScope.launch(Dispatchers.IO) {
+                        runCatching { runtime.touchLogin(selected.id) }
+                    }
                 }
                 .setNegativeButton(android.R.string.cancel, null)
                 .show()

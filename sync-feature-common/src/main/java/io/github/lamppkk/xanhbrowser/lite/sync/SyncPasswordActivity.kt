@@ -30,7 +30,7 @@ class SyncPasswordActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         LiteSyncProcessObserver.install(application)
         val available = LiteSyncCoordinator.get(this).runtimeOrNull()
-        if (available?.snapshot()?.vaultUnlocked != true || available.loginsOrNull() == null) {
+        if (available?.snapshot()?.vaultUnlocked != true) {
             Toast.makeText(this, R.string.sync_vault_locked, Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -72,7 +72,7 @@ class SyncPasswordActivity : AppCompatActivity() {
 
     private fun refresh() {
         lifecycleScope.launch {
-            val loaded = withContext(Dispatchers.IO) { runtime.loginsOrNull()?.list().orEmpty() }
+            val loaded = withContext(Dispatchers.IO) { runtime.listLogins() }
             if (!runtime.touchVault()) {
                 finish()
                 return@launch
@@ -129,8 +129,7 @@ class SyncPasswordActivity : AppCompatActivity() {
                 )
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
-                        val store = checkNotNull(runtime.loginsOrNull())
-                        if (existing == null) store.add(entry) else store.update(existing.id, entry)
+                        if (existing == null) runtime.addLogin(entry) else runtime.updateLogin(existing.id, entry)
                         runtime.recordLocalChange()
                     }
                     refresh()
@@ -147,7 +146,7 @@ class SyncPasswordActivity : AppCompatActivity() {
             .setPositiveButton(R.string.sync_delete_password) { _, _ ->
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
-                        runtime.loginsOrNull()?.delete(login.id)
+                        runtime.deleteLogin(login.id)
                         runtime.recordLocalChange()
                     }
                     refresh()

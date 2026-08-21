@@ -57,6 +57,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   GCR 4.
 - Modernized Android builds to JDK 17, Android SDK 36, AGP 9.3, Gradle 9.5,
   AndroidX and View Binding.
+- Updated the Lite on-demand Sync feature to use the lifecycle-safe Android AAR
+  facade for Places and Logins instead of retaining native storage handles.
 
 ### Security
 

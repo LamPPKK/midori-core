@@ -8,6 +8,7 @@ mod controller;
 mod ffi;
 mod migration;
 mod scheduler;
+mod tabs_data;
 mod vault;
 
 #[cfg(feature = "mozilla")]
@@ -18,6 +19,7 @@ pub use config::*;
 pub use controller::*;
 pub use migration::*;
 pub use scheduler::*;
+pub use tabs_data::*;
 pub use vault::*;
 
 pub const XANH_SYNC_CORE_VERSION: &str = env!("CARGO_PKG_VERSION");

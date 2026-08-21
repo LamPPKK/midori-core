@@ -46,6 +46,14 @@ bool xanh_sync_runtime_unlock_vault(void *runtime, const char *local_logins_key)
 bool xanh_sync_runtime_lock_vault(void *runtime);
 bool xanh_sync_runtime_vault_unlocked(void *runtime);
 char *xanh_sync_runtime_sync(void *runtime, int32_t reason, const char *engines_json);
+/* Replaces the write-only local Tabs state used by the next Sync. `tabs_json`
+ * is a JSON array of LocalTab records. Private records are skipped by the core;
+ * malformed/unsafe web URLs reject the entire update. The returned JSON is a
+ * LocalTabsUpdateResult. */
+char *xanh_sync_runtime_update_local_tabs(void *runtime, const char *tabs_json);
+/* Returns sanitized remote tabs grouped by device. This is display data only;
+ * the host must require an explicit user action before opening any URL. */
+char *xanh_sync_runtime_remote_tabs_json(void *runtime);
 bool xanh_sync_runtime_disconnect(void *runtime, bool delete_local);
 
 #ifdef __cplusplus

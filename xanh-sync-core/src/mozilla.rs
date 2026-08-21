@@ -19,12 +19,15 @@ use sync_manager::{
     DeviceSettings, ServiceStatus, SyncAuthInfo, SyncEngineSelection, SyncParams,
     SyncReason as MozillaSyncReason,
 };
-use tabs::TabsStore;
+use tabs::{ClientRemoteTabs, RemoteTabRecord, TabsDeviceType, TabsStore};
 use url::Url;
 
 use crate::{
-    AccountServer, AccountState, DeviceKind, SyncConfig, SyncEngine, SyncError, SyncReason,
-    SyncStatus,
+    sanitized_web_url, truncate, validate_local_tabs, AccountServer, AccountState, DeviceKind,
+    LocalTab, LocalTabsUpdateResult, RemoteDeviceKind, RemoteTab, RemoteTabsDevice, SyncConfig,
+    SyncEngine, SyncError, SyncReason, SyncStatus, MAX_DEVICE_ID_LENGTH, MAX_DEVICE_NAME_LENGTH,
+    MAX_ICON_URL_LENGTH, MAX_REMOTE_DEVICES, MAX_REMOTE_TABS_PER_DEVICE, MAX_REMOTE_TABS_TOTAL,
+    MAX_TITLE_LENGTH, MAX_URL_HISTORY, MAX_URL_LENGTH,
 };
 
 const SYNC_SCOPE: &str = "https://identity.mozilla.com/apps/oldsync";
@@ -152,6 +155,17 @@ impl MozillaSyncRuntime {
             status,
             next_sync_allowed_epoch_seconds,
         })
+    }
+
+    pub fn update_local_tabs(
+        &self,
+        tabs: Vec<LocalTab>,
+    ) -> Result<LocalTabsUpdateResult, SyncError> {
+        self.backend()?.update_local_tabs(tabs)
+    }
+
+    pub fn remote_tabs(&self) -> Result<Vec<RemoteTabsDevice>, SyncError> {
+        self.backend()?.remote_tabs()
     }
 
     pub fn disconnect(&self, delete_local: bool) -> Result<(), SyncError> {
@@ -303,6 +317,43 @@ impl MozillaBackend {
         if let Some(logins) = self.logins.take() {
             logins.shutdown();
         }
+    }
+
+    pub fn update_local_tabs(
+        &mut self,
+        tabs: Vec<LocalTab>,
+    ) -> Result<LocalTabsUpdateResult, SyncError> {
+        let (tabs, result) = validate_local_tabs(tabs)?;
+        let store = self
+            .tabs
+            .as_ref()
+            .ok_or_else(|| SyncError::Backend("local Tabs store was deleted".into()))?;
+        store.set_local_tabs(
+            tabs.into_iter()
+                .map(|tab| RemoteTabRecord {
+                    title: tab.title,
+                    url_history: tab.url_history,
+                    icon: tab.icon_url,
+                    last_used: tab.last_used_epoch_millis,
+                    inactive: false,
+                    pinned: tab.is_pinned,
+                    index: tab.index,
+                    window_id: String::new(),
+                    tab_group_id: String::new(),
+                })
+                .collect(),
+        );
+        Ok(result)
+    }
+
+    pub fn remote_tabs(&mut self) -> Result<Vec<RemoteTabsDevice>, SyncError> {
+        let store = self
+            .tabs
+            .as_ref()
+            .ok_or_else(|| SyncError::Backend("local Tabs store was deleted".into()))?;
+        Ok(sanitize_remote_tabs(
+            store.remote_tabs().unwrap_or_default(),
+        ))
     }
 
     pub fn sync(
@@ -500,6 +551,154 @@ fn to_device_type(kind: DeviceKind) -> fxa_client::DeviceType {
     }
 }
 
+fn sanitize_remote_tabs(devices: Vec<ClientRemoteTabs>) -> Vec<RemoteTabsDevice> {
+    let mut remaining_tabs = MAX_REMOTE_TABS_TOTAL;
+    let mut sanitized: Vec<_> = devices
+        .into_iter()
+        .take(MAX_REMOTE_DEVICES)
+        .filter(|device| {
+            !device.client_id.is_empty() && device.client_id.len() <= MAX_DEVICE_ID_LENGTH
+        })
+        .filter_map(|device| {
+            if remaining_tabs == 0 {
+                return None;
+            }
+            let tabs: Vec<_> = device
+                .remote_tabs
+                .into_iter()
+                .take(MAX_REMOTE_TABS_PER_DEVICE.min(remaining_tabs))
+                .filter_map(|tab| {
+                    let url_history: Vec<_> = tab
+                        .url_history
+                        .iter()
+                        .take(MAX_URL_HISTORY)
+                        .filter_map(|url| sanitized_web_url(url, MAX_URL_LENGTH))
+                        .collect();
+                    if url_history.is_empty() {
+                        return None;
+                    }
+                    Some(RemoteTab {
+                        title: truncate(&tab.title, MAX_TITLE_LENGTH),
+                        url_history,
+                        icon_url: tab
+                            .icon
+                            .as_deref()
+                            .and_then(|url| sanitized_web_url(url, MAX_ICON_URL_LENGTH)),
+                        last_used_epoch_millis: tab.last_used.max(0),
+                        is_pinned: tab.pinned,
+                    })
+                })
+                .collect();
+            if tabs.is_empty() {
+                return None;
+            }
+            remaining_tabs -= tabs.len();
+            Some(RemoteTabsDevice {
+                device_id: device.client_id,
+                device_name: truncate(&device.client_name, MAX_DEVICE_NAME_LENGTH),
+                device_kind: match device.device_type {
+                    TabsDeviceType::Desktop => RemoteDeviceKind::Desktop,
+                    TabsDeviceType::Mobile => RemoteDeviceKind::Mobile,
+                    TabsDeviceType::Tablet => RemoteDeviceKind::Tablet,
+                    TabsDeviceType::TV => RemoteDeviceKind::Tv,
+                    TabsDeviceType::VR => RemoteDeviceKind::Vr,
+                    TabsDeviceType::Unknown => RemoteDeviceKind::Unknown,
+                },
+                last_modified_epoch_millis: device.last_modified.max(0),
+                tabs,
+            })
+        })
+        .collect();
+    sanitized.sort_by(|left, right| {
+        right
+            .last_modified_epoch_millis
+            .cmp(&left.last_modified_epoch_millis)
+            .then_with(|| left.device_name.cmp(&right.device_name))
+            .then_with(|| left.device_id.cmp(&right.device_id))
+    });
+    sanitized
+}
+
 fn backend_error(error: impl std::fmt::Display) -> SyncError {
     SyncError::Backend(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn upstream_tab(urls: &[&str]) -> RemoteTabRecord {
+        RemoteTabRecord {
+            title: "Remote".into(),
+            url_history: urls.iter().map(|url| (*url).to_owned()).collect(),
+            icon: Some("javascript:alert(1)".into()),
+            last_used: -1,
+            inactive: false,
+            pinned: true,
+            index: 0,
+            window_id: String::new(),
+            tab_group_id: String::new(),
+        }
+    }
+
+    fn upstream_device(
+        id: &str,
+        name: &str,
+        last_modified: i64,
+        tabs: Vec<RemoteTabRecord>,
+    ) -> ClientRemoteTabs {
+        ClientRemoteTabs {
+            client_id: id.into(),
+            client_name: name.into(),
+            device_type: TabsDeviceType::Desktop,
+            last_modified,
+            remote_tabs: tabs,
+            tab_groups: HashMap::new(),
+            windows: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn remote_tabs_are_sanitized_grouped_and_sorted_without_navigation() {
+        let devices = vec![
+            upstream_device(
+                "older",
+                "Desktop B",
+                100,
+                vec![upstream_tab(&["file:///secret"])],
+            ),
+            upstream_device(
+                "newer",
+                "Desktop A",
+                200,
+                vec![upstream_tab(&[
+                    "javascript:alert(1)",
+                    "https://example.com/allowed",
+                ])],
+            ),
+        ];
+
+        let result = sanitize_remote_tabs(devices);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].device_id, "newer");
+        assert_eq!(result[0].tabs.len(), 1);
+        assert_eq!(
+            result[0].tabs[0].url_history,
+            ["https://example.com/allowed"]
+        );
+        assert_eq!(result[0].tabs[0].icon_url, None);
+        assert_eq!(result[0].tabs[0].last_used_epoch_millis, 0);
+        assert!(result[0].tabs[0].is_pinned);
+    }
+
+    #[test]
+    fn remote_output_has_a_global_tab_limit() {
+        let tabs = vec![upstream_tab(&["https://example.com/allowed"]); MAX_REMOTE_TABS_TOTAL + 1];
+
+        let result = sanitize_remote_tabs(vec![upstream_device("device", "Desktop", 1, tabs)]);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].tabs.len(), MAX_REMOTE_TABS_TOTAL);
+    }
 }

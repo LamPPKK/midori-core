@@ -73,7 +73,7 @@ the platform UI, secure-state lifecycle, native packaging and required bridge
 tests are present. Environment flags are attestations backed by test evidence,
 not switches that make an incomplete integration safe.
 
-## Implementation snapshot (2026-08-18)
+## Implementation snapshot (2026-08-21)
 
 The shared implementation is pinned and reproducible: Rust unit tests pass,
 the `mozilla` feature builds and passes Clippy with warnings denied, the C ABI
@@ -81,8 +81,17 @@ header passes a GLib-backed syntax check, and the source release gate passes.
 Generated Kotlin and Swift bindings are checked in CI against the portable
 UniFFI contract and the concrete `MozillaSyncRuntime` API.
 
+The first real cross-platform data bridge is now present for Tabs. Generated
+Kotlin and Swift bindings expose typed UniFFI methods; Vala, C# and WinCairo
+use the stable C ABI with bounded JSON. The core writes only regular local
+HTTP(S) tabs to the upstream Tabs store, reports how many private tabs it
+skipped, and returns sanitized remote tabs grouped by device. It never opens a
+remote tab. The
+native Linux CI smoke test opens the production runtime and exercises both C
+entry points against the pinned Mozilla store.
+
 The platform boundary tests currently pass locally: 13 Apple tests cover the
-contract and device-only Keychain/LocalAuthentication policy, while 19 Windows
+contract and device-only Keychain/LocalAuthentication policy, while 20 Windows
 tests cover the contract, P/Invoke surface and DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application
@@ -98,7 +107,8 @@ evidence is still required:
   exact release commit;
 - message/FFI fuzzing, secret-redaction review and an independent security
   review;
-- complete Linux, Apple and Windows runtime UI/native packaging integrations;
+- complete Linux, Apple and Windows runtime UI/native packaging integrations,
+  including host wiring for the new Tabs data bridge;
 - an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
   and the equivalent bridge/vault/package evidence for WinCairo.
 

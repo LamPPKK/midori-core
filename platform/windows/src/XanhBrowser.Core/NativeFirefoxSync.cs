@@ -53,6 +53,12 @@ public sealed class NativeFirefoxSync : IDisposable
     public string Sync(FirefoxSyncReason reason, string enginesJson) =>
         NativeMethods.TakeOwned(NativeMethods.Sync(_handle, (int)reason, enginesJson));
 
+    public string UpdateLocalTabs(string tabsJson) =>
+        NativeMethods.TakeOwned(NativeMethods.UpdateLocalTabs(_handle, tabsJson));
+
+    public string RemoteTabsJson() =>
+        NativeMethods.TakeOwned(NativeMethods.RemoteTabsJson(_handle));
+
     public void Disconnect(bool deleteLocal)
     {
         if (!NativeMethods.Disconnect(_handle, deleteLocal))
@@ -122,6 +128,12 @@ internal static class NativeMethods
         SyncRuntimeHandle runtime,
         int reason,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string engines);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_update_local_tabs")]
+    internal static extern nint UpdateLocalTabs(
+        SyncRuntimeHandle runtime,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string tabs);
+    [DllImport(Library, EntryPoint = "xanh_sync_runtime_remote_tabs_json")]
+    internal static extern nint RemoteTabsJson(SyncRuntimeHandle runtime);
     [DllImport(Library, EntryPoint = "xanh_sync_runtime_disconnect")]
     [return: MarshalAs(UnmanagedType.I1)]
     internal static extern bool Disconnect(SyncRuntimeHandle runtime, [MarshalAs(UnmanagedType.I1)] bool deleteLocal);

@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using XanhBrowser.Core;
 
@@ -77,5 +79,21 @@ public sealed class FirefoxSyncContractTests
         vault.Unlock(now);
         vault.Lock();
         Assert.IsFalse(vault.IsUnlocked(now));
+    }
+
+    [TestMethod]
+    public void NativeTabsBridgeUsesTheReviewedCAbiSymbols()
+    {
+        string? EntryPoint(string method) => typeof(NativeMethods)
+            .GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)
+            ?.GetCustomAttribute<DllImportAttribute>()
+            ?.EntryPoint;
+
+        Assert.AreEqual(
+            "xanh_sync_runtime_update_local_tabs",
+            EntryPoint(nameof(NativeMethods.UpdateLocalTabs)));
+        Assert.AreEqual(
+            "xanh_sync_runtime_remote_tabs_json",
+            EntryPoint(nameof(NativeMethods.RemoteTabsJson)));
     }
 }

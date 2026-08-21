@@ -77,6 +77,9 @@ jobs:
           cp -R /usr/include/nspr/. "$RUNNER_TEMP/nss/include/"
       - name: Build the pinned native core
         run: |
+          NSS_DIR="$RUNNER_TEMP/nss" LD_LIBRARY_PATH="$RUNNER_TEMP/nss/lib" \
+            cargo test --locked --features mozilla \
+            --manifest-path xanh-sync-core/Cargo.toml
           NSS_DIR="$RUNNER_TEMP/nss" cargo build --locked --release --features mozilla \
             --manifest-path xanh-sync-core/Cargo.toml
           ldd xanh-sync-core/target/release/libxanh_sync_core.so
@@ -104,15 +107,74 @@ jobs:
         run: |
           LD_LIBRARY_PATH="$RUNNER_TEMP/nss/lib" python3 - <<'PY'
           import ctypes
+          import json
+          import tempfile
+
           core = ctypes.CDLL('xanh-sync-core/target/release/libxanh_sync_core.so')
           core.xanh_sync_core_version.restype = ctypes.c_void_p
           core.xanh_sync_generate_local_logins_key.restype = ctypes.c_void_p
           core.xanh_sync_string_free.argtypes = [ctypes.c_void_p]
+          core.xanh_sync_runtime_open.argtypes = [
+              ctypes.c_char_p,
+              ctypes.c_char_p,
+              ctypes.c_char_p,
+              ctypes.c_char_p,
+              ctypes.c_char_p,
+          ]
+          core.xanh_sync_runtime_open.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_free.argtypes = [ctypes.c_void_p]
+          core.xanh_sync_runtime_update_local_tabs.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+          core.xanh_sync_runtime_update_local_tabs.restype = ctypes.c_void_p
+          core.xanh_sync_runtime_remote_tabs_json.argtypes = [ctypes.c_void_p]
+          core.xanh_sync_runtime_remote_tabs_json.restype = ctypes.c_void_p
+
           version = core.xanh_sync_core_version()
           key = core.xanh_sync_generate_local_logins_key()
           assert version and key
           core.xanh_sync_string_free(version)
           core.xanh_sync_string_free(key)
+
+          config = json.dumps({
+              'server': {'kind': 'mozilla'},
+              'client_id': 'xanh-ci-contract',
+              'redirect_uri': 'xanh-browser://accounts/oauth',
+              'device_name': 'Xanh Browser CI',
+              'device_kind': 'desktop',
+          }).encode()
+          with tempfile.TemporaryDirectory() as profile:
+              runtime = core.xanh_sync_runtime_open(
+                  config, profile.encode(), None, None, None
+              )
+              assert runtime
+              local_tabs = json.dumps([
+                  {
+                      'title': 'Regular',
+                      'url_history': ['https://example.com/regular'],
+                      'icon_url': None,
+                      'last_used_epoch_millis': 1700000000000,
+                      'is_private': False,
+                      'is_pinned': True,
+                  },
+                  {
+                      'title': 'Private',
+                      'url_history': ['https://example.com/private'],
+                      'icon_url': None,
+                      'last_used_epoch_millis': 1700000000001,
+                      'is_private': True,
+                      'is_pinned': False,
+                  },
+              ]).encode()
+              update = core.xanh_sync_runtime_update_local_tabs(runtime, local_tabs)
+              assert update
+              assert json.loads(ctypes.string_at(update)) == {
+                  'accepted_count': 1,
+                  'skipped_private_count': 1,
+              }
+              core.xanh_sync_string_free(update)
+              remote = core.xanh_sync_runtime_remote_tabs_json(runtime)
+              assert remote and json.loads(ctypes.string_at(remote)) == []
+              core.xanh_sync_string_free(remote)
+              core.xanh_sync_runtime_free(runtime)
           PY
       - uses: actions/upload-artifact@v4
         with:

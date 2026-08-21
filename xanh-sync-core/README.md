@@ -42,8 +42,28 @@ cargo build --release --features mozilla --manifest-path xanh-sync-core/Cargo.to
 The release CI reads the UniFFI metadata from that exact native library and
 generates both Kotlin and Swift bindings with the locked `bindgen-cli` feature.
 This ensures `MozillaSyncRuntime` (OAuth, account state, vault, single-flight
-sync and disconnect) is present in the foreign-language contract; generated
-files are build artifacts, not hand-edited source.
+sync, local/remote Tabs data and disconnect) is present in the foreign-language
+contract; generated files are build artifacts, not hand-edited source.
+
+Platform hosts replace the local Tabs state through `update_local_tabs` before
+a Tabs sync, then read remote records grouped by device through `remote_tabs`.
+The C equivalents accept/return bounded JSON. The shared core excludes private
+tabs, rejects non-HTTP(S) or userinfo URLs and sanitizes untrusted remote URLs.
+Remote records are display-only: a host must require an explicit user action
+before opening one.
+
+The stable C JSON field names are:
+
+```json
+[{"title":"Example","url_history":["https://example.com/"],"icon_url":null,"last_used_epoch_millis":1700000000000,"is_private":false,"is_pinned":false}]
+```
+
+The update result is `{"accepted_count":1,"skipped_private_count":0}`.
+Remote output is an array of devices with `device_id`, `device_name`,
+`device_kind`, `last_modified_epoch_millis` and `tabs`; each tab has `title`,
+`url_history`, `icon_url`, `last_used_epoch_millis` and `is_pinned`. Local input
+is capped at 4 MiB/500 records, remote output at 8 MiB/500 records, URL history
+at 10 entries and each URL at 8,192 bytes.
 
 `bindgen-context` is a metadata-only workspace member. It enables the pinned
 Application Services graph for `cargo metadata`, allowing UniFFI to locate the

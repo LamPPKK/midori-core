@@ -9,7 +9,10 @@ use std::sync::{Mutex, MutexGuard};
 use crate::{credential_access_allowed, CredentialContext, VaultState, XANH_SYNC_CORE_VERSION};
 
 #[cfg(feature = "mozilla")]
-use crate::{AccountState, SyncEngine, SyncReason};
+use crate::{
+    AccountState, LocalTab, SyncEngine, SyncReason, MAX_LOCAL_TABS_JSON_BYTES,
+    MAX_REMOTE_TABS_JSON_BYTES,
+};
 #[cfg(feature = "mozilla")]
 use std::collections::HashMap;
 
@@ -414,6 +417,77 @@ pub extern "C" fn xanh_sync_runtime_sync(
 }
 
 #[no_mangle]
+pub extern "C" fn xanh_sync_runtime_update_local_tabs(
+    runtime: *mut c_void,
+    tabs_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "mozilla")]
+    {
+        let result = (|| {
+            let mut runtime = unsafe { lock_runtime(runtime) }?;
+            // SAFETY: pointer validation is centralized in `required_string`.
+            let tabs_json = unsafe { required_string(tabs_json, "tabs_json") }?;
+            if tabs_json.len() > MAX_LOCAL_TABS_JSON_BYTES {
+                return Err(format!(
+                    "tabs_json exceeds {MAX_LOCAL_TABS_JSON_BYTES} bytes"
+                ));
+            }
+            let tabs: Vec<LocalTab> =
+                serde_json::from_str(&tabs_json).map_err(|error| error.to_string())?;
+            let result = runtime
+                .update_local_tabs(tabs)
+                .map_err(|error| error.to_string())?;
+            serde_json::to_string(&result).map_err(|error| error.to_string())
+        })();
+        match result {
+            Ok(json) => owned_string(json),
+            Err(error) => {
+                set_last_error(error);
+                ptr::null_mut()
+            }
+        }
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = (runtime, tabs_json);
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        ptr::null_mut()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn xanh_sync_runtime_remote_tabs_json(runtime: *mut c_void) -> *mut c_char {
+    #[cfg(feature = "mozilla")]
+    {
+        let result = unsafe { lock_runtime(runtime) }.and_then(|mut runtime| {
+            let json = runtime
+                .remote_tabs()
+                .and_then(|tabs| serde_json::to_string(&tabs).map_err(backend_error))
+                .map_err(|error| error.to_string())?;
+            if json.len() > MAX_REMOTE_TABS_JSON_BYTES {
+                return Err(format!(
+                    "remote tabs JSON exceeds {MAX_REMOTE_TABS_JSON_BYTES} bytes"
+                ));
+            }
+            Ok(json)
+        });
+        match result {
+            Ok(json) => owned_string(json),
+            Err(error) => {
+                set_last_error(error);
+                ptr::null_mut()
+            }
+        }
+    }
+    #[cfg(not(feature = "mozilla"))]
+    {
+        let _ = runtime;
+        set_last_error("xanh-sync-core was built without the mozilla feature");
+        ptr::null_mut()
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn xanh_sync_runtime_disconnect(runtime: *mut c_void, delete_local: bool) -> bool {
     #[cfg(feature = "mozilla")]
     {
@@ -547,6 +621,11 @@ fn sync_reason(reason: i32) -> Result<SyncReason, String> {
         4 => Ok(SyncReason::PreSleep),
         _ => Err("unknown sync reason".into()),
     }
+}
+
+#[cfg(feature = "mozilla")]
+fn backend_error(error: impl std::fmt::Display) -> crate::SyncError {
+    crate::SyncError::Backend(error.to_string())
 }
 
 #[cfg(test)]

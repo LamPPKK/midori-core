@@ -25,6 +25,8 @@ case "$edition" in
   source)
     test -f xanh-sync-core/Cargo.lock
     test -f xanh-sync-core/include/xanh_sync.h
+    grep -F 'xanh_sync_runtime_update_local_tabs' xanh-sync-core/include/xanh_sync.h >/dev/null
+    grep -F 'xanh_sync_runtime_remote_tabs_json' xanh-sync-core/include/xanh_sync.h >/dev/null
     ;;
   linux)
     verify_native_core

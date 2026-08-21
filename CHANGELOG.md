@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added reproducible Sync release gates, generated cross-language bindings and
   an implementation-status record that keeps incomplete platform adapters out
   of production releases.
+- Added a bounded Firefox Tabs data bridge across UniFFI and the stable C ABI;
+  it excludes private tabs, sanitizes remote URLs and keeps remote opening
+  behind an explicit user action.
 
 ### Changed
 

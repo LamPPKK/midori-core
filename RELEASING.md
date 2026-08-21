@@ -92,7 +92,7 @@ allowed historical material, never a shipping dependency or application ID.
 2. Validate all GTK4 UI files and runtime linkage:
 
    ```sh
-   pkg-config --atleast-version=2.52.5 webkitgtk-6.0
+   pkg-config --atleast-version="$(cat WEBKITGTK_MIN_VERSION)" webkitgtk-6.0
    pkg-config --modversion webkitgtk-6.0
    for file in ui/*.ui; do gtk4-builder-tool validate "$file"; done
    ldd _build/xanh-browser
@@ -102,7 +102,7 @@ allowed historical material, never a shipping dependency or application ID.
    errors, media permissions, downloads, private mode, session recovery,
    profile import and every native plugin.
 
-Verification: tests must pass without warnings, WebKitGTK must be 2.52.5 or
+Verification: tests must pass without warnings, WebKitGTK must be 2.52.6 or
 newer, and `ldd` must contain no GTK3, WebKitGTK 4.0 or libsoup 2 library.
 
 ## 3. Build and inspect Flatpak
@@ -172,7 +172,7 @@ devices and encrypted backup round-trips with Lite and Windows.
 The initial preview pins WPEView 0.3.3, which embeds WPE WebKit 2.50.6, and
 Android lint reports its arm64 `libFLAC.so` as not 16 KiB page aligned. Both
 are production blockers. Do not suppress that lint warning or publish this
-edition until a reviewed WPEView artifact embeds WPE WebKit 2.52.5 or newer,
+edition until a reviewed WPEView artifact embeds WPE WebKit 2.52.6 or newer,
 all native libraries pass the 16 KiB check and the guarded
 `bundleWebKitProductionRelease` task succeeds with the distinct WebKit key.
 Bundle the reviewed WebKit/WPEView third-party notices and fulfill all source

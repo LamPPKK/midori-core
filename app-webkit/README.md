@@ -40,8 +40,11 @@ engine and 16 KiB page-alignment requirements.
 WPE Android is still an experimental embedding port. The current published
 WPEView artifact bundles WPE WebKit 2.50.6 and a `libFLAC.so` that Android lint
 reports as not 16 KiB page aligned. It must not be promoted to production until
-an upstream artifact with WPE WebKit 2.52.5 or newer passes lint, device and
-browser-flow testing.
+an upstream artifact with WPE WebKit 2.52.6 or newer passes lint, device and
+browser-flow testing. The required floor follows the
+[latest WPE stable release](https://wpewebkit.org/release/); wrapper availability
+is tracked separately through the
+[WPE Android releases](https://github.com/Igalia/wpe-android/releases).
 
 Any distributed artifact must also carry the required WebKit/WPEView and
 third-party license notices and satisfy the corresponding source-availability

@@ -15,10 +15,11 @@ jobs:
     steps:
       - run: pacman -Syu --noconfirm git cmake ninja vala gtk4 webkitgtk-6.0 libsoup3 sqlite libpeas-2 gcr-4 json-glib appstream dbus xorg-server-xvfb weston
       - uses: actions/checkout@v6
-      - name: Verify latest stable WebKitGTK baseline
+      - name: Verify pinned stable WebKitGTK baseline
         run: |
-          pkg-config --atleast-version=2.52.5 webkitgtk-6.0
-          pkg-config --atleast-version=2.52.5 javascriptcoregtk-6.0
+          required="$(cat WEBKITGTK_MIN_VERSION)"
+          pkg-config --atleast-version="$required" webkitgtk-6.0
+          pkg-config --atleast-version="$required" javascriptcoregtk-6.0
           pkg-config --modversion webkitgtk-6.0
           pkg-config --modversion javascriptcoregtk-6.0
       - run: cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr

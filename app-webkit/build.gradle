@@ -14,6 +14,7 @@ def syncSelfHostedOnly = providers.gradleProperty('xanhSyncSelfHostedOnly')
 
 def wpeViewVersion = file('WPEVIEW_VERSION').text.trim()
 def wpeRuntimeVersion = file('WPE_RUNTIME_VERSION').text.trim()
+def wpeProductionBaseline = rootProject.file('WEBKITGTK_MIN_VERSION').text.trim()
 def wpeRuntimeProductionReady = false
 
 def uploadStoreFile = providers.gradleProperty('xanhWebKitUploadStoreFile')
@@ -130,7 +131,7 @@ tasks.register('verifyWebKitProductionEngine') {
             throw new GradleException(
                 "WPEView ${wpeViewVersion} embeds WPE WebKit ${wpeRuntimeVersion} and ships a native " +
                     'library that is not 16 KiB page aligned. Keep this edition in preview until a ' +
-                    'WPEView release with WPE WebKit 2.52.5+ and full 16 KiB alignment is verified.'
+                    "WPEView release with WPE WebKit ${wpeProductionBaseline}+ and full 16 KiB alignment is verified."
             )
         }
     }

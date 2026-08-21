@@ -2,18 +2,24 @@
 
 #include <webkit/webkit.h>
 
-#define REQUIRED_MAJOR 2
-#define REQUIRED_MINOR 52
-#define REQUIRED_MICRO 5
+#ifndef XANH_REQUIRED_WEBKIT_MAJOR
+#error "XANH_REQUIRED_WEBKIT_MAJOR must be supplied by CMake"
+#endif
+#ifndef XANH_REQUIRED_WEBKIT_MINOR
+#error "XANH_REQUIRED_WEBKIT_MINOR must be supplied by CMake"
+#endif
+#ifndef XANH_REQUIRED_WEBKIT_MICRO
+#error "XANH_REQUIRED_WEBKIT_MICRO must be supplied by CMake"
+#endif
 
 static int
 version_is_supported(unsigned int major, unsigned int minor, unsigned int micro)
 {
-    if (major != REQUIRED_MAJOR)
-        return major > REQUIRED_MAJOR;
-    if (minor != REQUIRED_MINOR)
-        return minor > REQUIRED_MINOR;
-    return micro >= REQUIRED_MICRO;
+    if (major != XANH_REQUIRED_WEBKIT_MAJOR)
+        return major > XANH_REQUIRED_WEBKIT_MAJOR;
+    if (minor != XANH_REQUIRED_WEBKIT_MINOR)
+        return minor > XANH_REQUIRED_WEBKIT_MINOR;
+    return micro >= XANH_REQUIRED_WEBKIT_MICRO;
 }
 
 int
@@ -25,7 +31,9 @@ main(void)
 
     printf("WebKitGTK runtime: %u.%u.%u (minimum: %u.%u.%u)\n",
            major, minor, micro,
-           REQUIRED_MAJOR, REQUIRED_MINOR, REQUIRED_MICRO);
+           XANH_REQUIRED_WEBKIT_MAJOR,
+           XANH_REQUIRED_WEBKIT_MINOR,
+           XANH_REQUIRED_WEBKIT_MICRO);
 
     if (!version_is_supported(major, minor, micro)) {
         fprintf(stderr, "Unsupported WebKitGTK runtime\n");

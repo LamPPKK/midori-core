@@ -57,11 +57,14 @@ part of the 1.0 scope.
 - Vala 0.56+
 - GLib 2.74+
 - GTK 4.10+
-- WebKitGTK 6.0 and JavaScriptCoreGTK 6.0, version 2.52.5+
+- WebKitGTK 6.0 and JavaScriptCoreGTK 6.0, version 2.52.6+
 - libsoup 3, SQLite, libpeas 2, GCR 4 and JSON-GLib
 
 Package names vary by distribution. The authoritative dependency constraints
-are in [CMakeLists.txt](CMakeLists.txt).
+are in [CMakeLists.txt](CMakeLists.txt); the shared patch-level floor is pinned
+in [WEBKITGTK_MIN_VERSION](WEBKITGTK_MIN_VERSION). Version 2.52.6 is the latest
+stable WebKitGTK/WPE WebKit release and fixes the vulnerabilities listed in
+[WSA-2026-0005](https://webkitgtk.org/security/WSA-2026-0005.html).
 
 ### Build and test
 
@@ -120,11 +123,13 @@ edition for arm64 and x86_64 devices running API 31 or newer:
 
 It currently uses the newest published Maven artifact, WPEView 0.3.3, whose
 embedded runtime identifies itself as WPE WebKit 2.50.6. This is intentionally
-preview-only: the upstream artifact is below this project's WPE WebKit 2.52.5
+preview-only: the upstream artifact is below this project's WPE WebKit 2.52.6
 security baseline and one bundled native library is not 16 KiB page aligned.
 The guarded production task fails until both conditions are resolved. Exact
 engine versions are pinned in `app-webkit/WPEVIEW_VERSION` and
 `app-webkit/WPE_RUNTIME_VERSION` and are also shown in the application menu.
+Track reviewed wrapper releases on the
+[official WPE Android release page](https://github.com/Igalia/wpe-android/releases).
 
 ## Apple platforms
 
@@ -213,7 +218,7 @@ blocked from production.
 ## Security and privacy defaults
 
 - The desktop build links only against GTK4, WebKitGTK 6.0 and libsoup 3.
-- Linux CI enforces WebKitGTK/JavaScriptCoreGTK 2.52.5 or newer at configure
+- Linux CI enforces WebKitGTK/JavaScriptCoreGTK 2.52.6 or newer at configure
   time and again against the linked runtime.
 - Apple editions use only the system WebKit data stores and a nonpersistent
   store for private tabs; macOS runs in the App Sandbox.

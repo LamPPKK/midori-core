@@ -12,12 +12,23 @@ find_package(Vala REQUIRED)
 vala_require("0.56.0")
 include(ValaPrecompile)
 
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/WEBKITGTK_MIN_VERSION"
+    XANH_WEBKITGTK_MIN_VERSION LIMIT_COUNT 1)
+if(NOT XANH_WEBKITGTK_MIN_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "WEBKITGTK_MIN_VERSION must contain one semantic version")
+endif()
+string(REPLACE "." ";" XANH_WEBKITGTK_MIN_VERSION_PARTS
+    "${XANH_WEBKITGTK_MIN_VERSION}")
+list(GET XANH_WEBKITGTK_MIN_VERSION_PARTS 0 XANH_WEBKITGTK_MIN_MAJOR)
+list(GET XANH_WEBKITGTK_MIN_VERSION_PARTS 1 XANH_WEBKITGTK_MIN_MINOR)
+list(GET XANH_WEBKITGTK_MIN_VERSION_PARTS 2 XANH_WEBKITGTK_MIN_MICRO)
+
 pkg_check_modules(XANH REQUIRED IMPORTED_TARGET
     glib-2.0>=2.74
     gio-2.0>=2.74
     gtk4>=4.10
-    webkitgtk-6.0>=2.52.5
-    javascriptcoregtk-6.0>=2.52.5
+    webkitgtk-6.0>=${XANH_WEBKITGTK_MIN_VERSION}
+    javascriptcoregtk-6.0>=${XANH_WEBKITGTK_MIN_VERSION}
     libsoup-3.0
     sqlite3
     libpeas-2>=2.0
@@ -159,6 +170,10 @@ endfunction()
 
 if(BUILD_TESTING)
     add_executable(webkit-version-test tests-modern/webkit-version-test.c)
+    target_compile_definitions(webkit-version-test PRIVATE
+        XANH_REQUIRED_WEBKIT_MAJOR=${XANH_WEBKITGTK_MIN_MAJOR}
+        XANH_REQUIRED_WEBKIT_MINOR=${XANH_WEBKITGTK_MIN_MINOR}
+        XANH_REQUIRED_WEBKIT_MICRO=${XANH_WEBKITGTK_MIN_MICRO})
     target_link_libraries(webkit-version-test PRIVATE PkgConfig::XANH)
     add_test(NAME webkit-version-test COMMAND webkit-version-test)
 

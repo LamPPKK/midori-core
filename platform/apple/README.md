@@ -46,6 +46,14 @@ items. The local Logins key additionally requires LocalAuthentication and the
 vault locks after five minutes or when the scene leaves the foreground. A
 disconnect retry preserves the original keep/delete choice across restart.
 
+Regular tabs install a main-frame-only password-fill script in a named
+`WKContentWorld`. The page world cannot read its tab ID, per-navigation nonce
+or native credential payload. Only a trusted pointer/keyboard action on a
+password field can open the native picker; the host revalidates the exact HTTPS
+document and origin before querying Logins and again before filling. Private
+tabs do not install the script or message handler. A selection may require
+Face ID, Touch ID or the device passcode through LocalAuthentication.
+
 Ordinary verification builds deliberately do not contain Mozilla's native
 runtime. A Sync release must package the pinned
 `MozillaRustComponents.xcframework`, its reviewed generated Swift binding and
@@ -54,4 +62,5 @@ checksum, then compile the adapter with
 `XANH_FXA_CLIENT_ID` and `XANH_FXA_PRODUCTION_APPROVED=1` only for a client ID
 with written Mozilla approval; otherwise ship the explicitly self-hosted path.
 The release remains blocked until `../../scripts/verify-sync-release.sh apple`
-and the interoperability/security matrix pass.
+and the forged-message, stale-navigation, process-recovery,
+LocalAuthentication, interoperability and device security matrices pass.

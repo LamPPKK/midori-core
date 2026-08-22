@@ -98,7 +98,42 @@ private final class AppleFirefoxSyncRuntime: XanhFirefoxSyncRuntime, @unchecked 
         try runtime.unlockVault(localLoginsKey: localLoginsKey)
     }
     func lockVault() throws { try runtime.lockVault() }
+    func credentials(context: XanhCredentialContext) throws -> [XanhCredentialRecord] {
+        try runtime.credentials(context: map(context)).map {
+            XanhCredentialRecord(
+                id: $0.id,
+                origin: $0.origin,
+                formActionOrigin: $0.formActionOrigin,
+                usernameField: $0.usernameField,
+                passwordField: $0.passwordField,
+                username: $0.username,
+                password: $0.password,
+                timeCreatedEpochMillis: $0.timeCreatedEpochMillis,
+                timePasswordChangedEpochMillis: $0.timePasswordChangedEpochMillis,
+                timeLastUsedEpochMillis: $0.timeLastUsedEpochMillis,
+                timesUsed: $0.timesUsed
+            )
+        }
+    }
+    func touchCredential(id: String, context: XanhCredentialContext) throws {
+        try runtime.touchCredential(id: id, context: map(context))
+    }
     func disconnect(deleteLocal: Bool) throws { try runtime.disconnect(deleteLocal: deleteLocal) }
+
+    private func map(_ context: XanhCredentialContext) throws -> CredentialContext {
+        guard context.isAllowed,
+              let topFrameOrigin = context.canonicalTopFrameOrigin,
+              let frameOrigin = context.canonicalFrameOrigin else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        return CredentialContext(
+            documentUrl: context.documentURL.absoluteString,
+            topFrameOrigin: topFrameOrigin,
+            frameOrigin: frameOrigin,
+            isPrivate: context.isPrivate,
+            userSelected: context.userSelected
+        )
+    }
 
     private func map(_ state: AccountState) -> XanhAccountState {
         switch state {

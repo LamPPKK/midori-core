@@ -60,6 +60,13 @@ case "$edition" in
     test -f desktop/sync-data.vala
     grep -F 'x-scheme-handler/xanh-browser' data-xanh/io.github.lamppkk.xanhbrowser.desktop >/dev/null
     test -f platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift
+    test -f platform/apple/App/BrowserCredentialBridge.swift
+    grep -F 'forMainFrameOnly: true' \
+      platform/apple/App/BrowserCredentialBridge.swift >/dev/null
+    grep -F 'if (!event.isTrusted) return;' \
+      platform/apple/App/BrowserCredentialBridge.swift >/dev/null
+    grep -F 'let bridge = isPrivate ? nil : BrowserCredentialBridge()' \
+      platform/apple/App/BrowserModel.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
@@ -105,6 +112,12 @@ case "$edition" in
     test -f platform/apple/Generated/xanh_sync_core.swift
     grep -F 'class MozillaSyncRuntime' platform/apple/Generated/xanh_sync_core.swift >/dev/null
     grep -F 'XANH_SYNC_SWIFT_FLAGS' platform/apple/project.yml >/dev/null
+    grep -F 'WKContentWorld.world' platform/apple/App/BrowserCredentialBridge.swift >/dev/null
+    grep -F 'forMainFrameOnly: true' platform/apple/App/BrowserCredentialBridge.swift >/dev/null
+    grep -F 'if (!event.isTrusted) return;' \
+      platform/apple/App/BrowserCredentialBridge.swift >/dev/null
+    grep -F 'let bridge = isPrivate ? nil : BrowserCredentialBridge()' \
+      platform/apple/App/BrowserModel.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     test "${XANH_APPLE_SYNC_BRIDGE_REVIEWED:-0}" = 1

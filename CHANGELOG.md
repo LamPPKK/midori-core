@@ -63,6 +63,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added a gated Windows native credential picker with Windows Hello/PIN vault
   unlock, bounded exact-origin C ABI queries, trusted-gesture WebView2 requests
   and tab/navigation-nonce validation. InPrivate tabs keep web messaging off.
+- Added a gated Apple credential picker for macOS, iOS and iPadOS. Regular tabs
+  use a main-frame-only isolated `WKContentWorld`, exact-origin and navigation-
+  nonce validation plus LocalAuthentication; private tabs install no bridge.
 
 ### Changed
 

@@ -123,6 +123,8 @@ public struct XanhSyncSchedule: Codable, Equatable, Sendable {
 }
 
 public struct XanhCredentialContext: Equatable, Sendable {
+    public static let maximumURLBytes = 8_192
+
     public let documentURL: URL
     public let topFrameOrigin: URL
     public let frameOrigin: URL
@@ -146,13 +148,98 @@ public struct XanhCredentialContext: Equatable, Sendable {
     public var isAllowed: Bool {
         guard !isPrivate, userSelected, documentURL.xanhIsSecureHTTPS,
               topFrameOrigin.xanhIsSecureOrigin,
-              frameOrigin.xanhIsSecureOrigin else { return false }
+              frameOrigin.xanhIsSecureOrigin,
+              documentURL.absoluteString.utf8.count <= Self.maximumURLBytes,
+              topFrameOrigin.absoluteString.utf8.count <= Self.maximumURLBytes,
+              frameOrigin.absoluteString.utf8.count <= Self.maximumURLBytes else { return false }
         return documentURL.xanhOrigin == topFrameOrigin.xanhOrigin
             && topFrameOrigin.xanhOrigin == frameOrigin.xanhOrigin
     }
+
+    public var canonicalTopFrameOrigin: String? {
+        guard topFrameOrigin.xanhIsSecureOrigin else { return nil }
+        return topFrameOrigin.xanhCanonicalOrigin
+    }
+
+    public var canonicalFrameOrigin: String? {
+        guard frameOrigin.xanhIsSecureOrigin else { return nil }
+        return frameOrigin.xanhCanonicalOrigin
+    }
 }
 
-private extension URL {
+public struct XanhCredentialRecord: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let origin: String
+    public let formActionOrigin: String
+    public let usernameField: String
+    public let passwordField: String
+    public let username: String
+    public let password: String
+    public let timeCreatedEpochMillis: Int64
+    public let timePasswordChangedEpochMillis: Int64
+    public let timeLastUsedEpochMillis: Int64
+    public let timesUsed: Int64
+
+    public init(
+        id: String,
+        origin: String,
+        formActionOrigin: String,
+        usernameField: String,
+        passwordField: String,
+        username: String,
+        password: String,
+        timeCreatedEpochMillis: Int64,
+        timePasswordChangedEpochMillis: Int64,
+        timeLastUsedEpochMillis: Int64,
+        timesUsed: Int64
+    ) {
+        self.id = id
+        self.origin = origin
+        self.formActionOrigin = formActionOrigin
+        self.usernameField = usernameField
+        self.passwordField = passwordField
+        self.username = username
+        self.password = password
+        self.timeCreatedEpochMillis = timeCreatedEpochMillis
+        self.timePasswordChangedEpochMillis = timePasswordChangedEpochMillis
+        self.timeLastUsedEpochMillis = timeLastUsedEpochMillis
+        self.timesUsed = timesUsed
+    }
+
+    public func isAllowed(for context: XanhCredentialContext) -> Bool {
+        guard context.isAllowed,
+              let expectedOrigin = context.canonicalTopFrameOrigin,
+              URL(string: origin)?.xanhCanonicalOrigin == expectedOrigin,
+              URL(string: formActionOrigin)?.xanhCanonicalOrigin == expectedOrigin,
+              !id.isEmpty,
+              id.utf8.count <= 128,
+              id.unicodeScalars.allSatisfy({
+                  let value = $0.value
+                  return (value >= 48 && value <= 57)
+                      || (value >= 65 && value <= 90)
+                      || (value >= 97 && value <= 122)
+                      || value == 45
+                      || value == 95
+              }),
+              username.utf8.count <= 1_024,
+              !password.isEmpty,
+              password.utf8.count <= 4_096,
+              Self.validField(usernameField),
+              Self.validField(passwordField),
+              timeCreatedEpochMillis >= 0,
+              timePasswordChangedEpochMillis >= 0,
+              timeLastUsedEpochMillis >= 0,
+              timesUsed >= 0 else { return false }
+        return true
+    }
+
+    private static func validField(_ value: String) -> Bool {
+        value.utf8.count <= 256
+            && value.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
+    }
+}
+
+extension URL {
     var xanhIsSecureHTTPS: Bool {
         scheme?.lowercased() == "https" && host != nil && user == nil && password == nil
     }
@@ -167,5 +254,18 @@ private extension URL {
     var xanhOrigin: String? {
         guard let scheme = scheme?.lowercased(), let host = host?.lowercased() else { return nil }
         return "\(scheme)://\(host):\(port ?? (scheme == "https" ? 443 : -1))"
+    }
+
+    var xanhCanonicalOrigin: String? {
+        guard xanhIsSecureOrigin,
+              var components = URLComponents(url: self, resolvingAgainstBaseURL: false),
+              let host = components.host?.lowercased() else { return nil }
+        components.scheme = "https"
+        components.host = host
+        components.path = ""
+        components.query = nil
+        components.fragment = nil
+        if components.port == 443 { components.port = nil }
+        return components.string
     }
 }

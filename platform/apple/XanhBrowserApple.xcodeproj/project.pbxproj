@@ -29,8 +29,10 @@
 		790A752BBFBB82502345359E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C5707A9D15C10A864537D41 /* Assets.xcassets */; };
 		81932F2A89EA18BC106D6A7A /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
 		900D10CE058A495DAB2E1290 /* FirefoxSyncViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0372C9AEFC9B07F831F257B9 /* FirefoxSyncViewModel.swift */; };
+		9D20E1406B5C633E322E6DDE /* BrowserCredentialBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */; };
 		BA6B112E7A36845519A0EE9C /* FirefoxSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660CDE3438A2918EC8CD9AD0 /* FirefoxSyncCoordinator.swift */; };
 		BE9D2E23490CFD3DCAB9FF84 /* FirefoxSyncBindingPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */; };
+		C2640D548B127955DFA328FF /* BrowserCredentialBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */; };
 		E542001C874AB4BD17586767 /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */; };
 		EF3559F5A7A3CDD36DE59870 /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
 		F027B1CBBE9EE01FB40E30B4 /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B540C8EF970CC11135804394 /* BrowserSession.swift */; };
@@ -52,6 +54,7 @@
 		A33C392942764CA582BA6818 /* XanhBrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XanhBrowserApp.swift; sourceTree = "<group>"; };
 		A594809F854069BC05EA45F9 /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserView.swift; sourceTree = "<group>"; };
 		B540C8EF970CC11135804394 /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserSession.swift; sourceTree = "<group>"; };
+		BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCredentialBridge.swift; sourceTree = "<group>"; };
 		DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxSyncBindingPlaceholder.swift; sourceTree = "<group>"; };
 		EB98C73205558CF4F34E1412 /* Bookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bookmark.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -103,6 +106,7 @@
 			children = (
 				0BEA6CFAB98F9E3E7FD85202 /* AppleFirefoxSyncRuntime.swift */,
 				6C5707A9D15C10A864537D41 /* Assets.xcassets */,
+				BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */,
 				2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */,
 				A594809F854069BC05EA45F9 /* BrowserView.swift */,
 				8A0E902F84E8351D788D173C /* FirefoxSyncSettingsView.swift */,
@@ -209,6 +213,7 @@
 				48E13B975F096A9D87FFCC38 /* AddressResolver.swift in Sources */,
 				27107609FA3BC4DB8714B326 /* AppleFirefoxSyncRuntime.swift in Sources */,
 				0DB09CF4B38B4F131D49EC0B /* Bookmark.swift in Sources */,
+				9D20E1406B5C633E322E6DDE /* BrowserCredentialBridge.swift in Sources */,
 				6A514225E7C89C76D8F1E60B /* BrowserModel.swift in Sources */,
 				4DC0E34E124A7AE833A79C6D /* BrowserSession.swift in Sources */,
 				52BFFF6AE82166622BFAEB29 /* BrowserView.swift in Sources */,
@@ -229,6 +234,7 @@
 				E542001C874AB4BD17586767 /* AddressResolver.swift in Sources */,
 				1B9C102E5EE3C37A12BB51F2 /* AppleFirefoxSyncRuntime.swift in Sources */,
 				686761EC979A9C397C116114 /* Bookmark.swift in Sources */,
+				C2640D548B127955DFA328FF /* BrowserCredentialBridge.swift in Sources */,
 				1F5953A3DD1213A6B78BC097 /* BrowserModel.swift in Sources */,
 				F027B1CBBE9EE01FB40E30B4 /* BrowserSession.swift in Sources */,
 				1DB62C900352197CF302FB45 /* BrowserView.swift in Sources */,

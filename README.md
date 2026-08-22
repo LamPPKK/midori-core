@@ -135,7 +135,9 @@ Track reviewed wrapper releases on the
 
 The shared SwiftUI app provides multi-tab and private-tab browsing on macOS,
 iPhone and iPad. It requires Xcode 26 and the macOS/iOS 26 SDKs because it uses
-the current WebKit-native `WebPage` and `WebView` APIs. See
+the current WebKit-native `WebPage` and `WebView` APIs. Regular tabs use a
+main-frame-only isolated `WKContentWorld` for the gated Firefox Sync credential
+picker; private tabs never install that bridge. See
 [`platform/apple/README.md`](platform/apple/README.md) for build commands and
 the remaining App Store signing requirements.
 
@@ -199,13 +201,14 @@ and the interoperability/security evidence are complete.
 
 Apple and Windows include native settings/coordinator hosts for system-browser
 OAuth, engine selection, backoff-aware Sync, remote tabs, device-bound secure
-state and five-minute password-vault locking. Windows also has a gated native
-credential picker with trusted-gesture, exact-origin, tab and navigation-nonce
-checks; InPrivate tabs never install it. Apple credential presentation remains
-pending. Their ordinary verification artifacts intentionally omit the native
-Mozilla runtime, and production remains blocked until the pinned XCFramework/
-DLL and platform interoperability/security evidence are packaged and reviewed.
-Each platform uses its own registered callback scheme.
+state and five-minute password-vault locking. Both now have gated native
+credential pickers with trusted-gesture, exact-origin, tab and navigation-nonce
+checks; private/InPrivate tabs never install them. Apple additionally keeps its
+bridge and credential payload in an isolated `WKContentWorld`. Their ordinary
+verification artifacts intentionally omit the native Mozilla runtime, and
+production remains blocked until the pinned XCFramework/DLL and platform
+interoperability/security evidence are packaged and reviewed. Each platform
+uses its own registered callback scheme.
 
 Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
 the Application Services runtime; the base app loads it only after the user
@@ -245,10 +248,12 @@ bridge and remains blocked from production.
 - The desktop build links only against GTK4, WebKitGTK 6.0 and libsoup 3.
 - Linux CI enforces WebKitGTK/JavaScriptCoreGTK 2.52.6 or newer at configure
   time and again against the linked runtime.
-- Apple editions use only the system WebKit data stores and a nonpersistent
-  store for private tabs; macOS runs in the App Sandbox.
-- Windows accepts only web URLs in WebView2, disables host objects/web messages,
-  and uses the Evergreen runtime for independently serviced engine updates.
+- Apple editions use only the system WebKit data stores, keep their gated
+  credential bridge in an isolated content world and use a nonpersistent store
+  without that bridge for private tabs; macOS runs in the App Sandbox.
+- Windows accepts only web URLs in WebView2, disables host objects, restricts
+  web messaging to the gated regular-tab credential bridge and uses the
+  Evergreen runtime for independently serviced engine updates.
 - The Flatpak manifest grants only the permissions required by current browser
   functionality.
 - Android production blocks cleartext and mixed content, enables Safe Browsing

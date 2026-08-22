@@ -41,6 +41,8 @@ public protocol XanhFirefoxSyncRuntime: AnyObject, Sendable {
     func vaultUnlocked() throws -> Bool
     func unlockVault(localLoginsKey: String) throws
     func lockVault() throws
+    func credentials(context: XanhCredentialContext) throws -> [XanhCredentialRecord]
+    func touchCredential(id: String, context: XanhCredentialContext) throws
     func disconnect(deleteLocal: Bool) throws
 }
 
@@ -284,6 +286,39 @@ public actor XanhFirefoxSyncCoordinator {
         return try requireRuntime().remoteTabs()
     }
 
+    public func credentials(
+        for context: XanhCredentialContext
+    ) throws -> [XanhCredentialRecord] {
+        guard context.isAllowed else { throw XanhSyncContractError.bridgeRejected }
+        try startOperation()
+        defer { finishOperation() }
+        let opened = try requireRuntime()
+        try requireUsableVault(opened)
+        let records = try opened.credentials(context: context)
+        let encodedSize = try? JSONEncoder().encode(records).count
+        guard records.count <= 100,
+              records.allSatisfy({ $0.isAllowed(for: context) }),
+              let encodedSize,
+              encodedSize <= 4 * 1_024 * 1_024 else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        vaultLastActivity = now()
+        return records
+    }
+
+    public func touchCredential(
+        id: String,
+        context: XanhCredentialContext
+    ) throws {
+        guard context.isAllowed else { throw XanhSyncContractError.bridgeRejected }
+        try startOperation()
+        defer { finishOperation() }
+        let opened = try requireRuntime()
+        try requireUsableVault(opened)
+        try opened.touchCredential(id: id, context: context)
+        vaultLastActivity = now()
+    }
+
     public func disconnect(deleteLocal: Bool) async throws {
         try startOperation()
         defer { finishOperation() }
@@ -425,6 +460,22 @@ public actor XanhFirefoxSyncCoordinator {
     private func requireRuntime() throws -> any XanhFirefoxSyncRuntime {
         guard let runtime else { throw XanhSyncContractError.nativeCoreUnavailable }
         return runtime
+    }
+
+    private func requireUsableVault(_ opened: any XanhFirefoxSyncRuntime) throws {
+        let currentTime = now()
+        guard (try? opened.vaultUnlocked()) == true,
+              let vaultLastActivity,
+              currentTime.timeIntervalSince(vaultLastActivity) < Self.vaultTimeout else {
+            if (try? opened.vaultUnlocked()) == true { try? opened.lockVault() }
+            self.vaultLastActivity = nil
+            publish(
+                accountState: (try? opened.accountState()) ?? snapshot.accountState,
+                status: snapshot.status,
+                detail: "Password vault locked"
+            )
+            throw XanhSyncContractError.vaultLocked
+        }
     }
 
     private func startOperation() throws {

@@ -31,7 +31,10 @@ struct BrowserView: View {
                 workspace.persistSession()
             }
         }
-        .onChange(of: workspace.selectedTabID) { _, _ in workspace.persistSession() }
+        .onChange(of: workspace.selectedTabID) { _, _ in
+            firefoxSync.cancelCredentialSelection()
+            workspace.persistSession()
+        }
         .onChange(of: tab.externalURL) { _, externalURL in
             guard let externalURL else { return }
             openURL(externalURL)
@@ -40,7 +43,10 @@ struct BrowserView: View {
         .onChange(of: scenePhase) { _, phase in
             Task {
                 if phase == .active { await firefoxSync.syncIfDue(.startup) }
-                else { await firefoxSync.lockVault() }
+                else {
+                    firefoxSync.cancelCredentialSelection()
+                    await firefoxSync.lockVault()
+                }
             }
         }
         .onOpenURL { url in
@@ -48,6 +54,11 @@ struct BrowserView: View {
         }
         .sheet(isPresented: $firefoxSync.isShowingSettings) {
             FirefoxSyncSettingsView(model: firefoxSync)
+        }
+        .sheet(item: $firefoxSync.credentialSelection, onDismiss: {
+            firefoxSync.cancelCredentialSelection()
+        }) { selection in
+            FirefoxCredentialPickerView(model: firefoxSync, selection: selection)
         }
         .task {
             await firefoxSync.initializeIfConfigured()
@@ -58,6 +69,9 @@ struct BrowserView: View {
             }
         }
         .task(id: tab.id) {
+            tab.credentialRequestHandler = { [weak firefoxSync] context in
+                await firefoxSync?.requestCredential(for: context)
+            }
             do {
                 for try await _ in tab.page.navigations {}
             } catch {
@@ -106,7 +120,10 @@ struct BrowserView: View {
                 Divider()
                 Button("New Tab", systemImage: "plus") { workspace.addTab() }
                 Button("New Private Tab", systemImage: "hand.raised") { workspace.addTab(isPrivate: true) }
-                Button("Close Tab", systemImage: "xmark") { workspace.closeSelectedTab() }
+                Button("Close Tab", systemImage: "xmark") {
+                    firefoxSync.cancelCredentialSelection()
+                    workspace.closeSelectedTab()
+                }
                     .disabled(workspace.tabs.count == 1)
             } label: {
                 Label("Tabs", systemImage: tab.isPrivate ? "hand.raised.fill" : "square.on.square")
@@ -140,6 +157,37 @@ struct BrowserView: View {
         case .authenticating: "person.badge.clock"
         case .disconnected: "arrow.triangle.2.circlepath.circle"
         }
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+@MainActor
+private struct FirefoxCredentialPickerView: View {
+    let model: FirefoxSyncViewModel
+    let selection: FirefoxCredentialSelection
+
+    var body: some View {
+        NavigationStack {
+            List(selection.credentials) { record in
+                Button {
+                    Task { await model.selectCredential(record) }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(record.username.isEmpty ? "(empty username)" : record.username)
+                        Text(selection.context.documentURL.host ?? "Secure website")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Choose a saved login")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { model.cancelCredentialSelection() }
+                }
+            }
+        }
+        .frame(minWidth: 360, minHeight: 280)
     }
 }
 

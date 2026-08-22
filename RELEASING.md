@@ -275,6 +275,12 @@ than repackaging it as a monolithic APK.
    is `xanh-browser-macos://accounts/oauth` or
    `xanh-browser-ios://accounts/oauth` for the target. Then run
    `./scripts/verify-sync-release.sh apple`.
+5. On macOS, iPhone and iPad, verify the native credential picker after Face
+   ID/Touch ID/passcode unlock. Cover cancel/retry, exact-origin denial,
+   cross-origin frames, forged or oversized messages, stale navigation,
+   renderer/process recovery and background vault lock. Confirm private tabs
+   have no credential script or message handler and inspect logs/crash reports
+   for plaintext credentials.
 
 Verification: both archives must report the intended bundle ID/version, contain
 no private signing material, pass App Store validation and install from TestFlight

@@ -155,6 +155,65 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
     #expect(await secrets.isEmpty)
 }
 
+@Test func credentialQueryRequiresUnlockedVaultAndRejectsUnsafeNativeRecords() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.state = .connected
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: FakeSyncSecrets())
+    _ = try await coordinator.initialize()
+    let context = XanhCredentialContext(
+        documentURL: try #require(URL(string: "https://example.org/login")),
+        topFrameOrigin: try #require(URL(string: "https://example.org")),
+        frameOrigin: try #require(URL(string: "https://example.org")),
+        isPrivate: false,
+        userSelected: true
+    )
+
+    do {
+        _ = try await coordinator.credentials(for: context)
+        Issue.record("a locked vault must reject credential queries")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .vaultLocked)
+    }
+    try await coordinator.unlockVault()
+    runtime.credentialRecords = [XanhCredentialRecord(
+        id: "credential-id",
+        origin: "https://example.org",
+        formActionOrigin: "https://example.org",
+        usernameField: "username",
+        passwordField: "password",
+        username: "person@example.org",
+        password: "secret",
+        timeCreatedEpochMillis: 1,
+        timePasswordChangedEpochMillis: 1,
+        timeLastUsedEpochMillis: 1,
+        timesUsed: 1
+    )]
+    let records = try await coordinator.credentials(for: context)
+    #expect(records.count == 1)
+    try await coordinator.touchCredential(id: records[0].id, context: context)
+    #expect(runtime.touchCredentialCalls == 1)
+
+    runtime.credentialRecords = [XanhCredentialRecord(
+        id: "credential-id",
+        origin: "https://evil.example",
+        formActionOrigin: "https://evil.example",
+        usernameField: "username",
+        passwordField: "password",
+        username: "person@example.org",
+        password: "secret",
+        timeCreatedEpochMillis: 1,
+        timePasswordChangedEpochMillis: 1,
+        timeLastUsedEpochMillis: 1,
+        timesUsed: 1
+    )]
+    do {
+        _ = try await coordinator.credentials(for: context)
+        Issue.record("an unsafe native credential must be rejected")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+}
+
 private func makeCoordinator(
     runtime: FakeSyncRuntime,
     secrets: FakeSyncSecrets,
@@ -199,6 +258,8 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     private(set) var disconnectCalls = 0
     private(set) var lastDisconnectDeletedLocal = false
     private(set) var isVaultUnlocked = false
+    private(set) var touchCredentialCalls = 0
+    var credentialRecords: [XanhCredentialRecord] = []
 
     func initialize() throws -> XanhAccountState { state }
     func accountState() throws -> XanhAccountState { state }
@@ -232,6 +293,12 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
         isVaultUnlocked = true
     }
     func lockVault() throws { isVaultUnlocked = false }
+    func credentials(context: XanhCredentialContext) throws -> [XanhCredentialRecord] {
+        credentialRecords
+    }
+    func touchCredential(id: String, context: XanhCredentialContext) throws {
+        touchCredentialCalls += 1
+    }
     func disconnect(deleteLocal: Bool) throws {
         disconnectCalls += 1
         lastDisconnectDeletedLocal = deleteLocal

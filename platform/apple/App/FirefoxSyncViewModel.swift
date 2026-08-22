@@ -33,9 +33,12 @@ final class FirefoxSyncViewModel {
     var accountDomain = ""
     var remoteTabsSummary = "Remote tabs have not been loaded."
     var errorMessage: String?
+    var credentialSelection: FirefoxCredentialSelection?
 
     private var coordinator: XanhFirefoxSyncCoordinator?
     private var pendingOAuth: XanhOAuthLaunch?
+    @ObservationIgnored
+    private var credentialContinuation: CheckedContinuation<XanhCredentialRecord?, Never>?
 
     var isConfigured: Bool { coordinator != nil }
 
@@ -172,6 +175,58 @@ final class FirefoxSyncViewModel {
         }
     }
 
+    func requestCredential(
+        for context: XanhCredentialContext
+    ) async -> XanhCredentialRecord? {
+        guard context.isAllowed,
+              credentialSelection == nil,
+              credentialContinuation == nil else { return nil }
+        if coordinator == nil { await initializeIfConfigured() }
+        guard let coordinator else { return nil }
+        do {
+            let currentSnapshot = await coordinator.snapshot
+            if !currentSnapshot.vaultUnlocked {
+                try await coordinator.unlockVault()
+            }
+            let records = try await coordinator.credentials(for: context)
+            await refreshSnapshot()
+            guard !records.isEmpty else { return nil }
+            return await withCheckedContinuation { continuation in
+                credentialContinuation = continuation
+                credentialSelection = FirefoxCredentialSelection(
+                    context: context,
+                    credentials: records
+                )
+            }
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    func selectCredential(_ record: XanhCredentialRecord) async {
+        guard let selection = credentialSelection,
+              selection.credentials.contains(where: { $0.id == record.id }),
+              let continuation = credentialContinuation else { return }
+        credentialSelection = nil
+        credentialContinuation = nil
+        do {
+            try await coordinator?.touchCredential(id: record.id, context: selection.context)
+            await refreshSnapshot()
+            continuation.resume(returning: record)
+        } catch {
+            report(error)
+            continuation.resume(returning: nil)
+        }
+    }
+
+    func cancelCredentialSelection() {
+        credentialSelection = nil
+        let continuation = credentialContinuation
+        credentialContinuation = nil
+        continuation?.resume(returning: nil)
+    }
+
     func disconnect(deleteLocal: Bool) async {
         guard let coordinator else { return }
         do {
@@ -283,4 +338,10 @@ final class FirefoxSyncViewModel {
         let tokenServerURL: String
         let clientID: String
     }
+}
+
+struct FirefoxCredentialSelection: Identifiable {
+    let id = UUID()
+    let context: XanhCredentialContext
+    let credentials: [XanhCredentialRecord]
 }

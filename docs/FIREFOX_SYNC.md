@@ -126,11 +126,13 @@ marker and retries it before later migration or Sync. The standard build remains
 fail-closed unless the native core and an approved Mozilla or HTTPS self-hosted
 configuration are supplied. Windows now has a bounded WebView2 credential
 picker backed by Windows Hello/PIN, exact source/origin checks and a per-
-navigation nonce; Apple still has only its coordinator/settings boundary. Both
-remain fail-closed until pinned native artifacts and platform bridge evidence
-are packaged and reviewed. WPE and WinCairo remain integration boundaries
-rather than production enablement. Environment flags are attestations backed
-by test evidence, not switches that make an incomplete integration safe.
+navigation nonce. Apple has the equivalent native picker backed by
+LocalAuthentication, with its main-frame-only script and payload isolated in a
+named `WKContentWorld`. Both remain fail-closed until pinned native artifacts
+and platform bridge evidence are packaged and reviewed. WPE and WinCairo remain
+integration boundaries rather than production enablement. Environment flags
+are attestations backed by test evidence, not switches that make an incomplete
+integration safe.
 
 ## Implementation snapshot (2026-08-22)
 
@@ -167,8 +169,8 @@ It derives both stored origins from a strict HTTPS same-origin context, requires
 an explicit native user action and an unlocked vault, rejects private browsing,
 and filters HTTP-auth, userinfo, cross-origin and oversized upstream records.
 Plaintext output is explicitly short-lived secret material. Android standard,
-Android Lite and the gated Windows host now consume this boundary through
-native pickers; Apple and Linux presentation remain incomplete. No edition may
+Android Lite, Apple and the gated Windows host now consume this boundary
+through native pickers; Linux presentation remains incomplete. No edition may
 ship filling until its picker, OS user-presence policy and tab-ID/navigation-
 nonce bridge pass that platform's security gate.
 
@@ -202,14 +204,16 @@ storage.
 
 Apple now provides system-browser OAuth callback routing, a single-flight actor,
 engine switches, server backoff, remote-tab presentation, Keychain/
-LocalAuthentication vault state and restart-safe keep/delete disconnect intent.
+LocalAuthentication vault state, restart-safe keep/delete disconnect intent and
+a main-frame-only isolated `WKContentWorld` credential picker that is absent
+from private tabs.
 Windows provides the equivalent WinUI coordinator, single-instance protocol
 activation, DPAPI/Windows Hello persistence, a gated exact-origin WebView2
 credential picker and architecture-specific native DLL packaging input. Both
 hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
-The platform boundary tests currently pass locally: 19 Apple tests cover the
+The platform boundary tests currently pass locally: 21 Apple tests cover the
 contract, coordinator and device-only Keychain/LocalAuthentication policy,
 while 30 Windows tests cover the contract, coordinator, P/Invoke surface and
 DPAPI/Windows Hello policy. The
@@ -228,8 +232,8 @@ evidence is still required:
 - message/FFI fuzzing, secret-redaction review and an independent security
   review;
 - complete the Linux Logins credential UI and Sync-enabled Flatpak packaging,
-  plus Apple/Windows native packaging and reviewed isolated credential
-  bridges;
+  plus Apple/Windows native packaging and reviewed platform credential-bridge
+  evidence;
 - an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
   and the equivalent bridge/vault/package evidence for WinCairo.
 

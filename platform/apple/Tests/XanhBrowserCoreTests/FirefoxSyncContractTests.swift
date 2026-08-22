@@ -85,3 +85,53 @@ import Testing
         userSelected: true
     ).isAllowed)
 }
+
+@Test func credentialRecordRequiresBoundedExactOriginMetadata() throws {
+    let context = XanhCredentialContext(
+        documentURL: try #require(URL(string: "https://example.org/login")),
+        topFrameOrigin: try #require(URL(string: "https://example.org")),
+        frameOrigin: try #require(URL(string: "https://example.org")),
+        isPrivate: false,
+        userSelected: true
+    )
+    let record = XanhCredentialRecord(
+        id: "credential-id",
+        origin: "https://example.org",
+        formActionOrigin: "https://example.org",
+        usernameField: "username",
+        passwordField: "password",
+        username: "person@example.org",
+        password: "secret",
+        timeCreatedEpochMillis: 1,
+        timePasswordChangedEpochMillis: 1,
+        timeLastUsedEpochMillis: 1,
+        timesUsed: 1
+    )
+    #expect(record.isAllowed(for: context))
+    #expect(!(record.with(origin: "https://evil.example")).isAllowed(for: context))
+    #expect(!(record.with(id: "tài-khoản")).isAllowed(for: context))
+    #expect(!(record.with(password: "")).isAllowed(for: context))
+    #expect(!(record.with(password: String(repeating: "x", count: 4_097))).isAllowed(for: context))
+}
+
+private extension XanhCredentialRecord {
+    func with(
+        id: String? = nil,
+        origin: String? = nil,
+        password: String? = nil
+    ) -> XanhCredentialRecord {
+        XanhCredentialRecord(
+            id: id ?? self.id,
+            origin: origin ?? self.origin,
+            formActionOrigin: formActionOrigin,
+            usernameField: usernameField,
+            passwordField: passwordField,
+            username: username,
+            password: password ?? self.password,
+            timeCreatedEpochMillis: timeCreatedEpochMillis,
+            timePasswordChangedEpochMillis: timePasswordChangedEpochMillis,
+            timeLastUsedEpochMillis: timeLastUsedEpochMillis,
+            timesUsed: timesUsed
+        )
+    }
+}

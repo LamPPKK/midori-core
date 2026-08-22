@@ -6,18 +6,28 @@ on:
       - .github/workflows/webview2-baseline.yml
       - scripts/verify_webview2_latest.py
       - scripts/tests/test_verify_webview2_latest.py
+      - platform/windows/src/XanhBrowser.Core/AddressResolver.cs
+      - platform/windows/src/XanhBrowser.Core/WebView2ProcessRecoveryPolicy.cs
+      - platform/windows/tests/XanhBrowser.Core.Tests/AddressResolverTests.cs
       - platform/windows/src/XanhBrowser.Core/WebView2RuntimePolicy.cs
+      - platform/windows/tests/XanhBrowser.Core.Tests/WebView2ProcessRecoveryPolicyTests.cs
       - platform/windows/tests/XanhBrowser.Core.Tests/WebView2RuntimePolicyTests.cs
       - platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs
+      - platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs
       - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
   pull_request:
     paths:
       - .github/workflows/webview2-baseline.yml
       - scripts/verify_webview2_latest.py
       - scripts/tests/test_verify_webview2_latest.py
+      - platform/windows/src/XanhBrowser.Core/AddressResolver.cs
+      - platform/windows/src/XanhBrowser.Core/WebView2ProcessRecoveryPolicy.cs
+      - platform/windows/tests/XanhBrowser.Core.Tests/AddressResolverTests.cs
       - platform/windows/src/XanhBrowser.Core/WebView2RuntimePolicy.cs
+      - platform/windows/tests/XanhBrowser.Core.Tests/WebView2ProcessRecoveryPolicyTests.cs
       - platform/windows/tests/XanhBrowser.Core.Tests/WebView2RuntimePolicyTests.cs
       - platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs
+      - platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs
       - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
   schedule:
     - cron: '57 5 * * 1'

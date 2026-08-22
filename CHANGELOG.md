@@ -26,6 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Updated the Windows edition to the stable WebView2 SDK 1.0.4129.50 / Runtime
   151 baseline, added a weekly official-NuGet latest-stable verifier and made
   startup reject old or non-stable Runtime channels before page creation.
+- Hardened WebView2 navigation and external handoff with UTF-8 byte limits,
+  strict IDN/host/port checks, userinfo rejection and encoded-control filtering.
+  Renderer and browser-process failure now receive at most one fresh-GET tab
+  replacement at a validated URL; automatic `Reload`, form resubmission and
+  repeated crash recovery are blocked.
 - Added WinCairo encrypted `.xanhbackup` import/export using the native Windows
   file picker, PBKDF2-HMAC-SHA256 and AES-256-GCM through CNG, atomic file
   replacement and the shared Android/C# ASCII and Unicode golden vectors.

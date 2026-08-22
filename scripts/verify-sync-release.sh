@@ -48,6 +48,18 @@ case "$edition" in
       platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
     grep -F 'WebView2RuntimePolicy.IsSupported(environment.BrowserVersionString)' \
       platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'WebView2ProcessRecoveryPolicy.SelectAutomaticTarget' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'automaticRecoveryUsed: true' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    test -f platform/windows/tests/XanhBrowser.Core.Tests/WebView2ProcessRecoveryPolicyTests.cs
+    if sed -n \
+      '/private void CoreWebView2_ProcessFailed(/,/private void RequestAutomaticRecovery()/p' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs \
+        | grep -F 'BrowserWebView.Reload()' >/dev/null; then
+      echo 'WebView2 process failure must never call Reload automatically' >&2
+      exit 1
+    fi
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webkit_latest.py' >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_androidx_webkit_latest.py' >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webview2_latest.py' >/dev/null
@@ -412,6 +424,10 @@ case "$edition" in
       platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
     grep -F '_credentialNonce != nonce' \
       platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'WebView2ProcessRecoveryPolicy.SelectAutomaticTarget' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'automaticRecoveryUsed: true' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     test "${XANH_WINDOWS_HELLO_TESTED:-0}" = 1
     test "${XANH_WEBVIEW2_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;

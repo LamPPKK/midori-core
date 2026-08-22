@@ -14,14 +14,18 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     private readonly Uri _initialUri;
     private readonly Func<CredentialAccessContext, Task<FirefoxCredentialRecord?>>? _credentialPicker;
     private readonly string _credentialTabId = Guid.NewGuid().ToString("N");
+    private bool _automaticRecoveryUsed;
     private bool _disposed;
     private bool _permissionDialogOpen;
+    private bool _processFailed;
+    private bool _recoveryQueued;
     private Uri _currentUri;
     private string? _credentialNonce;
     private string? _credentialScriptId;
+    private ContentDialog? _permissionDialog;
 
     public event EventHandler<string>? TitleChanged;
-    public event EventHandler? BrowserProcessExited;
+    public event EventHandler<BrowserRecoveryRequestedEventArgs>? RecoveryRequested;
 
     public bool IsPrivate => _isPrivate;
     public Uri CurrentUri => _currentUri;
@@ -29,10 +33,12 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     public BrowserTab(
         bool isPrivate,
         Uri? initialUri = null,
-        Func<CredentialAccessContext, Task<FirefoxCredentialRecord?>>? credentialPicker = null)
+        Func<CredentialAccessContext, Task<FirefoxCredentialRecord?>>? credentialPicker = null,
+        bool automaticRecoveryUsed = false)
     {
         _isPrivate = isPrivate;
         _credentialPicker = credentialPicker;
+        _automaticRecoveryUsed = automaticRecoveryUsed;
         _initialUri = initialUri is not null && AddressResolver.IsAllowedWebUri(initialUri)
             ? initialUri
             : AddressResolver.DefaultHomePage;
@@ -138,14 +144,57 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         switch (args.ProcessFailedKind)
         {
             case CoreWebView2ProcessFailedKind.RenderProcessExited:
-                BrowserWebView.Reload();
-                break;
             case CoreWebView2ProcessFailedKind.BrowserProcessExited:
-                BrowserProcessExited?.Invoke(this, EventArgs.Empty);
+                RequestAutomaticRecovery();
                 break;
             case CoreWebView2ProcessFailedKind.RenderProcessUnresponsive:
                 TitleChanged?.Invoke(this, "Page unresponsive");
                 break;
+        }
+    }
+
+    private void RequestAutomaticRecovery()
+    {
+        if (_disposed || _recoveryQueued)
+        {
+            return;
+        }
+
+        _processFailed = true;
+        _credentialNonce = null;
+        try
+        {
+            _permissionDialog?.Hide();
+        }
+        catch (Exception)
+        {
+            // The dialog might already be closing as the renderer exits.
+        }
+
+        var target = WebView2ProcessRecoveryPolicy.SelectAutomaticTarget(
+            _currentUri,
+            _automaticRecoveryUsed);
+        if (target is null)
+        {
+            TitleChanged?.Invoke(this, "Automatic recovery stopped — close this tab or open a new tab");
+            return;
+        }
+
+        _automaticRecoveryUsed = true;
+        _recoveryQueued = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                RecoveryRequested?.Invoke(
+                    this,
+                    new BrowserRecoveryRequestedEventArgs(target));
+            }))
+        {
+            TitleChanged?.Invoke(this, "Automatic recovery unavailable — close this tab or open a new tab");
         }
     }
 
@@ -204,7 +253,12 @@ public sealed partial class BrowserTab : UserControl, IDisposable
                 CloseButtonText = "Deny",
                 DefaultButton = ContentDialogButton.Close,
             };
+            _permissionDialog = dialog;
             var result = await dialog.ShowAsync();
+            if (_disposed || _processFailed)
+            {
+                return;
+            }
             args.State = result == ContentDialogResult.Primary
                 ? CoreWebView2PermissionState.Allow
                 : CoreWebView2PermissionState.Deny;
@@ -215,7 +269,15 @@ public sealed partial class BrowserTab : UserControl, IDisposable
             {
                 _permissionDialogOpen = false;
             }
-            deferral.Complete();
+            _permissionDialog = null;
+            try
+            {
+                deferral.Complete();
+            }
+            catch (Exception) when (_disposed || _processFailed)
+            {
+                // A dead process can invalidate its outstanding permission request.
+            }
         }
     }
 
@@ -458,7 +520,16 @@ public sealed partial class BrowserTab : UserControl, IDisposable
 
         _disposed = true;
         Loaded -= BrowserTab_Loaded;
-        if (BrowserWebView.CoreWebView2 is not null)
+        try
+        {
+            _permissionDialog?.Hide();
+        }
+        catch (Exception)
+        {
+            // Closing an already-dismissed dialog is harmless during teardown.
+        }
+        _permissionDialog = null;
+        if (!_processFailed && BrowserWebView.CoreWebView2 is not null)
         {
             BrowserWebView.CoreWebView2.DocumentTitleChanged -= CoreWebView2_DocumentTitleChanged;
             BrowserWebView.CoreWebView2.HistoryChanged -= CoreWebView2_HistoryChanged;
@@ -471,9 +542,21 @@ public sealed partial class BrowserTab : UserControl, IDisposable
             if (_credentialScriptId is not null)
                 BrowserWebView.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_credentialScriptId);
         }
-        BrowserWebView.Close();
+        try
+        {
+            BrowserWebView.Close();
+        }
+        catch (Exception) when (_processFailed)
+        {
+            // Browser-process failure can leave the control already closed.
+        }
         TitleChanged = null;
-        BrowserProcessExited = null;
+        RecoveryRequested = null;
         GC.SuppressFinalize(this);
     }
+}
+
+public sealed class BrowserRecoveryRequestedEventArgs(Uri target) : EventArgs
+{
+    public Uri Target { get; } = target;
 }

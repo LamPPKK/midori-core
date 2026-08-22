@@ -632,12 +632,18 @@ public sealed partial class MainWindow : Window
         browser.TitleChanged += (_, title) => tab.Header = string.IsNullOrWhiteSpace(title)
             ? (browser.IsPrivate ? "Private tab" : "New tab")
             : title;
-        browser.BrowserProcessExited += (_, _) =>
+        browser.RecoveryRequested += (_, args) =>
         {
+            if (!ReferenceEquals(tab.Content, browser))
+            {
+                return;
+            }
+
             var replacement = new BrowserTab(
                 browser.IsPrivate,
-                browser.CurrentUri,
-                ShowCredentialPickerAsync);
+                args.Target,
+                ShowCredentialPickerAsync,
+                automaticRecoveryUsed: true);
             browser.Dispose();
             tab.Content = replacement;
             AttachBrowser(tab, replacement);

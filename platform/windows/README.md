@@ -88,8 +88,11 @@ Mozilla approval, distribute only the HTTPS self-hosted configuration and run
 
 ## Security baseline
 
-- Only valid `http`, `https` and `about:blank` navigation reaches WebView2.
-- A small allowlist of external schemes is handed to Windows after validation.
+- Only bounded, canonical `http`, `https` and `about:blank` navigation reaches
+  WebView2. Userinfo, invalid hosts/ports and malformed or oversized input fail
+  closed.
+- A small allowlist of bounded external schemes is handed to Windows only after
+  raw and percent-encoded control characters have been rejected.
 - Host objects remain disabled. Web messaging is enabled only in regular tabs
   for the bounded credential bridge and is checked against the exact current
   document, tab ID and navigation nonce.
@@ -98,8 +101,10 @@ Mozilla approval, distribute only the HTTPS self-hosted configuration and run
 - Private tabs use WebView2 InPrivate controller options.
 - WebView2 data lives under the user's local application-data directory, so an
   unpackaged install remains writable under protected application locations.
-- Closed tabs close their controller; renderer crashes reload and browser
-  process crashes recreate the affected tab at its last safe web address.
+- Closed tabs close their controller. The first renderer or browser-process
+  failure replaces the affected tab at its last validated web address through
+  a fresh `Navigate` GET; it never calls `Reload` or restores a form body. A
+  second failure stops automatic recovery instead of forming a crash loop.
 - The app uses an Evergreen runtime so WebView2 security fixes arrive through
   the Microsoft Edge update channel independently of the app release.
 

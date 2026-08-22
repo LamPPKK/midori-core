@@ -1,3 +1,7 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+
 namespace XanhBrowser.Core;
 
 public enum NavigationTargetKind
@@ -12,6 +16,14 @@ public static class AddressResolver
 {
     public static readonly Uri DefaultHomePage = new("https://duckduckgo.com/");
 
+    private const int MaxWebUrlBytes = 8_192;
+    private const int MaxExternalUrlBytes = 2_048;
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly IdnMapping StrictIdn = new() { UseStd3AsciiRules = true };
+    private static readonly Regex EncodedControl = new(
+        "%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[fF])",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly HashSet<string> ExternalSchemes = new(StringComparer.OrdinalIgnoreCase)
     {
         "mailto",
@@ -24,6 +36,13 @@ public static class AddressResolver
 
     public static NavigationTarget? Resolve(string? input)
     {
+        if (input is null
+            || input.Any(char.IsControl)
+            || !IsWithinUtf8Limit(input, MaxWebUrlBytes))
+        {
+            return null;
+        }
+
         var value = input?.Trim();
         if (string.IsNullOrEmpty(value))
         {
@@ -47,14 +66,18 @@ public static class AddressResolver
             return Classify(hostUri);
         }
 
-        return new NavigationTarget(
-            NavigationTargetKind.Web,
-            new Uri($"https://duckduckgo.com/?q={Uri.EscapeDataString(value)}"));
+        var search = $"https://duckduckgo.com/?q={Uri.EscapeDataString(value)}";
+        return IsWithinUtf8Limit(search, MaxWebUrlBytes)
+            ? new NavigationTarget(NavigationTargetKind.Web, new Uri(search))
+            : null;
     }
 
     public static bool IsAllowedWebUri(Uri? uri)
     {
-        if (uri is null || !uri.IsAbsoluteUri)
+        if (uri is null
+            || !uri.IsAbsoluteUri
+            || !IsWithinUtf8Limit(uri.OriginalString, MaxWebUrlBytes)
+            || uri.OriginalString.Any(char.IsControl))
         {
             return false;
         }
@@ -64,13 +87,35 @@ public static class AddressResolver
             return uri.OriginalString.Equals("about:blank", StringComparison.OrdinalIgnoreCase);
         }
 
-        return (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+        if (!(uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
                 || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            && !string.IsNullOrWhiteSpace(uri.IdnHost);
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || uri.Port is < 0 or > 65_535
+            || !HasValidHost(uri))
+        {
+            return false;
+        }
+
+        return IsWithinUtf8Limit(uri.AbsoluteUri, MaxWebUrlBytes);
     }
 
-    public static bool IsAllowedExternalUri(Uri? uri) =>
-        uri is { IsAbsoluteUri: true } && ExternalSchemes.Contains(uri.Scheme);
+    public static bool IsAllowedExternalUri(Uri? uri)
+    {
+        if (uri is not { IsAbsoluteUri: true }
+            || !ExternalSchemes.Contains(uri.Scheme))
+        {
+            return false;
+        }
+
+        var value = uri.OriginalString;
+        var colon = value.IndexOf(':');
+        return colon > 0
+            && colon < value.Length - 1
+            && !value.Any(char.IsControl)
+            && !value.Any(char.IsWhiteSpace)
+            && !EncodedControl.IsMatch(value)
+            && IsWithinUtf8Limit(value, MaxExternalUrlBytes);
+    }
 
     private static NavigationTarget? Classify(Uri uri)
     {
@@ -95,5 +140,45 @@ public static class AddressResolver
         var candidate = slash >= 0 ? value[..slash] : value;
         return candidate.Equals("localhost", StringComparison.OrdinalIgnoreCase)
             || candidate.Contains('.', StringComparison.Ordinal);
+    }
+
+    private static bool HasValidHost(Uri uri)
+    {
+        if (uri.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6)
+        {
+            return true;
+        }
+        if (uri.HostNameType != UriHostNameType.Dns)
+        {
+            return false;
+        }
+
+        try
+        {
+            var ascii = StrictIdn.GetAscii(uri.DnsSafeHost);
+            return !string.IsNullOrWhiteSpace(ascii)
+                && ascii.Equals(uri.IdnHost, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsWithinUtf8Limit(string value, int limit)
+    {
+        if (value.Length > limit)
+        {
+            return false;
+        }
+
+        try
+        {
+            return StrictUtf8.GetByteCount(value) <= limit;
+        }
+        catch (EncoderFallbackException)
+        {
+            return false;
+        }
     }
 }

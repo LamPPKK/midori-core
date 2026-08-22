@@ -260,15 +260,19 @@ a main-frame-only isolated `WKContentWorld` credential picker that is absent
 from private tabs.
 Windows provides the equivalent WinUI coordinator, single-instance protocol
 activation, DPAPI/Windows Hello persistence, a gated exact-origin WebView2
-credential picker and architecture-specific native DLL packaging input. Both
-hosts keep Mozilla-hosted mode disabled unless the
+credential picker and architecture-specific native DLL packaging input. Its
+Sync-enabled host also records regular navigation, publishes bounded regular
+tabs and exposes typed bookmark/history controls over the existing C ABI.
+Bookmark mutations retain the selected GUID and history deletion retains the
+selected URL/millisecond timestamp; InPrivate tabs never enter these mutations.
+Both hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
 The platform boundary tests currently pass locally: 34 Apple tests cover the
 contract, coordinator, navigation/recovery policy and device-only
 Keychain/LocalAuthentication policy,
-while 30 Windows tests cover the contract, coordinator, P/Invoke surface and
-DPAPI/Windows Hello policy. The
+while 68 Windows cases cover the contract, coordinator, typed Places/tabs
+boundary, P/Invoke surface and DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application
 Services native libraries appear only in the on-demand Sync split.

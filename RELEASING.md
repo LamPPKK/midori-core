@@ -560,6 +560,19 @@ channels are rejected before a controller or page is created, while Runtime
    credential selection, cancel and retry, stale navigation/process failure,
    forged or oversized messages, background vault lock and the absence of any
    bridge in InPrivate tabs.
+   With the Sync DLL enabled, navigate in regular and InPrivate tabs and verify
+   only the regular visit reaches Places. Publish more than one regular tab,
+   wait 30 seconds and confirm a local-change Sync carries the current tab set.
+   Create two bookmarks with the same URL in different Firefox roots; rename
+   one and delete the other, proving only the selected GUID changes. Repeat with
+   two same-URL history visits and delete only the selected millisecond
+   timestamp. Inject malformed GUIDs, unsafe/openable URL mismatches, oversized
+   output and out-of-range timestamps; the native library must fail closed
+   without opening or mutating a fallback URL. Clearing all Places history must
+   require the second native confirmation and must not claim to clear WebView2
+   cookies/cache. Race a successful navigation completion against clear-all and
+   confirm the visit is suppressed or deleted again by its exact URL/timestamp
+   before the clear operation reports success.
 3. Sign every executable and package with the dedicated certificate, verify the
    timestamp and signature on a separate clean system, then run Microsoft
    Defender and SmartScreen submission checks.

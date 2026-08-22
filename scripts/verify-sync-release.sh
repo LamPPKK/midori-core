@@ -424,6 +424,22 @@ case "$edition" in
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
+    grep -F 'public async Task UpdateLocalTabsAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<IReadOnlyList<FirefoxBookmarkRecord>> BookmarksAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task RecordHistoryAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'browser.PageVisited += Browser_PageVisited;' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'await _sync.SyncAsync(FirefoxSyncReason.LocalChange);' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'coordinator.DeleteBookmarkAsync(selected.Guid' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'coordinator.DeleteHistoryVisitAsync(uri, selected.VisitedAtEpochMillis)' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'clearGeneration != Interlocked.Read(ref _historyClearGeneration)' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'xanh-browser-windows://accounts/oauth' \
       platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs >/dev/null
     test -f app-webkit/wpe-fork/WPE_ANDROID_REVISION
@@ -740,6 +756,18 @@ case "$edition" in
     grep -F 'WebView2ProcessRecoveryPolicy.SelectAutomaticTarget' \
       platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
     grep -F 'automaticRecoveryUsed: true' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'public async Task UpdateLocalTabsAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<IReadOnlyList<FirefoxBookmarkRecord>> BookmarksAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'browser.PageVisited += Browser_PageVisited;' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'coordinator.DeleteBookmarkAsync(selected.Guid' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'coordinator.DeleteHistoryVisitAsync(uri, selected.VisitedAtEpochMillis)' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'clearGeneration != Interlocked.Read(ref _historyClearGeneration)' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     test "${XANH_WINDOWS_HELLO_TESTED:-0}" = 1
     test "${XANH_WEBVIEW2_SYNC_BRIDGE_REVIEWED:-0}" = 1

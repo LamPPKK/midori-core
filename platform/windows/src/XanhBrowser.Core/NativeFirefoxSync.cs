@@ -15,7 +15,17 @@ public interface IFirefoxSyncRuntime : IDisposable
     void UnlockVault(string localLoginsKey);
     void LockVault();
     string Sync(FirefoxSyncReason reason, string enginesJson);
+    string UpdateLocalTabs(string tabsJson);
     string RemoteTabsJson();
+    string BookmarkRootGuid(int root);
+    string CreateBookmark(string bookmarkJson);
+    string BookmarksJson(int root);
+    void UpdateBookmark(string updateJson);
+    bool DeleteBookmark(string guid, bool isPrivate);
+    string RecordHistory(string visitsJson);
+    string RecentHistoryJson(uint limit);
+    void DeleteHistoryVisit(string url, long visitedAtEpochMillis);
+    void ClearHistory();
     string CredentialsJson(string contextJson);
     void TouchCredential(string id, string contextJson);
     void Disconnect(bool deleteLocal);
@@ -106,7 +116,7 @@ public sealed class NativeFirefoxSync : IFirefoxSyncRuntime
     public string RemoteTabsJson() =>
         NativeMethods.TakeOwned(NativeMethods.RemoteTabsJson(_handle));
 
-    public static string BookmarkRootGuid(int root) =>
+    public string BookmarkRootGuid(int root) =>
         NativeMethods.TakeOwned(NativeMethods.BookmarkRootGuid(root));
 
     public string CreateBookmark(string bookmarkJson) =>

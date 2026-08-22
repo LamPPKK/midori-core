@@ -346,6 +346,286 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         }
     }
 
+    public async Task UpdateLocalTabsAsync(
+        IReadOnlyList<FirefoxLocalTab> tabs,
+        bool markLocalChange = true,
+        CancellationToken cancellationToken = default)
+    {
+        if (tabs.Count > FirefoxPlacesPolicy.MaximumLocalTabs)
+            throw new ArgumentException("Local tab payload exceeds 500 records.");
+        var values = tabs.Select(tab =>
+        {
+            if (tab.UrlHistory.Count is < 1 or > 10
+                || tab.UrlHistory.Any(uri => !FirefoxPlacesPolicy.IsAllowedWebUri(uri))
+                || tab.IconUri is { } icon && !FirefoxPlacesPolicy.IsAllowedWebUri(icon)
+                || tab.LastUsed.ToUnixTimeMilliseconds() < 0)
+                throw new ArgumentException("Local tab payload is unsafe.");
+            return new
+            {
+                title = FirefoxPlacesPolicy.SanitizeTitle(
+                    tab.Title,
+                    tab.UrlHistory[0].AbsoluteUri),
+                url_history = tab.UrlHistory.Select(uri => uri.AbsoluteUri).ToArray(),
+                icon_url = tab.IconUri?.AbsoluteUri,
+                last_used_epoch_millis = tab.LastUsed.ToUnixTimeMilliseconds(),
+                is_private = tab.IsPrivate,
+                is_pinned = tab.IsPinned,
+            };
+        }).ToArray();
+        var payload = JsonSerializer.Serialize(values, JsonOptions);
+        if (Encoding.UTF8.GetByteCount(payload) > 4 * 1_024 * 1_024)
+            throw new ArgumentException("Local tab payload exceeds 4 MiB.");
+
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            var resultJson = await Task.Run(
+                () => runtime.UpdateLocalTabs(payload), cancellationToken).ConfigureAwait(false);
+            var result = JsonSerializer.Deserialize<LocalTabsUpdateResult>(resultJson, JsonOptions)
+                ?? throw new InvalidOperationException("Firefox Sync returned no local-tab result.");
+            var privateCount = values.Count(value => value.is_private);
+            if (result.AcceptedCount + result.SkippedPrivateCount != values.Length
+                || result.SkippedPrivateCount != privateCount)
+                throw new InvalidOperationException("Firefox Sync returned an inconsistent local-tab result.");
+            if (markLocalChange)
+                await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<FirefoxBookmarkRecord>> BookmarksAsync(
+        FirefoxBookmarkRoot root = FirefoxBookmarkRoot.Mobile,
+        CancellationToken cancellationToken = default)
+    {
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            var value = await Task.Run(
+                () => runtime.BookmarksJson((int)root), cancellationToken).ConfigureAwait(false);
+            return ParseBoundedArray<FirefoxBookmarkRecord>(
+                value,
+                16 * 1_024 * 1_024,
+                FirefoxPlacesPolicy.MaximumBookmarks,
+                record => record.IsSafe,
+                "bookmark");
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<string> CreateBookmarkAsync(
+        Uri url,
+        string? title,
+        FirefoxBookmarkRoot root = FirefoxBookmarkRoot.Mobile,
+        bool isPrivate = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (isPrivate) throw new ArgumentException("Private tabs cannot create bookmarks.");
+        if (!FirefoxPlacesPolicy.IsAllowedWebUri(url))
+            throw new ArgumentException("Bookmark URL is unsafe.");
+        var safeTitle = FirefoxPlacesPolicy.SanitizeTitle(title, url.AbsoluteUri);
+
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            var parentGuid = runtime.BookmarkRootGuid((int)root);
+            if (!FirefoxPlacesPolicy.IsGuid(parentGuid))
+                throw new InvalidOperationException("Firefox Sync returned an invalid bookmark root.");
+            var payload = JsonSerializer.Serialize(new
+            {
+                parent_guid = parentGuid,
+                position = (uint?)null,
+                kind = "bookmark",
+                title = safeTitle,
+                url = url.AbsoluteUri,
+                date_added_epoch_millis = _clock().ToUnixTimeMilliseconds(),
+                last_modified_epoch_millis = (long?)null,
+                is_private = false,
+            }, JsonOptions);
+            var guid = await Task.Run(
+                () => runtime.CreateBookmark(payload), cancellationToken).ConfigureAwait(false);
+            if (!FirefoxPlacesPolicy.IsGuid(guid))
+                throw new InvalidOperationException("Firefox Sync returned an invalid bookmark GUID.");
+            await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+            return guid;
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task RenameBookmarkAsync(
+        string guid,
+        string title,
+        bool isPrivate = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (isPrivate) throw new ArgumentException("Private tabs cannot update bookmarks.");
+        if (!FirefoxPlacesPolicy.IsGuid(guid))
+            throw new ArgumentException("Bookmark GUID is invalid.");
+        var safeTitle = FirefoxPlacesPolicy.SanitizeTitle(title, "Untitled");
+        var payload = JsonSerializer.Serialize(new
+        {
+            guid,
+            title = safeTitle,
+            url = (string?)null,
+            parent_guid = (string?)null,
+            position = (uint?)null,
+            is_private = false,
+        }, JsonOptions);
+
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            await Task.Run(() => runtime.UpdateBookmark(payload), cancellationToken).ConfigureAwait(false);
+            await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<bool> DeleteBookmarkAsync(
+        string guid,
+        bool isPrivate = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (isPrivate) throw new ArgumentException("Private tabs cannot delete bookmarks.");
+        if (!FirefoxPlacesPolicy.IsGuid(guid))
+            throw new ArgumentException("Bookmark GUID is invalid.");
+
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            var deleted = await Task.Run(
+                () => runtime.DeleteBookmark(guid, false), cancellationToken).ConfigureAwait(false);
+            if (deleted) await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+            return deleted;
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task RecordHistoryAsync(
+        Uri url,
+        string? title,
+        DateTimeOffset visitedAt,
+        FirefoxHistoryTransition transition = FirefoxHistoryTransition.Link,
+        bool isPrivate = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (!FirefoxPlacesPolicy.IsAllowedWebUri(url))
+            throw new ArgumentException("History URL is unsafe.");
+        if (visitedAt.ToUnixTimeMilliseconds() <= 0)
+            throw new ArgumentException("History timestamp is invalid.");
+        if (isPrivate) return;
+        var payload = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                url = url.AbsoluteUri,
+                title = FirefoxPlacesPolicy.SanitizeTitle(title, url.AbsoluteUri),
+                visited_at_epoch_millis = visitedAt.ToUnixTimeMilliseconds(),
+                transition = FirefoxPlacesPolicy.TransitionName(transition),
+                is_private = false,
+            },
+        }, JsonOptions);
+
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            var resultJson = await Task.Run(
+                () => runtime.RecordHistory(payload), cancellationToken).ConfigureAwait(false);
+            var result = JsonSerializer.Deserialize<HistoryUpdateResult>(resultJson, JsonOptions)
+                ?? throw new InvalidOperationException("Firefox Sync returned no history result.");
+            if (result.AcceptedCount != 1 || result.SkippedPrivateCount != 0)
+                throw new InvalidOperationException("Firefox Sync did not accept the history visit.");
+            await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<FirefoxHistoryVisitRecord>> RecentHistoryAsync(
+        uint limit = FirefoxPlacesPolicy.MaximumHistoryResults,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is 0 or > FirefoxPlacesPolicy.MaximumHistoryResults)
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            var value = await Task.Run(
+                () => runtime.RecentHistoryJson(limit), cancellationToken).ConfigureAwait(false);
+            return ParseBoundedArray<FirefoxHistoryVisitRecord>(
+                value,
+                8 * 1_024 * 1_024,
+                checked((int)limit),
+                record => record.IsSafe,
+                "history");
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task DeleteHistoryVisitAsync(
+        Uri url,
+        long visitedAtEpochMillis,
+        CancellationToken cancellationToken = default)
+    {
+        if (!FirefoxPlacesPolicy.IsAllowedWebUri(url)
+            || !FirefoxPlacesPolicy.IsSafeTimestamp(visitedAtEpochMillis, allowZero: false))
+            throw new ArgumentException("History visit identity is invalid.");
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            await Task.Run(
+                () => runtime.DeleteHistoryVisit(url.AbsoluteUri, visitedAtEpochMillis),
+                cancellationToken).ConfigureAwait(false);
+            await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task ClearHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            await Task.Run(runtime.ClearHistory, cancellationToken).ConfigureAwait(false);
+            await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<FirefoxCredentialRecord>> CredentialsAsync(
         CredentialAccessContext context,
         CancellationToken cancellationToken = default)
@@ -480,7 +760,9 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         {
             LastSync = status is FirefoxSyncStatus.Success or FirefoxSyncStatus.Partial ? now : _schedule.LastSync,
             NextAllowed = nextAllowed,
-            LocalChange = reason == FirefoxSyncReason.LocalChange ? null : _schedule.LocalChange,
+            LocalChange = status is FirefoxSyncStatus.Success or FirefoxSyncStatus.Partial
+                ? null
+                : _schedule.LocalChange,
         };
         await PersistRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
         await PersistScheduleAsync(cancellationToken).ConfigureAwait(false);
@@ -548,6 +830,36 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         else
             await _secrets.WriteAsync(
                 FirefoxSyncSecret.SyncState, state, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task MarkLocalChangeLockedAsync(CancellationToken cancellationToken)
+    {
+        _schedule = _schedule with { LocalChange = _clock() };
+        await PersistScheduleAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<T> ParseBoundedArray<T>(
+        string value,
+        int maximumBytes,
+        int maximumItems,
+        Func<T, bool> isSafe,
+        string label)
+    {
+        if (Encoding.UTF8.GetByteCount(value) > maximumBytes)
+            throw new InvalidOperationException($"Firefox Sync {label} result is too large.");
+        T[] records;
+        try
+        {
+            records = JsonSerializer.Deserialize<T[]>(value, JsonOptions)
+                ?? throw new InvalidOperationException($"Firefox Sync returned no {label} result.");
+        }
+        catch (JsonException error)
+        {
+            throw new InvalidOperationException($"Firefox Sync returned malformed {label} data.", error);
+        }
+        if (records.Length > maximumItems || records.Any(record => !isSafe(record)))
+            throw new InvalidOperationException($"Firefox Sync returned unsafe {label} data.");
+        return records;
     }
 
     private Task PersistScheduleAsync(CancellationToken cancellationToken) =>
@@ -691,4 +1003,12 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     private sealed record SyncWireResult(
         [property: JsonPropertyName("status")] string Status,
         [property: JsonPropertyName("next_sync_allowed_epoch_seconds")] ulong? NextSyncAllowedEpochSeconds);
+
+    private sealed record LocalTabsUpdateResult(
+        [property: JsonPropertyName("accepted_count")] int AcceptedCount,
+        [property: JsonPropertyName("skipped_private_count")] int SkippedPrivateCount);
+
+    private sealed record HistoryUpdateResult(
+        [property: JsonPropertyName("accepted_count")] int AcceptedCount,
+        [property: JsonPropertyName("skipped_private_count")] int SkippedPrivateCount);
 }

@@ -62,6 +62,16 @@ callback to the one live Xanh Browser instance. Opaque state is encrypted with
 user-bound DPAPI, while unlocking the local Logins key requires Windows Hello
 or the device PIN and expires after five minutes/backgrounding.
 
+When the native Sync runtime is configured, the command bar also exposes
+Bookmarks and History. Successful regular WebView2 navigation is recorded in
+Places, current regular tabs are published before Sync, and the native library
+shows all four Firefox bookmark roots plus the 500 most recent visits. Opening
+a row always requires an explicit click. Rename/delete operations preserve the
+exact bookmark GUID; history deletion uses the exact URL/timestamp visit.
+InPrivate navigation is never recorded and cannot create, rename or delete a
+bookmark. The ordinary verification build intentionally lacks the native DLL,
+so it does not claim an independent local Places library yet.
+
 Regular tabs install a document-start WebView2 credential bridge. A page can
 only request the native chooser after a trusted pointer or keyboard event. The
 host validates the top-level source URI, tab ID, per-navigation nonce, exact

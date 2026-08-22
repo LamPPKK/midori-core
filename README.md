@@ -371,6 +371,15 @@ production remains blocked until the pinned XCFramework/DLL and platform
 interoperability/security evidence are packaged and reviewed. Each platform
 uses its own registered callback scheme.
 
+The Sync-enabled Windows host now publishes bounded regular tabs before Sync,
+records only successful regular navigation in Places and exposes a native
+bookmark/history library. Bookmark rename/delete uses the selected 12-character
+Places GUID, history deletion uses the selected canonical URL plus millisecond
+visit timestamp, and remote history is display-only until explicitly opened.
+InPrivate tabs are rejected before any Places mutation. The ordinary artifact
+still has no local Places runtime, so these library controls remain unavailable
+until an approved or self-hosted Sync configuration and native DLL are present.
+
 Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
 the Application Services runtime; the base app loads it only after the user
 chooses Firefox Sync. CI builds both base-only and `lite-with-sync` bundles,

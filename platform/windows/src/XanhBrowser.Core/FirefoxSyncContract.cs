@@ -8,6 +8,150 @@ public enum FirefoxAccountState { Disconnected, Authenticating, Connected, AuthI
 public enum FirefoxSyncEngine { Bookmarks, History, Tabs, Passwords }
 public enum FirefoxSyncReason { Startup, Manual, Scheduled, LocalChange, PreSleep }
 public enum FirefoxSyncStatus { Idle, Running, Success, Partial, NetworkError, AuthError, BackedOff }
+public enum FirefoxBookmarkRoot { Menu, Toolbar, Unfiled, Mobile }
+public enum FirefoxHistoryTransition
+{
+    Link,
+    Typed,
+    Bookmark,
+    RedirectPermanent,
+    RedirectTemporary,
+    Download,
+    Reload,
+}
+
+public sealed record FirefoxBookmarkRecord(
+    [property: JsonPropertyName("guid")] string Guid,
+    [property: JsonPropertyName("parent_guid")] string? ParentGuid,
+    [property: JsonPropertyName("position")] uint Position,
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("title")] string? Title,
+    [property: JsonPropertyName("url")] string? Url,
+    [property: JsonPropertyName("is_openable")] bool IsOpenable,
+    [property: JsonPropertyName("date_added_epoch_millis")] long DateAddedEpochMillis,
+    [property: JsonPropertyName("last_modified_epoch_millis")] long LastModifiedEpochMillis)
+{
+    public bool IsSafe => FirefoxPlacesPolicy.IsGuid(Guid)
+        && (ParentGuid is null || FirefoxPlacesPolicy.IsGuid(ParentGuid))
+        && Kind is "bookmark" or "folder" or "separator"
+        && FirefoxPlacesPolicy.IsSafeTitle(Title)
+        && FirefoxPlacesPolicy.IsSafeTimestamp(DateAddedEpochMillis, allowZero: true)
+        && FirefoxPlacesPolicy.IsSafeTimestamp(LastModifiedEpochMillis, allowZero: true)
+        && FirefoxPlacesPolicy.IsSafeBookmarkUrl(Kind, Url, IsOpenable);
+
+    public Uri? OpenableUri => IsOpenable
+        && Uri.TryCreate(Url, UriKind.Absolute, out var uri)
+        && FirefoxPlacesPolicy.IsAllowedWebUri(uri)
+            ? uri
+            : null;
+}
+
+public sealed record FirefoxHistoryVisitRecord(
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("title")] string? Title,
+    [property: JsonPropertyName("visited_at_epoch_millis")] long VisitedAtEpochMillis,
+    [property: JsonPropertyName("transition")] string Transition,
+    [property: JsonPropertyName("is_remote")] bool IsRemote)
+{
+    public bool IsSafe => Uri.TryCreate(Url, UriKind.Absolute, out var uri)
+        && FirefoxPlacesPolicy.IsAllowedWebUri(uri)
+        && FirefoxPlacesPolicy.IsSafeTitle(Title)
+        && FirefoxPlacesPolicy.IsSafeTimestamp(VisitedAtEpochMillis, allowZero: false)
+        && Transition is "link" or "typed" or "bookmark" or "redirect-permanent"
+            or "redirect-temporary" or "download" or "reload";
+
+    public Uri? OpenableUri => IsSafe && Uri.TryCreate(Url, UriKind.Absolute, out var uri)
+        ? uri
+        : null;
+}
+
+public sealed record FirefoxLocalTab(
+    string Title,
+    IReadOnlyList<Uri> UrlHistory,
+    Uri? IconUri,
+    DateTimeOffset LastUsed,
+    bool IsPrivate,
+    bool IsPinned = false);
+
+public static class FirefoxPlacesPolicy
+{
+    private static readonly long MaximumEpochMillis = DateTimeOffset.MaxValue.ToUnixTimeMilliseconds();
+    public const int MaximumTitleBytes = 4_096;
+    public const int MaximumUrlBytes = 8_192;
+    public const int MaximumBookmarks = 10_000;
+    public const int MaximumHistoryResults = 500;
+    public const int MaximumLocalTabs = 500;
+
+    public static bool IsGuid(string? value) => value is { Length: 12 }
+        && value.All(character => character is >= 'a' and <= 'z'
+            or >= 'A' and <= 'Z'
+            or >= '0' and <= '9'
+            or '-' or '_');
+
+    public static bool IsAllowedWebUri(Uri uri) => AddressResolver.IsAllowedWebUri(uri)
+        && string.IsNullOrEmpty(uri.UserInfo)
+        && Encoding.UTF8.GetByteCount(uri.AbsoluteUri) <= MaximumUrlBytes;
+
+    public static bool IsSafeTitle(string? value) => value is null
+        || Encoding.UTF8.GetByteCount(value) <= MaximumTitleBytes
+        && !value.Any(char.IsControl);
+
+    public static string SanitizeTitle(string? value, string fallback)
+    {
+        var candidate = string.IsNullOrWhiteSpace(value) ? fallback : value;
+        var output = new StringBuilder(Math.Min(candidate.Length, MaximumTitleBytes));
+        var bytes = 0;
+        var pendingSpace = false;
+        foreach (var rune in candidate.EnumerateRunes())
+        {
+            if (Rune.IsWhiteSpace(rune))
+            {
+                if (output.Length > 0) pendingSpace = true;
+                continue;
+            }
+            if (Rune.IsControl(rune)) continue;
+            var encodedBytes = rune.Utf8SequenceLength;
+            var separatorBytes = pendingSpace ? 1 : 0;
+            if (bytes + separatorBytes + encodedBytes > MaximumTitleBytes) break;
+            if (pendingSpace)
+            {
+                output.Append(' ');
+                bytes++;
+            }
+            output.Append(rune);
+            bytes += encodedBytes;
+            pendingSpace = false;
+        }
+        return output.Length == 0 ? "Untitled" : output.ToString();
+    }
+
+    internal static bool IsSafeBookmarkUrl(string kind, string? value, bool isOpenable)
+    {
+        if (kind == "separator") return value is null && !isOpenable;
+        if (kind == "folder") return value is null && !isOpenable;
+        if (value is null
+            || Encoding.UTF8.GetByteCount(value) > MaximumUrlBytes
+            || value.Any(char.IsControl))
+            return false;
+        if (!isOpenable) return true;
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) && IsAllowedWebUri(uri);
+    }
+
+    internal static bool IsSafeTimestamp(long value, bool allowZero) =>
+        value <= MaximumEpochMillis && (allowZero ? value >= 0 : value > 0);
+
+    internal static string TransitionName(FirefoxHistoryTransition transition) => transition switch
+    {
+        FirefoxHistoryTransition.Link => "link",
+        FirefoxHistoryTransition.Typed => "typed",
+        FirefoxHistoryTransition.Bookmark => "bookmark",
+        FirefoxHistoryTransition.RedirectPermanent => "redirect-permanent",
+        FirefoxHistoryTransition.RedirectTemporary => "redirect-temporary",
+        FirefoxHistoryTransition.Download => "download",
+        FirefoxHistoryTransition.Reload => "reload",
+        _ => throw new ArgumentOutOfRangeException(nameof(transition)),
+    };
+}
 
 public sealed record FirefoxSyncConfiguration(
     Uri AccountsUri,

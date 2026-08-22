@@ -21,6 +21,18 @@
                 Click="NewPrivateTab_Click"
                 Icon="ProtectedDocument"
                 Label="New private tab" />
+            <AppBarButton
+                Click="AddBookmark_Click"
+                Icon="Favorite"
+                Label="Bookmark page" />
+            <AppBarButton
+                Click="Bookmarks_Click"
+                Icon="Bookmarks"
+                Label="Bookmarks" />
+            <AppBarButton
+                Click="History_Click"
+                Icon="Clock"
+                Label="History" />
             <AppBarSeparator />
             <AppBarButton
                 x:Name="FirefoxSyncButton"

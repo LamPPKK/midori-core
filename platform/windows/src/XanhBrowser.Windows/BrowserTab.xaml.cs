@@ -20,15 +20,22 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     private bool _processFailed;
     private bool _recoveryQueued;
     private Uri _currentUri;
+    private Uri _lastSuccessfulUri;
+    private string _currentTitle = "";
+    private DateTimeOffset _lastUsed = DateTimeOffset.UtcNow;
     private string? _credentialNonce;
     private string? _credentialScriptId;
     private ContentDialog? _permissionDialog;
 
     public event EventHandler<string>? TitleChanged;
     public event EventHandler<BrowserRecoveryRequestedEventArgs>? RecoveryRequested;
+    public event EventHandler<BrowserPageVisitedEventArgs>? PageVisited;
 
     public bool IsPrivate => _isPrivate;
     public Uri CurrentUri => _currentUri;
+    public Uri LastSuccessfulUri => _lastSuccessfulUri;
+    public string CurrentTitle => _currentTitle;
+    public DateTimeOffset LastUsed => _lastUsed;
 
     public BrowserTab(
         bool isPrivate,
@@ -43,6 +50,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
             ? initialUri
             : AddressResolver.DefaultHomePage;
         _currentUri = _initialUri;
+        _lastSuccessfulUri = _initialUri;
         InitializeComponent();
         Loaded += BrowserTab_Loaded;
     }
@@ -131,6 +139,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     {
         if (sender is CoreWebView2 core)
         {
+            _currentTitle = core.DocumentTitle;
             TitleChanged?.Invoke(this, core.DocumentTitle);
         }
     }
@@ -442,6 +451,17 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     {
         LoadProgress.Visibility = Visibility.Collapsed;
         UpdateNavigationButtons();
+        if (!args.IsSuccess
+            || !Uri.TryCreate(sender.Source?.ToString(), UriKind.Absolute, out var uri)
+            || !AddressResolver.IsAllowedWebUri(uri))
+            return;
+        _currentUri = uri;
+        _lastSuccessfulUri = uri;
+        _lastUsed = DateTimeOffset.UtcNow;
+        _currentTitle = sender.CoreWebView2?.DocumentTitle ?? _currentTitle;
+        PageVisited?.Invoke(
+            this,
+            new BrowserPageVisitedEventArgs(_currentUri, _currentTitle, _lastUsed, _isPrivate));
     }
 
     private void CoreWebView2_SourceChanged(CoreWebView2 sender, CoreWebView2SourceChangedEventArgs args)
@@ -552,6 +572,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         }
         TitleChanged = null;
         RecoveryRequested = null;
+        PageVisited = null;
         GC.SuppressFinalize(this);
     }
 }
@@ -559,4 +580,16 @@ public sealed partial class BrowserTab : UserControl, IDisposable
 public sealed class BrowserRecoveryRequestedEventArgs(Uri target) : EventArgs
 {
     public Uri Target { get; } = target;
+}
+
+public sealed class BrowserPageVisitedEventArgs(
+    Uri uri,
+    string title,
+    DateTimeOffset visitedAt,
+    bool isPrivate) : EventArgs
+{
+    public Uri Uri { get; } = uri;
+    public string Title { get; } = title;
+    public DateTimeOffset VisitedAt { get; } = visitedAt;
+    public bool IsPrivate { get; } = isPrivate;
 }

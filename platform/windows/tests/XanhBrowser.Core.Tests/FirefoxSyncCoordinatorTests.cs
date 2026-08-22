@@ -201,6 +201,77 @@ public sealed class FirefoxSyncCoordinatorTests
             () => coordinator.CredentialsAsync(context));
     }
 
+    [TestMethod]
+    public async Task PlacesAndTabsUseExactBoundedNativeIdentities()
+    {
+        var runtime = new FakeRuntime
+        {
+            State = FirefoxAccountState.Connected,
+            BookmarksResult = """
+                [
+                  {"guid":"bookmark1234","parent_guid":"mobile______","position":0,"kind":"bookmark","title":"One","url":"https://example.org/one","is_openable":true,"date_added_epoch_millis":1,"last_modified_epoch_millis":2},
+                  {"guid":"bookmark5678","parent_guid":"mobile______","position":1,"kind":"bookmark","title":"Two","url":"https://example.org/one","is_openable":true,"date_added_epoch_millis":3,"last_modified_epoch_millis":4}
+                ]
+                """,
+            HistoryResult = """
+                [{"url":"https://example.org/one","title":"One","visited_at_epoch_millis":1700000000000,"transition":"link","is_remote":false}]
+                """,
+        };
+        var store = new FakeSecretStore();
+        using var coordinator = Create(runtime, store);
+        await coordinator.InitializeAsync();
+
+        var bookmarks = await coordinator.BookmarksAsync();
+        var history = await coordinator.RecentHistoryAsync();
+        var created = await coordinator.CreateBookmarkAsync(
+            new Uri("https://example.org/new"), "New bookmark");
+        await coordinator.RenameBookmarkAsync("bookmark5678", "Renamed");
+        Assert.IsTrue(await coordinator.DeleteBookmarkAsync("bookmark1234"));
+        await coordinator.RecordHistoryAsync(
+            new Uri("https://example.org/visited"),
+            "Visited",
+            DateTimeOffset.FromUnixTimeMilliseconds(1_700_000_000_001));
+        await coordinator.DeleteHistoryVisitAsync(
+            new Uri("https://example.org/one"), 1_700_000_000_000);
+        await coordinator.UpdateLocalTabsAsync(new[]
+        {
+            new FirefoxLocalTab(
+                "Regular", [new Uri("https://example.org/regular")], null,
+                DateTimeOffset.FromUnixTimeMilliseconds(1_700_000_000_002), false),
+            new FirefoxLocalTab(
+                "Private", [new Uri("https://example.org/private")], null,
+                DateTimeOffset.FromUnixTimeMilliseconds(1_700_000_000_003), true),
+        });
+
+        Assert.AreEqual(2, bookmarks.Count);
+        Assert.AreEqual("bookmark5678", bookmarks[1].Guid);
+        Assert.AreEqual(1, history.Count);
+        Assert.AreEqual("created_1234", created);
+        StringAssert.Contains(runtime.LastBookmarkUpdate, "\"guid\":\"bookmark5678\"");
+        Assert.AreEqual("bookmark1234", runtime.LastDeletedBookmarkGuid);
+        Assert.AreEqual(1_700_000_000_000, runtime.LastDeletedHistoryTimestamp);
+        StringAssert.Contains(runtime.LastHistoryPayload, "https://example.org/visited");
+        StringAssert.Contains(runtime.LastTabsPayload, "\"is_private\":true");
+        Assert.IsTrue(store.Values.ContainsKey(FirefoxSyncSecret.Schedule));
+        await coordinator.SyncAsync(FirefoxSyncReason.Manual);
+        using (var schedule = JsonDocument.Parse(store.Values[FirefoxSyncSecret.Schedule]))
+            Assert.AreEqual(
+                JsonValueKind.Null,
+                schedule.RootElement.GetProperty("local_change").ValueKind);
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            coordinator.DeleteBookmarkAsync("not-a-guid"));
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            coordinator.CreateBookmarkAsync(
+                new Uri("https://example.org/private"), "Private", isPrivate: true));
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            coordinator.DeleteHistoryVisitAsync(
+                new Uri("https://example.org/one"), long.MaxValue));
+        runtime.BookmarksResult = runtime.BookmarksResult.Replace(
+            "bookmark1234", "bad-guid", StringComparison.Ordinal);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            coordinator.BookmarksAsync());
+    }
+
     private static FirefoxSyncCoordinator Create(
         FakeRuntime runtime,
         FakeSecretStore store,
@@ -239,6 +310,13 @@ public sealed class FirefoxSyncCoordinatorTests
         public int TouchCredentialCalls { get; private set; }
         public int MaximumConcurrentCalls => _maximumConcurrentCalls;
         public bool LastDisconnectDeletedLocal { get; private set; }
+        public string BookmarksResult { get; set; } = "[]";
+        public string HistoryResult { get; set; } = "[]";
+        public string LastTabsPayload { get; private set; } = "";
+        public string LastBookmarkUpdate { get; private set; } = "";
+        public string LastHistoryPayload { get; private set; } = "";
+        public string? LastDeletedBookmarkGuid { get; private set; }
+        public long LastDeletedHistoryTimestamp { get; private set; }
         public FirefoxAccountState AccountState => State;
         public bool VaultUnlocked { get; private set; }
         public string CredentialsResult { get; set; } = "[]";
@@ -274,7 +352,36 @@ public sealed class FirefoxSyncCoordinatorTests
             }
         }
 
+        public string UpdateLocalTabs(string tabsJson)
+        {
+            LastTabsPayload = tabsJson;
+            return "{\"accepted_count\":1,\"skipped_private_count\":1}";
+        }
+
         public string RemoteTabsJson() => "[]";
+        public string BookmarkRootGuid(int root) => "mobile______";
+        public string CreateBookmark(string bookmarkJson) => "created_1234";
+        public string BookmarksJson(int root) => BookmarksResult;
+        public void UpdateBookmark(string updateJson) => LastBookmarkUpdate = updateJson;
+
+        public bool DeleteBookmark(string guid, bool isPrivate)
+        {
+            LastDeletedBookmarkGuid = guid;
+            return true;
+        }
+
+        public string RecordHistory(string visitsJson)
+        {
+            LastHistoryPayload = visitsJson;
+            return "{\"accepted_count\":1,\"skipped_private_count\":0}";
+        }
+
+        public string RecentHistoryJson(uint limit) => HistoryResult;
+
+        public void DeleteHistoryVisit(string url, long visitedAtEpochMillis) =>
+            LastDeletedHistoryTimestamp = visitedAtEpochMillis;
+
+        public void ClearHistory() { }
         public string CredentialsJson(string contextJson) => CredentialsResult;
         public void TouchCredential(string id, string contextJson) => TouchCredentialCalls++;
 

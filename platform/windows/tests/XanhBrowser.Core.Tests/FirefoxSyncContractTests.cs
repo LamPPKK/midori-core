@@ -164,6 +164,34 @@ public sealed class FirefoxSyncContractTests
     }
 
     [TestMethod]
+    public void PlacesPolicyBoundsTitlesAndExactMutationIdentities()
+    {
+        Assert.IsTrue(FirefoxPlacesPolicy.IsGuid("bookmark1234"));
+        Assert.IsFalse(FirefoxPlacesPolicy.IsGuid("bookmark1234-extra"));
+        Assert.IsFalse(FirefoxPlacesPolicy.IsGuid("bookmark12\n4"));
+        Assert.AreEqual(
+            FirefoxPlacesPolicy.MaximumTitleBytes,
+            System.Text.Encoding.UTF8.GetByteCount(
+                FirefoxPlacesPolicy.SanitizeTitle(string.Concat(
+                    Enumerable.Repeat("😀", 2_000)), "fallback")));
+        Assert.AreEqual("before after", FirefoxPlacesPolicy.SanitizeTitle("before\nafter", "fallback"));
+
+        var bookmark = new FirefoxBookmarkRecord(
+            "bookmark1234", "mobile______", 0, "bookmark", "Example",
+            "https://example.org/path", true, 1, 2);
+        Assert.IsTrue(bookmark.IsSafe);
+        Assert.IsNotNull(bookmark.OpenableUri);
+        Assert.IsFalse((bookmark with { Guid = "bad-guid" }).IsSafe);
+        Assert.IsFalse((bookmark with { Url = "javascript:alert(1)", IsOpenable = true }).IsSafe);
+
+        var visit = new FirefoxHistoryVisitRecord(
+            "https://example.org/path", "Example", 1, "link", false);
+        Assert.IsTrue(visit.IsSafe);
+        Assert.IsFalse((visit with { VisitedAtEpochMillis = 0 }).IsSafe);
+        Assert.IsFalse((visit with { Transition = "unknown" }).IsSafe);
+    }
+
+    [TestMethod]
     public void NativeLoginsBridgeUsesTheReviewedCAbiSymbols()
     {
         string? EntryPoint(string method) => typeof(NativeMethods)

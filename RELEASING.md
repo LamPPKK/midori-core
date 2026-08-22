@@ -35,7 +35,7 @@ tag is `v1.0.0` and must reference the reviewed release commit.
   provisioning profiles and App Store Connect records for macOS and universal
   iOS/iPadOS
 - Windows 10/11 x64 and ARM64 test systems, .NET 8, Windows App SDK 2.3.1,
-  Evergreen WebView2 Runtime 150+ and a dedicated Windows code-signing
+  Evergreen WebView2 Runtime 151.0.4129.50+ and a dedicated Windows code-signing
   certificate
 - The four Lite signing values below, supplied through the environment or the
   matching private Gradle properties
@@ -376,6 +376,11 @@ no private signing material, pass App Store validation and install from TestFlig
 or the notarized distribution channel on clean devices.
 
 ### Windows
+
+Before building Windows artifacts, run
+`python3 scripts/verify_webview2_latest.py` with network access. The candidate
+must pin the newest stable Microsoft.Web.WebView2 SDK from the official NuGet
+index; prerelease or dynamic versions never satisfy this gate.
 
 1. Run the core tests and publish both architectures:
 

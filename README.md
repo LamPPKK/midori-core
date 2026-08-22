@@ -309,7 +309,9 @@ and device/security evidence pass the WPE release gate.
   without that bridge for private tabs; macOS runs in the App Sandbox.
 - Windows accepts only web URLs in WebView2, disables host objects, restricts
   web messaging to the gated regular-tab credential bridge and uses the
-  Evergreen runtime for independently serviced engine updates.
+  Evergreen runtime for independently serviced engine updates. A scheduled
+  official-NuGet verifier rejects stale, dynamic or prerelease WebView2 SDK
+  pins; the current stable SDK baseline is 1.0.4129.50.
 - The Flatpak manifest grants only the permissions required by current browser
   functionality.
 - Android production blocks cleartext and mixed content, enables Safe Browsing

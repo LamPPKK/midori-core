@@ -1,0 +1,35 @@
+name: WebView2 stable baseline
+
+on:
+  push:
+    paths:
+      - .github/workflows/webview2-baseline.yml
+      - scripts/verify_webview2_latest.py
+      - scripts/tests/test_verify_webview2_latest.py
+      - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+  pull_request:
+    paths:
+      - .github/workflows/webview2-baseline.yml
+      - scripts/verify_webview2_latest.py
+      - scripts/tests/test_verify_webview2_latest.py
+      - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+  schedule:
+    - cron: '57 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webview2-stable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test latest-stable parser and MSBuild pin policy
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webview2_latest.py' -v
+      - name: Verify Windows edition uses latest stable WebView2 SDK
+        run: python3 scripts/verify_webview2_latest.py

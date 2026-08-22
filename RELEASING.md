@@ -374,7 +374,9 @@ Verify the branding patch on every revision update, run upstream WebKit tests,
 audit the copied runtime dependency closure, sign every shipped PE file and
 test navigation, TLS, download, media and process recovery on clean Windows 10
 and Windows 11 x64 systems. The generated `ENGINE.txt` and executable SHA-256
-must match the reviewed build.
+must match the reviewed build. CI must also resolve `WEBKIT_RELEASE_TAG` to the
+exact commit in `WEBKIT_REVISION`; do not ship a moving `main` snapshot or a
+commit older than the shared `WEBKITGTK_MIN_VERSION` security baseline.
 
 This preview is not production-ready until its upstream MiniBrowser-based UI
 has the same encrypted backup import/export surface as the WinUI and Android

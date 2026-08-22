@@ -75,21 +75,28 @@ jobs:
 
   windows-wincairo-baseline:
     runs-on: ubuntu-latest
-    env:
-      WEBKIT_REVISION: e303a714c767cbc7d553c6297b1041713745ff82
     steps:
       - uses: actions/checkout@v6
+      - name: Verify pinned stable WebKit release
+        run: |
+          revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"
+          release_tag="$(cat platform/windows-webkit/WEBKIT_RELEASE_TAG)"
+          minimum_version="$(cat WEBKITGTK_MIN_VERSION)"
+          test "${release_tag}" = "webkitgtk-${minimum_version}"
+          resolved="$(git ls-remote https://github.com/WebKit/WebKit.git "refs/tags/${release_tag}^{}" | awk '{ print $1 }')"
+          test -n "${resolved}"
+          test "${resolved}" = "${revision}"
       - name: Fetch pinned upstream patch inputs
         run: |
+          revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"
           mkdir -p _webkit/Tools/MiniBrowser/win
           for file in CMakeLists.txt MainWindow.cpp MiniBrowserLib.rc WebKitBrowserWindow.cpp; do
             curl --fail --location --silent --show-error \
-              "https://raw.githubusercontent.com/WebKit/WebKit/${WEBKIT_REVISION}/Tools/MiniBrowser/win/${file}" \
+              "https://raw.githubusercontent.com/WebKit/WebKit/${revision}/Tools/MiniBrowser/win/${file}" \
               --output "_webkit/Tools/MiniBrowser/win/${file}"
           done
       - name: Verify revision and branding patch
         run: |
-          test "$(cat platform/windows-webkit/WEBKIT_REVISION)" = "${WEBKIT_REVISION}"
           git -C _webkit init
           git -C _webkit apply --check --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-browser-webkit.patch"
           grep -F 'OUTPUT_NAME "XanhBrowser.WebKit"' platform/windows-webkit/patches/xanh-browser-webkit.patch

@@ -14,10 +14,33 @@ Set-StrictMode -Version Latest
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
 $sourceRoot = (Resolve-Path $WebKitSource).Path
 $revision = (Get-Content (Join-Path $PSScriptRoot "../WEBKIT_REVISION") -Raw).Trim()
+$releaseTag = (Get-Content (Join-Path $PSScriptRoot "../WEBKIT_RELEASE_TAG") -Raw).Trim()
+$minimumVersion = (Get-Content (Join-Path $repositoryRoot "WEBKITGTK_MIN_VERSION") -Raw).Trim()
 $patch = (Resolve-Path (Join-Path $PSScriptRoot "../patches/xanh-browser-webkit.patch")).Path
 $icon = (Resolve-Path (Join-Path $repositoryRoot "platform/windows/src/XanhBrowser.Windows/Assets/XanhBrowser.ico")).Path
 $mainIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/MiniBrowser.ico"
 $smallIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/small.ico"
+
+if ($releaseTag -ne "webkitgtk-$minimumVersion") {
+    throw "WinCairo release tag $releaseTag does not match the shared WebKit stable baseline $minimumVersion."
+}
+if ($revision -notmatch "^[0-9a-f]{40}$") {
+    throw "WEBKIT_REVISION must contain exactly one lowercase 40-character Git object ID."
+}
+
+$upstreamTagOutput = @(& git ls-remote https://github.com/WebKit/WebKit.git "refs/tags/$releaseTag^{}")
+$upstreamTagExitCode = $LASTEXITCODE
+if ($upstreamTagExitCode -ne 0 -or $upstreamTagOutput.Count -ne 1) {
+    throw "Could not resolve the official upstream WebKit tag $releaseTag."
+}
+$upstreamTagFields = ([string]$upstreamTagOutput[0]).Trim() -split "\s+"
+if ($upstreamTagFields.Count -ne 2 -or $upstreamTagFields[1] -ne "refs/tags/$releaseTag^{}") {
+    throw "Official WebKit tag $releaseTag returned an invalid reference."
+}
+$resolvedReleaseRevision = $upstreamTagFields[0]
+if ($resolvedReleaseRevision -ne $revision) {
+    throw "Official WebKit tag $releaseTag resolves to $resolvedReleaseRevision, expected $revision."
+}
 
 if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
     throw "The upstream WebKit Windows port supports x64 Windows only."
@@ -95,6 +118,7 @@ try {
     @(
         "Product: Xanh Browser WebKit 1.0.0 preview"
         "Engine: WebKit WinCairo"
+        "Upstream release: $releaseTag"
         "WebKit revision: $revision"
         "Architecture: x64"
         "Built: $([DateTimeOffset]::UtcNow.ToString('O'))"

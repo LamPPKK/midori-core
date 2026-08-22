@@ -157,8 +157,9 @@ The Windows edition is a native WinUI 3 application with multi-tab and
 InPrivate browsing, strict URL/scheme validation, tracking prevention and
 WebView2 host-bridge features disabled by default. See
 [`platform/windows/README.md`](platform/windows/README.md) for .NET 8 build and
-publish commands. A real WebKit/WinCairo x64 preview, built from a pinned
-upstream source revision, lives in
+publish commands. A real WebKit/WinCairo x64 preview is built from a pinned
+upstream stable release commit matching the shared WebKit 2.52.6 security
+baseline and lives in
 [`platform/windows-webkit/`](platform/windows-webkit/README.md).
 
 ## Encrypted backup and sync

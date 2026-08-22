@@ -8,7 +8,8 @@ against a full, pinned upstream WebKit checkout.
 
 - Product: **Xanh Browser WebKit 1.0.0 preview**
 - Engine: upstream WebKit Windows port (Cairo graphics and libcurl networking)
-- Baseline: commit in `WEBKIT_REVISION`
+- Baseline: `webkitgtk-2.52.6`, resolved to the exact commit in
+  `WEBKIT_REVISION`
 - Architecture: Windows x64 only
 - Distribution: unsigned developer artifact; not a production release
 
@@ -34,8 +35,11 @@ From a WebKit command prompt at this repository root:
   -WebKitSource C:\src\WebKit
 ```
 
-The script verifies a clean exact revision, applies the reviewed branding and
-URL-hardening patch, replaces the icon for the build, updates official
+The script verifies a clean exact revision, resolves `WEBKIT_RELEASE_TAG`
+against the official upstream WebKit remote and checks that it matches both the
+pinned commit and the repository-wide stable WebKit baseline before it applies
+the reviewed branding and URL-hardening patch, replaces the icon for the build,
+updates official
 WebKitRequirements, builds Release with the upstream script, copies the x64
 runtime directory to a new `_artifact/xanh-browser-windows-webkit-x64`
 directory, writes engine provenance and a standard SHA-256 file, then restores
@@ -47,10 +51,15 @@ stops loading the upstream privileged injected bundle and disables Web
 Inspector developer extras in the browser process. The build script also omits
 that unused injected-bundle DLL from the packaged artifact.
 
-The artifact contains the whole upstream `bin64` runtime because WebKit does
-not provide a separately serviced Windows runtime. Security releases therefore
-require updating `WEBKIT_REVISION`, refreshing the patch, rebuilding and
-redistributing the complete edition.
+The pinned commit is the peeled upstream `webkitgtk-2.52.6` tag rather than an
+arbitrary `main` snapshot. The GTK release tag is used because WinCairo and GTK
+are built from the same WebKit source tree, and this gives the Windows preview
+an auditable stable source baseline that includes the fixes required by
+WSA-2026-0005. The artifact contains the whole upstream `bin64` runtime because
+WebKit does not provide a separately serviced Windows runtime. Security
+releases therefore require updating `WEBKIT_RELEASE_TAG` and
+`WEBKIT_REVISION` together, refreshing the patch, rebuilding and redistributing
+the complete edition.
 
 ## Release gates
 

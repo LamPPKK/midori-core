@@ -132,6 +132,15 @@ case "$edition" in
     test -f app-webkit/src/androidTest/java/io/github/lamppkk/xanhbrowser/lite/webkit/WpeForkApiContractTest.kt
     test -f app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/XanhWPEViewClient.java
     test -f app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/WebKitNavigationPolicy.kt
+    test -f platform/windows-webkit/WEBKIT_RELEASE_TAG
+    test -f platform/windows-webkit/WEBKIT_REVISION
+    test "$(cat platform/windows-webkit/WEBKIT_RELEASE_TAG)" = \
+      "webkitgtk-$(cat WEBKITGTK_MIN_VERSION)"
+    wincairo_revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"
+    if [[ ! "$wincairo_revision" =~ ^[0-9a-f]{40}$ ]]; then
+      echo 'WinCairo WEBKIT_REVISION must contain exactly one lowercase 40-character Git object ID' >&2
+      exit 1
+    fi
     ;;
   linux)
     verify_native_core

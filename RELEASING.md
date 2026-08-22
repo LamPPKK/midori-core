@@ -181,6 +181,22 @@ allowed historical material, never a shipping dependency or application ID.
    `WebMouseEvent::mouseButton()` trusted-and-button-down invariant whenever the
    shared WebKit baseline changes; keyboard activation stays blocked until an
    equivalent trusted-event signal exists.
+
+   Exercise real HTTPS `<input type=file>` controls without `accept`, with a
+   MIME-filtered `accept`, with one file and with `multiple`.
+   The native GTK4 chooser must show the bounded ASCII top-level page origin,
+   preserve the WebKit MIME filter and return only the explicitly selected
+   local files. HTTP, userinfo, background tabs, stopped renderers and popup
+   views that are not yet attached, relative/non-local paths, duplicate paths,
+   percent-escape path ambiguities, more than 32 files,
+   paths over 4 KiB and aggregate paths over 64 KiB must fail closed. While the
+   chooser is open, navigate, switch/close the tab, terminate the renderer,
+   start Clear Browsing Data, issue a replacement request and exercise the
+   five-minute timeout; each path must cancel both the GTK operation and the
+   WebKit request without a stale callback. Repeat in private mode and confirm
+   Xanh's database, session, Sync state, logs and `.xanhbackup` contain no
+   selected path. Record separately whether the desktop portal remembers a
+   folder, since that OS-controlled state is outside Xanh's private profile.
    Verify handler-registration failure also leaves external navigation blocked.
    Repeat in a private tab and confirm the handoff occurs only after the same
    explicit activation, with no browser history/session write.

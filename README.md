@@ -143,6 +143,17 @@ bridges and current content filter before navigation, and remains outside the UI
 until `ready-to-show`. Tab changes, navigation, focus loss, renderer failure,
 data clearing, closure or a 15-second timeout cancel an unresolved popup.
 
+Linux file inputs use an application-owned modal GTK4 chooser only for the
+selected foreground HTTPS document. The request retains the exact document and
+tab identity, applies WebKit's MIME filter, and returns at most 32 unique local
+absolute paths without percent-escape ambiguity, bounded to 4 KiB each and
+64 KiB together. A navigation, tab
+switch/close, renderer termination, browsing-data clear, replacement request or
+five-minute timeout cancels the chooser and tells WebKit that no file was
+selected. Xanh does not write selected upload paths to its database, session,
+Sync data or portable backups; the operating-system chooser/portal remains
+subject to its own folder-history policy.
+
 ### Build and test
 
 ```sh

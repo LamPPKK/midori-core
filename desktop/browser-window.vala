@@ -88,6 +88,12 @@ namespace Xanh {
         ulong pending_auth_cancelled_signal;
         uint pending_auth_timeout_source;
         uint64 auth_generation;
+        WebKit.FileChooserRequest? pending_file_upload_request;
+        TabRecord? pending_file_upload_tab;
+        string? pending_file_upload_document_uri;
+        Cancellable? pending_file_upload_cancellable;
+        uint pending_file_upload_timeout_source;
+        uint64 file_upload_generation;
         HashTable<WebKit.Download, Cancellable> pending_download_choices =
             new HashTable<WebKit.Download, Cancellable> (direct_hash, direct_equal);
         HashTable<WebKit.Download, bool> failed_downloads =
@@ -235,6 +241,7 @@ namespace Xanh {
                 cancel_permission_request ();
                 cancel_tls_error ();
                 cancel_http_auth ();
+                cancel_file_upload ();
                 var selected = page as WebKit.WebView;
                 tabs.foreach ((id, tab) => {
                     if (tab.view != selected &&
@@ -652,6 +659,10 @@ namespace Xanh {
                         pending_auth_document_uri != tab.view.uri) {
                     cancel_http_auth ();
                 }
+                if (pending_file_upload_tab == tab &&
+                        pending_file_upload_document_uri != tab.view.uri) {
+                    cancel_file_upload ();
+                }
                 if (!tab.recovery.process_stopped) {
                     tab.state.uri = tab.view.uri ?? "about:blank";
                 }
@@ -679,6 +690,10 @@ namespace Xanh {
                 }
                 if (event == WebKit.LoadEvent.STARTED && pending_auth_tab == tab) {
                     cancel_http_auth ();
+                }
+                if (event == WebKit.LoadEvent.STARTED &&
+                        pending_file_upload_tab == tab) {
+                    cancel_file_upload ();
                 }
                 if (event == WebKit.LoadEvent.COMMITTED) {
                     tab.recovery.record_committed_uri (tab.view.uri);
@@ -738,8 +753,11 @@ namespace Xanh {
                 return true;
             });
             tab.view.run_file_chooser.connect ((request) => {
-                if (!tab.pending_popup) return false;
-                request.cancel ();
+                if (tab.pending_popup) {
+                    request.cancel ();
+                    return true;
+                }
+                handle_file_upload (tab, request);
                 return true;
             });
             tab.view.run_color_chooser.connect ((request) => {
@@ -777,6 +795,8 @@ namespace Xanh {
                     cancel_tls_error ();
                 if (pending_auth_tab == tab)
                     cancel_http_auth ();
+                if (pending_file_upload_tab == tab)
+                    cancel_file_upload ();
                 tab.recovery.record_termination ();
                 tab.state.recovery_uri = tab.recovery.recovery_uri;
                 show_process_stopped (tab);
@@ -1326,6 +1346,153 @@ namespace Xanh {
             finish_http_auth (true);
         }
 
+        void handle_file_upload (
+                TabRecord tab,
+                WebKit.FileChooserRequest request) {
+            string? document_uri = tab.view.uri;
+            var browser_application = application as BrowserApplication;
+            bool application_clear = browser_application != null &&
+                browser_application.is_browsing_data_clear_in_progress ();
+            if (!FileUploadPolicy.can_begin (
+                    document_uri, tab.view.uri, is_active, active_tab () == tab,
+                    tab.recovery.process_stopped,
+                    clearing_data || application_clear)) {
+                request.cancel ();
+                status.label = "File upload blocked outside the active secure page";
+                return;
+            }
+            string? origin = FileUploadPolicy.display_origin (document_uri);
+            if (origin == null) {
+                request.cancel ();
+                status.label = "File upload blocked for an unsafe page";
+                return;
+            }
+
+            cancel_file_upload ();
+            file_upload_generation++;
+            uint64 generation = file_upload_generation;
+            pending_file_upload_request = request;
+            pending_file_upload_tab = tab;
+            pending_file_upload_document_uri = document_uri;
+            pending_file_upload_cancellable = new Cancellable ();
+            pending_file_upload_timeout_source = Timeout.add_seconds (
+                FileUploadPolicy.TIMEOUT_SECONDS, () => {
+                    if (generation == file_upload_generation) {
+                        pending_file_upload_timeout_source = 0;
+                        finish_file_upload (true);
+                        status.label = "File upload request timed out";
+                    }
+                    return Source.REMOVE;
+                });
+
+            var dialog = new Gtk.FileDialog ();
+            dialog.title = "Choose file for page at " + origin;
+            dialog.accept_label = "Upload";
+            dialog.modal = true;
+            Gtk.FileFilter? filter = request.get_mime_types_filter ();
+            if (filter != null) {
+                var filters = new GLib.ListStore (typeof (Gtk.FileFilter));
+                filters.append (filter);
+                dialog.set_filters (filters);
+                dialog.set_default_filter (filter);
+            }
+            choose_upload_files.begin (
+                tab, request, document_uri, request.get_select_multiple (),
+                dialog, pending_file_upload_cancellable, generation);
+        }
+
+        async void choose_upload_files (
+                TabRecord tab,
+                WebKit.FileChooserRequest request,
+                string document_uri,
+                bool select_multiple,
+                Gtk.FileDialog dialog,
+                Cancellable cancellable,
+                uint64 generation) {
+            string[] selected_paths = {};
+            try {
+                if (select_multiple) {
+                    var selected = yield dialog.open_multiple (this, cancellable);
+                    uint count = selected.get_n_items ();
+                    if (count == 0 || count > FileUploadPolicy.MAX_SELECTED_FILES)
+                        throw new IOError.INVALID_DATA ("Invalid file selection count");
+                    for (uint index = 0; index < count; index++) {
+                        var file = selected.get_item (index) as GLib.File;
+                        string? path = file?.get_path ();
+                        if (path == null)
+                            throw new IOError.INVALID_DATA (
+                                "File uploads require local paths");
+                        selected_paths += path;
+                    }
+                } else {
+                    var file = yield dialog.open (this, cancellable);
+                    string? path = file.get_path ();
+                    if (path == null)
+                        throw new IOError.INVALID_DATA (
+                            "File uploads require a local path");
+                    selected_paths += path;
+                }
+                if (generation != file_upload_generation ||
+                        pending_file_upload_request != request ||
+                        !file_upload_context_is_current (
+                            tab, request, document_uri) ||
+                        !FileUploadPolicy.selected_paths_are_bounded (
+                            selected_paths, select_multiple)) {
+                    if (pending_file_upload_request == request)
+                        finish_file_upload (true);
+                    return;
+                }
+                finish_file_upload (false);
+                request.select_files (selected_paths);
+                status.label = selected_paths.length == 1 ?
+                    "Selected one file for upload" :
+                    "Selected %d files for upload".printf (selected_paths.length);
+            } catch (Error error) {
+                if (pending_file_upload_request == request) {
+                    finish_file_upload (true);
+                    status.label = "File upload canceled";
+                }
+            }
+        }
+
+        bool file_upload_context_is_current (
+                TabRecord tab,
+                WebKit.FileChooserRequest request,
+                string document_uri) {
+            var browser_application = application as BrowserApplication;
+            bool application_clear = browser_application != null &&
+                browser_application.is_browsing_data_clear_in_progress ();
+            return pending_file_upload_request == request &&
+                pending_file_upload_tab == tab &&
+                pending_file_upload_document_uri == document_uri &&
+                FileUploadPolicy.can_complete (
+                    document_uri, tab.view.uri, active_tab () == tab,
+                    tab.recovery.process_stopped,
+                    clearing_data || application_clear);
+        }
+
+        void finish_file_upload (bool cancel_request) {
+            var request = pending_file_upload_request;
+            var cancellable = pending_file_upload_cancellable;
+            pending_file_upload_request = null;
+            pending_file_upload_tab = null;
+            pending_file_upload_document_uri = null;
+            pending_file_upload_cancellable = null;
+            file_upload_generation++;
+            if (pending_file_upload_timeout_source != 0) {
+                Source.remove (pending_file_upload_timeout_source);
+                pending_file_upload_timeout_source = 0;
+            }
+            cancellable?.cancel ();
+            if (cancel_request) request?.cancel ();
+        }
+
+        void cancel_file_upload (TabRecord? tab = null) {
+            if (pending_file_upload_request == null ||
+                    (tab != null && pending_file_upload_tab != tab)) return;
+            finish_file_upload (true);
+        }
+
         void handle_download (WebKit.Download download, bool private_mode) {
             WebKit.WebView? source_view = download.get_web_view ();
             var source_tab = source_view != null ? find_tab (source_view) : null;
@@ -1423,6 +1590,7 @@ namespace Xanh {
             cancel_permission_request (tab);
             cancel_tls_error (tab);
             cancel_http_auth (tab);
+            cancel_file_upload (tab);
             tab.recovery.reset_for_explicit_navigation ();
             tab.state.recovery_uri = null;
         }
@@ -1501,6 +1669,7 @@ namespace Xanh {
             cancel_permission_request (tab);
             cancel_tls_error (tab);
             cancel_http_auth (tab);
+            cancel_file_upload (tab);
             disconnect_tab_bridges (tab);
             int page = notebook.page_num (tab.view);
             if (page >= 0) notebook.remove_page (page);
@@ -1563,6 +1732,7 @@ namespace Xanh {
             cancel_permission_request ();
             cancel_tls_error ();
             cancel_http_auth ();
+            cancel_file_upload ();
             cancel_pending_popups ();
             cancel_pending_download_choices ();
             tabs.foreach ((id, tab) => disconnect_tab_bridges (tab));
@@ -2151,6 +2321,7 @@ namespace Xanh {
             cancel_permission_request ();
             cancel_tls_error ();
             cancel_http_auth ();
+            cancel_file_upload ();
             cancel_pending_popups ();
             cancel_pending_download_choices ();
             tabs.foreach ((id, tab) => tab.view.stop_loading ());

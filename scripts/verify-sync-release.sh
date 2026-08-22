@@ -183,6 +183,36 @@ case "$edition" in
       echo 'Linux popup creation must return a related view, not an ordinary tab' >&2
       exit 1
     fi
+    test -f desktop/file-upload-policy.vala
+    test -f tests-modern/file-upload-policy-test.vala
+    grep -F 'add_xanh_test(file-upload-policy-test' CMakeLists.txt >/dev/null
+    grep -F 'MAX_SELECTED_FILES = 32' desktop/file-upload-policy.vala >/dev/null
+    grep -F 'MAX_PATH_BYTES = 4096' desktop/file-upload-policy.vala >/dev/null
+    grep -F 'MAX_TOTAL_PATH_BYTES = 64 * 1024' \
+      desktop/file-upload-policy.vala >/dev/null
+    grep -F 'contains_percent_escape (path)' \
+      desktop/file-upload-policy.vala >/dev/null
+    grep -F 'TIMEOUT_SECONDS = 5 * 60' desktop/file-upload-policy.vala >/dev/null
+    grep -F 'AddressResolver.is_safe_secure_web_uri' \
+      desktop/file-upload-policy.vala >/dev/null
+    grep -F 'FileUploadPolicy.can_begin (' desktop/browser-window.vala >/dev/null
+    grep -F 'FileUploadPolicy.can_complete (' desktop/browser-window.vala >/dev/null
+    grep -F 'request.get_mime_types_filter ()' desktop/browser-window.vala >/dev/null
+    grep -F 'Gtk.FileFilter? filter = request.get_mime_types_filter ();' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'if (filter != null)' desktop/browser-window.vala >/dev/null
+    grep -F 'dialog.open_multiple (this, cancellable)' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'dialog.open (this, cancellable)' desktop/browser-window.vala >/dev/null
+    grep -F 'request.select_files (selected_paths);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'finish_file_upload (true);' desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_file_upload (tab);' desktop/browser-window.vala >/dev/null
+    if sed -n '/tab.view.run_file_chooser.connect/,/^            });/p' \
+      desktop/browser-window.vala | grep -F 'return false' >/dev/null; then
+      echo 'Linux file uploads must not fall through to an uncoordinated default chooser' >&2
+      exit 1
+    fi
     test -f desktop/permission-policy.vala
     test -f tests-modern/permission-policy-test.vala
     grep -F 'add_xanh_test(permission-policy-test' CMakeLists.txt >/dev/null

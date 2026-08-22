@@ -78,14 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Verify pinned stable WebKit release
-        run: |
-          revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"
-          release_tag="$(cat platform/windows-webkit/WEBKIT_RELEASE_TAG)"
-          minimum_version="$(cat WEBKITGTK_MIN_VERSION)"
-          test "${release_tag}" = "webkitgtk-${minimum_version}"
-          resolved="$(git ls-remote https://github.com/WebKit/WebKit.git "refs/tags/${release_tag}^{}" | awk '{ print $1 }')"
-          test -n "${resolved}"
-          test "${resolved}" = "${revision}"
+        run: python3 scripts/verify_webkit_latest.py
       - name: Fetch pinned upstream patch inputs
         run: |
           revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"

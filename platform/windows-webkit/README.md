@@ -46,6 +46,12 @@ directory, writes engine provenance and a standard SHA-256 file, then restores
 the checkout. It refuses an output directory that already exists so stale
 runtime files cannot leak into a new artifact.
 
+`scripts/verify_webkit_latest.py` independently enumerates official WebKit Git
+tags, ignores odd-minor development series, selects the greatest stable semantic
+version and requires this edition's tag and peeled commit to match it. CI runs
+the verifier on relevant changes and every Monday so a newly published stable
+security baseline cannot remain unnoticed.
+
 The patch rejects file/non-web address-bar navigation, defaults to HTTPS,
 stops loading the upstream privileged injected bundle and disables Web
 Inspector developer extras in the browser process. The build script also omits

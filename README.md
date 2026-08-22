@@ -65,6 +65,10 @@ are in [CMakeLists.txt](CMakeLists.txt); the shared patch-level floor is pinned
 in [WEBKITGTK_MIN_VERSION](WEBKITGTK_MIN_VERSION). Version 2.52.6 is the latest
 stable WebKitGTK/WPE WebKit release and fixes the vulnerabilities listed in
 [WSA-2026-0005](https://webkitgtk.org/security/WSA-2026-0005.html).
+The scheduled WebKit baseline workflow resolves official upstream release tags
+weekly and fails when this floor, the WinCairo tag or its peeled revision no
+longer matches the newest even-minor stable series; development tags are never
+accepted as a production baseline.
 
 ### Build and test
 

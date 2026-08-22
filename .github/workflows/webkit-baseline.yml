@@ -1,0 +1,39 @@
+name: WebKit stable baseline
+
+on:
+  push:
+    paths:
+      - .github/workflows/webkit-baseline.yml
+      - scripts/verify_webkit_latest.py
+      - scripts/tests/test_verify_webkit_latest.py
+      - WEBKITGTK_MIN_VERSION
+      - platform/windows-webkit/WEBKIT_RELEASE_TAG
+      - platform/windows-webkit/WEBKIT_REVISION
+  pull_request:
+    paths:
+      - .github/workflows/webkit-baseline.yml
+      - scripts/verify_webkit_latest.py
+      - scripts/tests/test_verify_webkit_latest.py
+      - WEBKITGTK_MIN_VERSION
+      - platform/windows-webkit/WEBKIT_RELEASE_TAG
+      - platform/windows-webkit/WEBKIT_REVISION
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webkit-stable-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test latest-stable parser
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webkit_latest.py' -v
+      - name: Verify project uses latest official stable WebKitGTK
+        run: python3 scripts/verify_webkit_latest.py

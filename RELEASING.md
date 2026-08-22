@@ -65,6 +65,9 @@ GitHub source-release automation additionally requires
    the historical product name.
 4. Require green GitHub Actions results for Linux, Android Lite, WebKit
    editions, instrumentation, Apple, Windows, CodeQL and dependency review.
+5. Run `python3 scripts/verify_webkit_latest.py` with network access and confirm
+   the shared floor plus WinCairo tag/revision match the newest official stable
+   WebKitGTK tag. An odd-minor development tag is never a release substitute.
 
 Verification:
 

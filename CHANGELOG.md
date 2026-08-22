@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   asynchronous privacy clearing.
 - Added Linux, Android, instrumentation, CodeQL, dependency-review, Flatpak and
   signed-source GitHub Actions workflows.
+- Added a scheduled, fail-closed official-tag verifier so the shared WebKitGTK,
+  WPE and WinCairo security baseline cannot silently lag a newer stable release.
 - Added the `xanh-sync-core` Rust boundary for Mozilla Accounts / Firefox Sync,
   pinned to stable Application Services 155.0 with UniFFI and a stable C ABI.
 - Added shared account, engine, scheduling, backoff, migration, bridge and vault

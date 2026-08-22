@@ -35,6 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   with UTF-8 byte limits, strict host/port and userinfo checks, encoded-control
   filtering, and a main-frame trusted-link/non-redirect gate before handing an
   allowlisted scheme to the operating system.
+- Added foreground-only Apple WebContent-process recovery. A tab gets at most
+  one automatic body-free GET to a userinfo-free validated URL; leaving the
+  foreground cancels an uncommitted attempt, and automatic reload/form
+  resubmission or a repeated crash loop is blocked.
 - Added WinCairo encrypted `.xanhbackup` import/export using the native Windows
   file picker, PBKDF2-HMAC-SHA256 and AES-256-GCM through CNG, atomic file
   replacement and the shared Android/C# ASCII and Unicode golden vectors.

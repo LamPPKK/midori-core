@@ -16,6 +16,14 @@ characters, encoded controls and oversized handoffs fail closed. Regular tabs
 are restored after process termination; private tabs are deliberately excluded
 from the saved session.
 
+If WebKit reports that a tab's web-content process terminated, Xanh attempts at
+most one automatic recovery while the scene is active. Recovery creates a new
+body-free GET request for the bounded, userinfo-free current URL, validated
+address or home page; it never invokes `reload()` or restores a back-forward
+form item.
+The attempt is stopped if the app leaves the foreground before commit, and a
+second termination requires an explicit reload or address navigation.
+
 Generate the Xcode project and run tests with Xcode 26 or newer:
 
 ```sh

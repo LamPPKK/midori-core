@@ -175,7 +175,9 @@ main-frame-only isolated `WKContentWorld` for the gated Firefox Sync credential
 picker; private tabs never install that bridge. Address and restored-session
 URLs are bounded and reject userinfo or malformed hosts/ports. Allowlisted
 external schemes require a trusted, non-redirected main-frame link activation
-before the system is asked to open them. See
+before the system is asked to open them. A terminated WebContent process gets
+at most one foreground-only GET recovery at a validated URL; automatic reload,
+form resubmission and repeat recovery are blocked. See
 [`platform/apple/README.md`](platform/apple/README.md) for build commands and
 the remaining App Store signing requirements.
 
@@ -312,7 +314,9 @@ and device/security evidence pass the WPE release gate.
   without that bridge for private tabs; macOS runs in the App Sandbox. Web and
   external URLs are bounded before navigation, reject userinfo, malformed
   hosts/ports and decoded controls, and external handoff additionally requires
-  a trusted non-redirected main-frame link activation.
+  a trusted non-redirected main-frame link activation. WebContent-process
+  recovery is bounded to one foreground GET without request bodies or
+  back-forward state and stops if the scene leaves the foreground.
 - Windows accepts only web URLs in WebView2, disables host objects, restricts
   web messaging to the gated regular-tab credential bridge and uses the
   Evergreen runtime for independently serviced engine updates. A scheduled

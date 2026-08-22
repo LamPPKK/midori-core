@@ -24,6 +24,7 @@
 		48E13B975F096A9D87FFCC38 /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */; };
 		4DC0E34E124A7AE833A79C6D /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B540C8EF970CC11135804394 /* BrowserSession.swift */; };
 		52BFFF6AE82166622BFAEB29 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594809F854069BC05EA45F9 /* BrowserView.swift */; };
+		6613EC2907AC22F0E99D4D48 /* WebContentProcessRecoveryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1BFF0DEF3D7822C6FB9DA /* WebContentProcessRecoveryPolicy.swift */; };
 		686761EC979A9C397C116114 /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB98C73205558CF4F34E1412 /* Bookmark.swift */; };
 		6A514225E7C89C76D8F1E60B /* BrowserModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */; };
 		790A752BBFBB82502345359E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C5707A9D15C10A864537D41 /* Assets.xcassets */; };
@@ -38,6 +39,7 @@
 		EF3559F5A7A3CDD36DE59870 /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
 		EF914522599747A991C65581 /* ExternalNavigationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE9D73F5942246919E5C9E8 /* ExternalNavigationPolicy.swift */; };
 		F027B1CBBE9EE01FB40E30B4 /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B540C8EF970CC11135804394 /* BrowserSession.swift */; };
+		F1CDE00440FC4A28E101724F /* WebContentProcessRecoveryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1BFF0DEF3D7822C6FB9DA /* WebContentProcessRecoveryPolicy.swift */; };
 		FF0B71A4D695C1537C30C25B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C5707A9D15C10A864537D41 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -58,6 +60,7 @@
 		B540C8EF970CC11135804394 /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserSession.swift; sourceTree = "<group>"; };
 		BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCredentialBridge.swift; sourceTree = "<group>"; };
 		BFE9D73F5942246919E5C9E8 /* ExternalNavigationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalNavigationPolicy.swift; sourceTree = "<group>"; };
+		D9E1BFF0DEF3D7822C6FB9DA /* WebContentProcessRecoveryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContentProcessRecoveryPolicy.swift; sourceTree = "<group>"; };
 		DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxSyncBindingPlaceholder.swift; sourceTree = "<group>"; };
 		EB98C73205558CF4F34E1412 /* Bookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bookmark.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -100,6 +103,7 @@
 				5621DE34472A9445394E8C3B /* FirefoxSyncContract.swift */,
 				660CDE3438A2918EC8CD9AD0 /* FirefoxSyncCoordinator.swift */,
 				61584842E0D30C65C6212C82 /* SecureSyncState.swift */,
+				D9E1BFF0DEF3D7822C6FB9DA /* WebContentProcessRecoveryPolicy.swift */,
 			);
 			name = XanhBrowserCore;
 			path = Sources/XanhBrowserCore;
@@ -228,6 +232,7 @@
 				1D942D21E78B2FF247512F89 /* FirefoxSyncSettingsView.swift in Sources */,
 				900D10CE058A495DAB2E1290 /* FirefoxSyncViewModel.swift in Sources */,
 				239627C2CF59AC86DE90F562 /* SecureSyncState.swift in Sources */,
+				6613EC2907AC22F0E99D4D48 /* WebContentProcessRecoveryPolicy.swift in Sources */,
 				EF3559F5A7A3CDD36DE59870 /* XanhBrowserApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -250,6 +255,7 @@
 				0843D1B2F99A85468B2A692C /* FirefoxSyncSettingsView.swift in Sources */,
 				43D684378C48A27584887EF3 /* FirefoxSyncViewModel.swift in Sources */,
 				0F49D5A3C38F0A6C44D915E8 /* SecureSyncState.swift in Sources */,
+				F1CDE00440FC4A28E101724F /* WebContentProcessRecoveryPolicy.swift in Sources */,
 				81932F2A89EA18BC106D6A7A /* XanhBrowserApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

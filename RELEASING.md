@@ -359,6 +359,13 @@ than repackaging it as a monolithic APK.
    redirects, subframe handoffs and synthetic link activation. Confirm a
    direct trusted main-frame link opens each allowlisted external scheme once
    on macOS, iPhone and iPad, including pointer and touch input as applicable.
+   Force WebContent termination on a normal GET, a committed form/POST page and
+   during provisional navigation. The first automatic recovery must issue only
+   a body-free GET to a bounded userinfo-free validated URL, never reload or
+   restore a back-forward item, and a second termination must stop. Repeat while
+   moving the app inactive/background before commit: no recovery may start
+   while inactive and an in-flight automatic attempt must stop until the user
+   explicitly navigates or reloads.
 3. Archive with the dedicated distribution profiles. Validate the macOS App
    Sandbox and hardened runtime, notarize the direct macOS build if one is
    distributed, and submit the signed archives to App Store Connect.

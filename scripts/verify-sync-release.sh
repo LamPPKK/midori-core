@@ -109,6 +109,7 @@ case "$edition" in
     grep -F 'let bridge = isPrivate ? nil : BrowserCredentialBridge()' \
       platform/apple/App/BrowserModel.swift >/dev/null
     test -f platform/apple/Sources/XanhBrowserCore/ExternalNavigationPolicy.swift
+    test -f platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift
     grep -F 'maximumWebURLBytes = 8_192' \
       platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
     grep -F 'url.user == nil' \
@@ -123,6 +124,17 @@ case "$edition" in
       platform/apple/App/BrowserModel.swift >/dev/null
     grep -F 'isContentRuleListRedirect: action.isContentRuleListRedirect' \
       platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'case .webContentProcessTerminated:' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'request.httpMethod = "GET"' \
+      platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift >/dev/null
+    grep -F 'cachePolicy: .reloadIgnoringLocalCacheData' \
+      platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift >/dev/null
+    grep -F 'request.httpBody = nil' \
+      platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift >/dev/null
+    grep -F 'page.load(request)' platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'cancelInFlightWebContentRecoveryForBackground()' \
+      platform/apple/App/BrowserView.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
@@ -460,6 +472,7 @@ case "$edition" in
     grep -F 'let bridge = isPrivate ? nil : BrowserCredentialBridge()' \
       platform/apple/App/BrowserModel.swift >/dev/null
     test -f platform/apple/Sources/XanhBrowserCore/ExternalNavigationPolicy.swift
+    test -f platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift
     grep -F 'maximumWebURLBytes = 8_192' \
       platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
     grep -F 'url.user == nil' \
@@ -474,6 +487,17 @@ case "$edition" in
       platform/apple/App/BrowserModel.swift >/dev/null
     grep -F 'isContentRuleListRedirect: action.isContentRuleListRedirect' \
       platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'case .webContentProcessTerminated:' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'request.httpMethod = "GET"' \
+      platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift >/dev/null
+    grep -F 'cachePolicy: .reloadIgnoringLocalCacheData' \
+      platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift >/dev/null
+    grep -F 'request.httpBody = nil' \
+      platform/apple/Sources/XanhBrowserCore/WebContentProcessRecoveryPolicy.swift >/dev/null
+    grep -F 'page.load(request)' platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'cancelInFlightWebContentRecoveryForBackground()' \
+      platform/apple/App/BrowserView.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     test "${XANH_APPLE_SYNC_BRIDGE_REVIEWED:-0}" = 1

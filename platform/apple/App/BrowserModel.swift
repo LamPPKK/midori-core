@@ -5,6 +5,7 @@ import WebKit
 @available(iOS 26.0, macOS 26.0, *)
 final class BrowserNavigationPolicy: WebPage.NavigationDeciding {
     var onOpenExternalURL: ((URL) -> Void)?
+    var onExplicitUserWebNavigation: (() -> Void)?
 
     func decidePolicy(
         for action: WebPage.NavigationAction,
@@ -17,6 +18,11 @@ final class BrowserNavigationPolicy: WebPage.NavigationDeciding {
         #else
         let hasTrustedButtonActivation = !action.buttonNumber.isEmpty
         #endif
+        let isTrustedMainFrameLinkActivation = action.navigationType == .linkActivated
+            && action.source.isMainFrame
+            && (action.target?.isMainFrame ?? true)
+            && hasTrustedButtonActivation
+            && !action.isContentRuleListRedirect
         if ExternalNavigationPolicy.allows(
             url: url,
             isLinkActivated: action.navigationType == .linkActivated,
@@ -29,6 +35,9 @@ final class BrowserNavigationPolicy: WebPage.NavigationDeciding {
             return .cancel
         }
         guard AddressResolver.isAllowedWebURL(url) else { return .cancel }
+        if isTrustedMainFrameLinkActivation {
+            onExplicitUserWebNavigation?()
+        }
         return action.shouldPerformDownload ? .download : .allow
     }
 
@@ -50,6 +59,7 @@ final class BrowserTab: Identifiable {
     var address: String
     var errorMessage: String?
     var externalURL: URL?
+    var navigationObservationGeneration = 0
     var credentialRequestHandler: ((XanhCredentialContext) async -> XanhCredentialRecord?)?
 
     @ObservationIgnored
@@ -58,6 +68,8 @@ final class BrowserTab: Identifiable {
     private var credentialNavigation: (nonce: String, documentURL: URL)?
     @ObservationIgnored
     private var credentialRequestRunning = false
+    @ObservationIgnored
+    private var processRecovery = WebContentProcessRecoveryPolicy()
 
     init(isPrivate: Bool = false, initialURL: URL = AddressResolver.defaultHomePage) {
         self.isPrivate = isPrivate
@@ -79,6 +91,9 @@ final class BrowserTab: Identifiable {
         bridge?.tab = self
         navigationPolicy.onOpenExternalURL = { [weak self] url in
             self?.externalURL = url
+        }
+        navigationPolicy.onExplicitUserWebNavigation = { [weak self] in
+            self?.prepareForExplicitUserNavigation()
         }
         page.load(initialURL)
     }
@@ -156,7 +171,7 @@ final class BrowserTab: Identifiable {
     func submitAddress(openExternal: (URL) -> Void) {
         switch AddressResolver.resolve(address) {
         case let .web(url):
-            errorMessage = nil
+            prepareForExplicitUserNavigation()
             address = url.absoluteString
             page.load(url)
         case let .external(url):
@@ -169,12 +184,82 @@ final class BrowserTab: Identifiable {
 
     func goBack() {
         guard let item = page.backForwardList.backList.last else { return }
+        prepareForExplicitUserNavigation()
         page.load(item)
     }
 
     func goForward() {
         guard let item = page.backForwardList.forwardList.first else { return }
+        prepareForExplicitUserNavigation()
         page.load(item)
+    }
+
+    func reload() {
+        prepareForExplicitUserNavigation()
+        page.reload()
+    }
+
+    func handleNavigationError(_ error: Error, isForeground: Bool) {
+        guard let navigationError = error as? WebPage.NavigationError else {
+            processRecovery.markRecoveryFailed()
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        switch navigationError {
+        case .webContentProcessTerminated:
+            credentialNavigation = nil
+            guard processRecovery.recordTermination(currentURL: page.url, address: address) else {
+                errorMessage = "Web content stopped again. Reload or enter another address to continue."
+                return
+            }
+            recoverPendingWebContentProcessIfPossible(isForeground: isForeground)
+        case .failedProvisionalNavigation(let underlyingError):
+            processRecovery.markRecoveryFailed()
+            errorMessage = underlyingError.localizedDescription
+        case .invalidURL:
+            processRecovery.markRecoveryFailed()
+            errorMessage = "The page address is invalid."
+        case .pageClosed:
+            processRecovery.markRecoveryFailed()
+            errorMessage = "The web page was closed."
+        @unknown default:
+            processRecovery.markRecoveryFailed()
+            errorMessage = "Navigation stopped unexpectedly."
+        }
+    }
+
+    func handleNavigationEvent(_ event: WebPage.NavigationEvent) {
+        if event == .committed || event == .finished {
+            processRecovery.markRecoveryCommitted()
+        }
+    }
+
+    @discardableResult
+    func recoverPendingWebContentProcessIfPossible(isForeground: Bool) -> Bool {
+        guard let request = processRecovery.takeRecoveryRequest(isForeground: isForeground) else {
+            return false
+        }
+
+        credentialNavigation = nil
+        errorMessage = nil
+        navigationObservationGeneration &+= 1
+        page.load(request)
+        return true
+    }
+
+    func cancelInFlightWebContentRecoveryForBackground() {
+        guard processRecovery.cancelInFlightRecoveryForBackground() else { return }
+        navigationObservationGeneration &+= 1
+        page.stopLoading()
+        errorMessage = "Automatic recovery stopped when Xanh Browser left the foreground. Reload to continue."
+    }
+
+    private func prepareForExplicitUserNavigation() {
+        processRecovery.resetForExplicitUserNavigation()
+        credentialNavigation = nil
+        errorMessage = nil
+        navigationObservationGeneration &+= 1
     }
 }
 

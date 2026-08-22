@@ -34,6 +34,9 @@ struct BrowserView: View {
         .onChange(of: workspace.selectedTabID) { _, _ in
             firefoxSync.cancelCredentialSelection()
             workspace.persistSession()
+            workspace.selectedTab.recoverPendingWebContentProcessIfPossible(
+                isForeground: scenePhase == .active
+            )
         }
         .onChange(of: tab.externalURL) { _, externalURL in
             guard let externalURL else { return }
@@ -41,6 +44,11 @@ struct BrowserView: View {
             tab.externalURL = nil
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                tab.recoverPendingWebContentProcessIfPossible(isForeground: true)
+            } else {
+                tab.cancelInFlightWebContentRecoveryForBackground()
+            }
             Task {
                 if phase == .active { await firefoxSync.syncIfDue(.startup) }
                 else {
@@ -68,14 +76,22 @@ struct BrowserView: View {
                 await firefoxSync.syncIfDue(.scheduled)
             }
         }
-        .task(id: tab.id) {
+        .task(
+            id: NavigationObservationID(
+                tabID: tab.id,
+                generation: tab.navigationObservationGeneration
+            )
+        ) {
             tab.credentialRequestHandler = { [weak firefoxSync] context in
                 await firefoxSync?.requestCredential(for: context)
             }
             do {
-                for try await _ in tab.page.navigations {}
+                for try await event in tab.page.navigations {
+                    tab.handleNavigationEvent(event)
+                }
             } catch {
-                tab.errorMessage = error.localizedDescription
+                firefoxSync.cancelCredentialSelection()
+                tab.handleNavigationError(error, isForeground: scenePhase == .active)
             }
         }
         .alert(
@@ -103,7 +119,7 @@ struct BrowserView: View {
             Button("Forward", systemImage: "chevron.right") { tab.goForward() }
                 .labelStyle(.iconOnly)
                 .disabled(tab.page.backForwardList.forwardList.isEmpty)
-            Button("Reload", systemImage: "arrow.clockwise") { tab.page.reload() }
+            Button("Reload", systemImage: "arrow.clockwise") { tab.reload() }
                 .labelStyle(.iconOnly)
 
             TextField("Search or enter website", text: $tab.address)
@@ -189,6 +205,11 @@ private struct FirefoxCredentialPickerView: View {
         }
         .frame(minWidth: 360, minHeight: 280)
     }
+}
+
+private struct NavigationObservationID: Hashable {
+    let tabID: UUID
+    let generation: Int
 }
 
 private extension View {

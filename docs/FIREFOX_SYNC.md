@@ -241,8 +241,8 @@ credential picker and architecture-specific native DLL packaging input. Both
 hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
-The platform boundary tests currently pass locally: 28 Apple tests cover the
-contract, coordinator, navigation policy and device-only
+The platform boundary tests currently pass locally: 34 Apple tests cover the
+contract, coordinator, navigation/recovery policy and device-only
 Keychain/LocalAuthentication policy,
 while 30 Windows tests cover the contract, coordinator, P/Invoke surface and
 DPAPI/Windows Hello policy. The

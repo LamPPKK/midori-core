@@ -49,6 +49,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   names, an exact native-confirmed absolute local path and cancellable picker
   lifecycle. Failed transfers are recorded once instead of also appearing as
   finished; private transfers do not enter Xanh's download database.
+- Replaced unconditional Linux popup tab creation with a bounded trusted-link
+  policy. Accepted popups use WebKit's required related view/session, receive
+  isolated bridges and the current content filter before navigation, stay
+  unattached until `ready-to-show`, and cancel across stale lifecycle state.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

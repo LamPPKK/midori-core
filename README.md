@@ -68,7 +68,9 @@ stable WebKitGTK/WPE WebKit release and fixes the vulnerabilities listed in
 The scheduled WebKit baseline workflow resolves official upstream release tags
 weekly and fails when this floor, the WinCairo tag or its peeled revision no
 longer matches the newest even-minor stable series; development tags are never
-accepted as a production baseline.
+accepted as a production baseline. It also downloads the two exact pinned
+upstream source files used by the Linux popup policy and fails if the GLib
+navigation-action mapping or trusted button-down mouse invariant changes.
 
 Linux address and recovery targets are limited to validated HTTP(S) URLs no
 larger than 8 KiB. They reject userinfo, raw or decoded control characters,
@@ -129,6 +131,17 @@ confirmation; closing the window or clearing data cancels an unresolved choice.
 A failed download produces one `failed` database entry, never a second false
 `finished` entry. Private downloads require the same explicit save choice but
 are not written to Xanh's download database.
+
+Linux new-window requests are fail-closed instead of creating an unrelated tab
+for every `window.open`. Xanh accepts one bounded HTTP(S) or exact `about:blank`
+target per second only from a trusted direct left/middle-button link in the
+selected foreground HTTP(S) tab. Synthetic/keyboard activation, script-only
+opens, redirects, malformed targets, stale documents and the 101st tab are
+blocked. An accepted view is constructed with WebKit's `related-view`, inherits
+the opener's regular or ephemeral network session, receives Xanh's isolated
+bridges and current content filter before navigation, and remains outside the UI
+until `ready-to-show`. Tab changes, navigation, focus loss, renderer failure,
+data clearing, closure or a 15-second timeout cancel an unresolved popup.
 
 ### Build and test
 

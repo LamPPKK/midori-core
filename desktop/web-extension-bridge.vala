@@ -58,6 +58,7 @@ namespace Xanh {
             new HashTable<string, WebKit.WebView> (str_hash, str_equal);
         HashTable<string, string> active_tab_grants =
             new HashTable<string, string> (str_hash, str_equal);
+        bool message_dispatch_enabled = true;
 
         public signal void action_available (WebExtensionBridge bridge, string extension_id,
             string? action_title, string? action_popup,
@@ -68,6 +69,10 @@ namespace Xanh {
             this.web_view = web_view;
             content = web_view.get_user_content_manager ();
             content.script_message_received.connect ((value) => handle_message (web_view, value));
+        }
+
+        public void set_message_dispatch_enabled (bool enabled) {
+            message_dispatch_enabled = enabled;
         }
 
         public void load_default_locations (bool run_backgrounds = true) {
@@ -422,6 +427,10 @@ namespace Xanh {
         }
 
         void handle_message (WebKit.WebView source, JSC.Value value, bool default_world = false) {
+            if (!message_dispatch_enabled && !default_world) {
+                warning ("Rejected WebExtension message from an unattached popup");
+                return;
+            }
             string json = value.to_json (0);
             if (json.length > MAX_MESSAGE_BYTES) {
                 warning ("Rejected oversized WebExtension message");

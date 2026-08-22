@@ -21,6 +21,12 @@ namespace Xanh {
         public WebProcessRecoveryPolicy recovery { get; construct; }
         public ulong credential_request_signal { get; set; }
         public ulong external_navigation_signal { get; set; }
+        public bool pending_popup { get; set; }
+        public uint popup_ready_timeout_source { get; set; }
+        public uint64 popup_opener_id { get; set; }
+        public string? popup_opener_uri { get; set; }
+        public int64 last_popup_monotonic_us { get; set; }
+        public bool pending_popup_load_finished { get; set; }
 
         public TabRecord (TabState state, WebKit.WebView view, Gtk.Label label,
                 WebExtensionBridge bridge, CredentialBridge? credential_bridge,
@@ -86,6 +92,8 @@ namespace Xanh {
             new HashTable<WebKit.Download, Cancellable> (direct_hash, direct_equal);
         HashTable<WebKit.Download, bool> failed_downloads =
             new HashTable<WebKit.Download, bool> (direct_hash, direct_equal);
+        WebKit.UserContentFilter? current_adblock_filter;
+        uint64 adblock_generation;
 
         public BrowserWindow (Gtk.Application application, BrowserDatabase database) {
             Object (application: application, title: Config.APP_NAME, default_width: 1100, default_height: 760);
@@ -121,6 +129,7 @@ namespace Xanh {
                     cancel_permission_request ();
                     cancel_tls_error ();
                     cancel_http_auth ();
+                    cancel_pending_popups ();
                     (application as BrowserApplication)?.lock_sync_vault ();
                     tabs.foreach ((id, tab) => {
                         if (tab.recovery.cancel_automatic_recovery ()) {
@@ -221,6 +230,7 @@ namespace Xanh {
             notebook.scrollable = true;
             notebook.enable_popup = true;
             notebook.switch_page.connect ((page, index) => {
+                cancel_pending_popups ();
                 cancel_credential_picker ();
                 cancel_permission_request ();
                 cancel_tls_error ();
@@ -386,6 +396,51 @@ namespace Xanh {
         }
 
         public void add_tab (string uri, bool private_mode) {
+            var record = create_tab (private_mode, null, false);
+            attach_tab (record, true);
+            string target = uri == "" || uri == "about:blank" ?
+                "about:blank" : resolve_address (uri);
+            if (plugin_host.adblock_enabled && current_adblock_filter == null) {
+                load_tab_with_adblock.begin (record, target);
+            } else {
+                record.view.load_uri (target);
+            }
+        }
+
+        async void load_tab_with_adblock (TabRecord record, string target) {
+            var manager = record.view.get_user_content_manager ();
+            while (plugin_host.adblock_enabled && current_adblock_filter == null &&
+                    normalized_domains (plugin_host.adblock_blocked_domains).length > 0) {
+                uint64 expected_generation = adblock_generation;
+                try {
+                    yield install_adblock (manager, expected_generation);
+                } catch (Error error) {
+                    warning ("Adblock filter unavailable: %s", error.message);
+                    if (tabs.lookup (record.state.id) == record) {
+                        record.view.load_uri ("about:blank");
+                        status.label = "Page blocked because content protection is unavailable";
+                    }
+                    return;
+                }
+                if (expected_generation == adblock_generation &&
+                        current_adblock_filter == null) {
+                    record.view.load_uri ("about:blank");
+                    status.label = "Page blocked because content protection is unavailable";
+                    return;
+                }
+            }
+            if (plugin_host.adblock_enabled && current_adblock_filter != null) {
+                manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
+                manager.add_filter (current_adblock_filter);
+            }
+            if (tabs.lookup (record.state.id) == record)
+                record.view.load_uri (target);
+        }
+
+        TabRecord create_tab (
+                bool private_mode,
+                WebKit.WebView? related_view,
+                bool pending_popup) {
             var manager = new WebKit.UserContentManager ();
             var settings = new WebKit.Settings ();
             settings.enable_javascript = setting_enabled ("enable-javascript", true);
@@ -393,19 +448,36 @@ namespace Xanh {
             settings.enable_developer_extras = false;
             settings.enable_html5_database = true;
             settings.user_agent = "%s %s".printf (settings.user_agent, Config.USER_AGENT_TOKEN);
-            WebKit.NetworkSession session = private_mode ? new WebKit.NetworkSession.ephemeral () : network_session;
-            session.set_itp_enabled (true);
-            session.set_persistent_credential_storage_enabled (false);
-            if (private_mode) {
-                session.download_started.connect ((download) => handle_download (download, true));
+            WebKit.WebView view;
+            if (related_view == null) {
+                WebKit.NetworkSession session = private_mode ?
+                    new WebKit.NetworkSession.ephemeral () : network_session;
+                session.set_itp_enabled (true);
+                session.set_persistent_credential_storage_enabled (false);
+                if (private_mode) {
+                    session.download_started.connect (
+                        (download) => handle_download (download, true));
+                }
+                view = Object.new (
+                    typeof (WebKit.WebView),
+                    "network-session", session,
+                    "user-content-manager", manager,
+                    "settings", settings,
+                    "default-content-security-policy",
+                    "upgrade-insecure-requests; block-all-mixed-content"
+                ) as WebKit.WebView;
+            } else {
+                view = Object.new (
+                    typeof (WebKit.WebView),
+                    "related-view", related_view,
+                    "user-content-manager", manager,
+                    "settings", settings,
+                    "default-content-security-policy",
+                    "upgrade-insecure-requests; block-all-mixed-content"
+                ) as WebKit.WebView;
             }
-            var view = Object.new (
-                typeof (WebKit.WebView),
-                "network-session", session,
-                "user-content-manager", manager,
-                "settings", settings,
-                "default-content-security-policy", "upgrade-insecure-requests; block-all-mixed-content"
-            ) as WebKit.WebView;
+            if (plugin_host.adblock_enabled && current_adblock_filter != null)
+                manager.add_filter (current_adblock_filter);
             var state = new TabState ();
             state.id = next_tab_id++;
             state.private_mode = private_mode;
@@ -413,6 +485,7 @@ namespace Xanh {
             label.ellipsize = Pango.EllipsizeMode.END;
             label.max_width_chars = 24;
             var bridge = new WebExtensionBridge (this, view);
+            bridge.set_message_dispatch_enabled (!pending_popup);
             CredentialBridge? credential_bridge = null;
             ExternalNavigationBridge? external_navigation_bridge = null;
             try {
@@ -421,9 +494,6 @@ namespace Xanh {
                 warning ("Cannot install isolated external-navigation bridge: %s", error.message);
             }
             if (!private_mode) {
-                bridge.action_available.connect (register_extension_action);
-                bridge.load_default_locations (!extension_services_started);
-                extension_services_started = true;
                 try {
                     credential_bridge = new CredentialBridge (manager, view);
                 } catch (Error error) {
@@ -432,6 +502,7 @@ namespace Xanh {
             }
             var record = new TabRecord (
                 state, view, label, bridge, credential_bridge, external_navigation_bridge);
+            record.pending_popup = pending_popup;
             if (external_navigation_bridge != null) {
                 record.external_navigation_signal =
                     external_navigation_bridge.request.connect ((external_uri, document_uri) =>
@@ -445,44 +516,57 @@ namespace Xanh {
                             navigation_nonce, document_url, origin);
                     });
             }
+            if (!private_mode) {
+                bridge.action_available.connect ((source, extension_id, action_title,
+                        action_popup, panel_title, panel_path) => {
+                    if (!record.pending_popup)
+                        register_extension_action (source, extension_id, action_title,
+                            action_popup, panel_title, panel_path);
+                });
+                bridge.load_default_locations (!extension_services_started);
+                extension_services_started = true;
+            }
             tabs.insert (state.id, record);
             connect_view (record);
+            return record;
+        }
+
+        void attach_tab (TabRecord record, bool select) {
+            if (notebook.page_num (record.view) >= 0) return;
             var tab_header = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 4);
-            tab_header.append (label);
+            tab_header.append (record.label);
             var close = new Gtk.Button.from_icon_name ("window-close-symbolic");
             close.add_css_class ("flat");
             close.tooltip_text = "Close tab";
-            close.clicked.connect (() => close_tab (state.id));
+            close.clicked.connect (() => close_tab (record.state.id));
             tab_header.append (close);
-            int page = notebook.append_page (view, tab_header);
-            notebook.set_tab_reorderable (view, true);
-            notebook.set_current_page (page);
-            string target = uri == "" || uri == "about:blank" ? "about:blank" : resolve_address (uri);
-            if (plugin_host.adblock_enabled) {
-                install_adblock.begin (manager, (object, result) => {
-                    try { install_adblock.end (result); }
-                    catch (Error error) { warning ("Adblock filter unavailable: %s", error.message); }
-                    view.load_uri (target);
-                });
-            } else {
-                view.load_uri (target);
-            }
+            int page = notebook.append_page (record.view, tab_header);
+            notebook.set_tab_reorderable (record.view, true);
+            if (select) notebook.set_current_page (page);
             schedule_session_save ();
         }
 
-        async void install_adblock (WebKit.UserContentManager manager) throws Error {
+        async void install_adblock (
+                WebKit.UserContentManager manager,
+                uint64 expected_generation) throws Error {
             string filter_dir = Path.build_filename (
                 Environment.get_user_cache_dir (), "xanh-browser", "filters");
             DirUtils.create_with_parents (filter_dir, 0700);
             var store = new WebKit.UserContentFilterStore (filter_dir);
             string[] blocked = normalized_domains (plugin_host.adblock_blocked_domains);
-            if (blocked.length == 0) return;
+            if (blocked.length == 0) {
+                if (expected_generation == adblock_generation)
+                    current_adblock_filter = null;
+                return;
+            }
             string[] allowed = normalized_domains (plugin_host.adblock_whitelist_domains);
             string whitelist = allowed.length > 0 ?
                 ",\"unless-domain\":" + domain_json (allowed) : "";
             string rules = ("[{\"trigger\":{\"url-filter\":\".*\",\"if-domain\":%s%s}," +
                 "\"action\":{\"type\":\"block\"}}]").printf (domain_json (blocked), whitelist);
             var filter = yield store.save ("xanh-builtin-adblock-v1", new Bytes (rules.data));
+            if (expected_generation != adblock_generation) return;
+            current_adblock_filter = filter;
             manager.add_filter (filter);
         }
 
@@ -515,11 +599,15 @@ namespace Xanh {
         }
 
         void refresh_adblock_filters () {
+            cancel_pending_popups ();
+            adblock_generation++;
+            current_adblock_filter = null;
+            uint64 expected_generation = adblock_generation;
             tabs.foreach ((id, tab) => {
                 var manager = tab.view.get_user_content_manager ();
                 manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
                 if (plugin_host.adblock_enabled) {
-                    install_adblock.begin (manager, (object, result) => {
+                    install_adblock.begin (manager, expected_generation, (object, result) => {
                         try { install_adblock.end (result); }
                         catch (Error error) {
                             warning ("Cannot refresh adblock filter: %s", error.message);
@@ -572,10 +660,12 @@ namespace Xanh {
             });
             tab.view.notify["estimated-load-progress"].connect (() => {
                 tab.state.progress = tab.view.estimated_load_progress;
-                plugin_host.progress_changed (tab.state);
+                if (!tab.pending_popup) plugin_host.progress_changed (tab.state);
                 update_chrome ();
             });
             tab.view.load_changed.connect ((event) => {
+                if (event == WebKit.LoadEvent.STARTED)
+                    cancel_pending_popups (tab);
                 if (event == WebKit.LoadEvent.STARTED &&
                         credential_picker_bridge == tab.credential_bridge) {
                     cancel_credential_picker ();
@@ -603,42 +693,82 @@ namespace Xanh {
                         tab.state.uri = tab.view.uri ?? "about:blank";
                         tab.state.title = tab.view.title ?? tab.state.uri;
                     }
-                    var browser_application = application as BrowserApplication;
-                    bool application_clear = browser_application != null &&
-                        browser_application.is_browsing_data_clear_in_progress ();
-                    if (usable_page && !clearing_data && !application_clear) {
-                        try { database.record_history (
-                            tab.state.uri, tab.state.title, tab.state.private_mode); }
-                        catch (Error error) {
-                            warning ("Cannot record history: %s", error.message);
-                        }
-                        (application as BrowserApplication)?.record_synced_history (tab.state);
-                    }
-                    if (usable_page) plugin_host.page_loaded (tab.state);
+                    bool exposed_page = usable_page && !tab.pending_popup;
+                    if (usable_page && tab.pending_popup)
+                        tab.pending_popup_load_finished = true;
+                    if (exposed_page) publish_page_loaded (tab);
                     update_chrome ();
                     schedule_session_save ();
                 }
             });
             tab.view.load_failed.connect ((event, uri, error) => {
+                if (tab.pending_popup) {
+                    close_tab (tab.state.id);
+                    return true;
+                }
                 if (!tab.recovery.finish_automatic_recovery (false)) return false;
                 show_process_stopped (tab);
                 return true;
             });
             tab.view.load_failed_with_tls_errors.connect ((uri, certificate, errors) => {
+                if (tab.pending_popup) {
+                    close_tab (tab.state.id);
+                    return true;
+                }
                 if (tab.recovery.finish_automatic_recovery (false))
                     show_process_stopped (tab);
                 handle_tls_error (tab, uri, certificate, errors);
                 return true;
             });
             tab.view.permission_request.connect ((request) => {
+                if (tab.pending_popup) {
+                    request.deny ();
+                    return true;
+                }
                 handle_permission_request (tab, request);
                 return true;
             });
             tab.view.authenticate.connect ((request) => {
+                if (tab.pending_popup) {
+                    request.set_can_save_credentials (false);
+                    request.cancel ();
+                    return true;
+                }
                 handle_http_auth (tab, request);
                 return true;
             });
+            tab.view.run_file_chooser.connect ((request) => {
+                if (!tab.pending_popup) return false;
+                request.cancel ();
+                return true;
+            });
+            tab.view.run_color_chooser.connect ((request) => {
+                if (!tab.pending_popup) return false;
+                request.cancel ();
+                return true;
+            });
+            tab.view.script_dialog.connect ((dialog) => {
+                if (!tab.pending_popup) return false;
+                dialog.close ();
+                return true;
+            });
+            tab.view.print.connect ((operation) => tab.pending_popup);
+            tab.view.enter_fullscreen.connect (() => tab.pending_popup);
+            tab.view.context_menu.connect ((menu, hit_test) => tab.pending_popup);
+            tab.view.show_notification.connect ((notification) => {
+                if (!tab.pending_popup) return false;
+                notification.close ();
+                return true;
+            });
+            tab.view.run_as_modal.connect (() => {
+                if (tab.pending_popup) close_tab (tab.state.id);
+            });
             tab.view.web_process_terminated.connect ((reason) => {
+                if (tab.pending_popup) {
+                    close_tab (tab.state.id);
+                    return;
+                }
+                cancel_pending_popups (tab);
                 if (credential_picker_bridge == tab.credential_bridge)
                     cancel_credential_picker ();
                 if (pending_permission_tab == tab)
@@ -653,10 +783,106 @@ namespace Xanh {
                 maybe_recover_tab (tab);
             });
             tab.view.create.connect ((navigation) => {
-                add_tab ("about:blank", tab.state.private_mode);
-                var created = active_tab ();
-                return created != null ? created.view : null;
+                var popup = create_popup_tab (tab, navigation);
+                return popup != null ? popup.view : null;
             });
+        }
+
+        TabRecord? create_popup_tab (
+                TabRecord opener,
+                WebKit.NavigationAction navigation) {
+            string? source_uri = opener.view.uri;
+            string? target_uri = navigation.get_request ().get_uri ();
+            var browser_application = application as BrowserApplication;
+            bool application_clear = browser_application != null &&
+                browser_application.is_browsing_data_clear_in_progress ();
+            int64 now = GLib.get_monotonic_time ();
+            bool allowed = PopupPolicy.can_create (
+                source_uri, target_uri,
+                navigation.is_user_gesture (), navigation.is_redirect (),
+                navigation.get_navigation_type () == WebKit.NavigationType.LINK_CLICKED,
+                navigation.get_mouse_button (), is_active, active_tab () == opener,
+                opener.recovery.process_stopped, clearing_data || application_clear,
+                tabs.size (), opener.last_popup_monotonic_us, now);
+            if (!allowed || !popup_adblock_ready ()) {
+                status.label = "Popup blocked";
+                return null;
+            }
+
+            opener.last_popup_monotonic_us = now;
+            var popup = create_tab (opener.state.private_mode, opener.view, true);
+            popup.popup_opener_id = opener.state.id;
+            popup.popup_opener_uri = source_uri;
+            popup.popup_ready_timeout_source = Timeout.add_seconds (
+                PopupPolicy.READY_TIMEOUT_SECONDS, () => {
+                    popup.popup_ready_timeout_source = 0;
+                    if (popup.pending_popup) close_tab (popup.state.id);
+                    return Source.REMOVE;
+                });
+            popup.view.ready_to_show.connect (() => show_pending_popup (popup));
+            popup.view.close.connect (() => close_tab (popup.state.id));
+            return popup;
+        }
+
+        bool popup_adblock_ready () {
+            return !plugin_host.adblock_enabled || current_adblock_filter != null ||
+                normalized_domains (plugin_host.adblock_blocked_domains).length == 0;
+        }
+
+        void show_pending_popup (TabRecord popup) {
+            if (!popup.pending_popup || tabs.lookup (popup.state.id) != popup) return;
+            var opener = tabs.lookup (popup.popup_opener_id);
+            var browser_application = application as BrowserApplication;
+            bool application_clear = browser_application != null &&
+                browser_application.is_browsing_data_clear_in_progress ();
+            bool current = opener != null && active_tab () == opener && is_active &&
+                !clearing_data && !application_clear &&
+                !opener.recovery.process_stopped &&
+                opener.view.uri == popup.popup_opener_uri;
+            if (!current) {
+                close_tab (popup.state.id);
+                return;
+            }
+            popup.pending_popup = false;
+            popup.popup_opener_uri = null;
+            if (popup.popup_ready_timeout_source != 0) {
+                Source.remove (popup.popup_ready_timeout_source);
+                popup.popup_ready_timeout_source = 0;
+            }
+            attach_tab (popup, true);
+            popup.bridge.set_message_dispatch_enabled (true);
+            if (popup.pending_popup_load_finished) {
+                popup.pending_popup_load_finished = false;
+                publish_page_loaded (popup);
+            }
+            status.label = "Opened link in a new tab";
+        }
+
+        void publish_page_loaded (TabRecord tab) {
+            var browser_application = application as BrowserApplication;
+            if (clearing_data || (browser_application != null &&
+                    browser_application.is_browsing_data_clear_in_progress ())) {
+                return;
+            }
+            try {
+                database.record_history (
+                    tab.state.uri, tab.state.title, tab.state.private_mode);
+            } catch (Error error) {
+                warning ("Cannot record history: %s", error.message);
+            }
+            browser_application?.record_synced_history (tab.state);
+            plugin_host.page_loaded (tab.state);
+        }
+
+        void cancel_pending_popups (TabRecord? opener = null) {
+            var pending = new GenericArray<TabRecord> ();
+            tabs.foreach ((id, candidate) => {
+                if (candidate.pending_popup &&
+                        (opener == null || candidate.popup_opener_id == opener.state.id)) {
+                    pending.add (candidate);
+                }
+            });
+            pending.foreach ((candidate) => close_tab (candidate.state.id));
         }
 
         void handle_permission_request (TabRecord tab, WebKit.PermissionRequest request) {
@@ -1101,6 +1327,12 @@ namespace Xanh {
         }
 
         void handle_download (WebKit.Download download, bool private_mode) {
+            WebKit.WebView? source_view = download.get_web_view ();
+            var source_tab = source_view != null ? find_tab (source_view) : null;
+            if (source_tab != null && source_tab.pending_popup) {
+                download.cancel ();
+                return;
+            }
             download.decide_destination.connect ((suggested) => {
                 if (pending_download_choices.lookup (download) != null) return true;
                 var cancellable = new Cancellable ();
@@ -1185,6 +1417,7 @@ namespace Xanh {
         }
 
         void begin_explicit_navigation (TabRecord tab) {
+            cancel_pending_popups (tab);
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
             cancel_permission_request (tab);
@@ -1256,6 +1489,13 @@ namespace Xanh {
         void close_tab (uint64 id) {
             var tab = tabs.lookup (id);
             if (tab == null) return;
+            cancel_pending_popups (tab);
+            tab.popup_opener_uri = null;
+            if (tab.popup_ready_timeout_source != 0) {
+                Source.remove (tab.popup_ready_timeout_source);
+                tab.popup_ready_timeout_source = 0;
+            }
+            tab.view.stop_loading ();
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
             cancel_permission_request (tab);
@@ -1323,6 +1563,7 @@ namespace Xanh {
             cancel_permission_request ();
             cancel_tls_error ();
             cancel_http_auth ();
+            cancel_pending_popups ();
             cancel_pending_download_choices ();
             tabs.foreach ((id, tab) => disconnect_tab_bridges (tab));
             if (session_save_source != 0) {
@@ -1910,6 +2151,7 @@ namespace Xanh {
             cancel_permission_request ();
             cancel_tls_error ();
             cancel_http_auth ();
+            cancel_pending_popups ();
             cancel_pending_download_choices ();
             tabs.foreach ((id, tab) => tab.view.stop_loading ());
         }

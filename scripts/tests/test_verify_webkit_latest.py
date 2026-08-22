@@ -22,6 +22,30 @@ class LatestStableReleaseTests(unittest.TestCase):
     current_revision = "3" * 40
     development_revision = "4" * 40
 
+    mouse_source = """
+WebMouseEventButton mouseButton(const WebCore::NavigationAction& navigationAction)
+{
+    auto& mouseEventData = navigationAction.mouseEventData();
+    if (mouseEventData && mouseEventData->buttonDown && mouseEventData->isTrusted)
+        return kit(mouseEventData->button);
+    return WebMouseEventButton::None;
+}
+"""
+    glib_source = """
+unsigned webkit_navigation_action_get_mouse_button(WebKitNavigationAction* navigation)
+{
+    return toWebKitMouseButton(navigation->action->mouseButton());
+}
+gboolean webkit_navigation_action_is_user_gesture(WebKitNavigationAction* navigation)
+{
+    return navigation->action->isProcessingUserGesture();
+}
+gboolean webkit_navigation_action_is_redirect(WebKitNavigationAction* navigation)
+{
+    return navigation->action->isRedirect();
+}
+"""
+
     def fixture(self) -> str:
         return "".join(
             [
@@ -100,6 +124,46 @@ class LatestStableReleaseTests(unittest.TestCase):
     def test_rejects_oversized_tag_list(self) -> None:
         with self.assertRaises(MODULE.VerificationError):
             MODULE.latest_stable_release("x" * (MODULE.MAX_TAG_LIST_BYTES + 1))
+
+    def test_accepts_trusted_popup_contract(self) -> None:
+        MODULE.verify_popup_contract(self.mouse_source, self.glib_source)
+
+    def test_rejects_weakened_popup_contract(self) -> None:
+        mutations = [
+            (self.mouse_source.replace(" && mouseEventData->isTrusted", ""), self.glib_source),
+            (self.mouse_source.replace("mouseEventData->buttonDown && ", ""), self.glib_source),
+            (
+                self.mouse_source,
+                self.glib_source.replace(
+                    "return toWebKitMouseButton(navigation->action->mouseButton());",
+                    "return 1;",
+                ),
+            ),
+            (
+                self.mouse_source,
+                self.glib_source.replace(
+                    "return navigation->action->isProcessingUserGesture();",
+                    "return TRUE;",
+                ),
+            ),
+            (
+                self.mouse_source,
+                self.glib_source.replace(
+                    "return navigation->action->isRedirect();", "return FALSE;"
+                ),
+            ),
+        ]
+        for mouse_source, glib_source in mutations:
+            with self.subTest(mouse_source=mouse_source, glib_source=glib_source):
+                with self.assertRaises(MODULE.VerificationError):
+                    MODULE.verify_popup_contract(mouse_source, glib_source)
+
+    def test_rejects_oversized_popup_contract_source(self) -> None:
+        with self.assertRaises(MODULE.VerificationError):
+            MODULE.verify_popup_contract(
+                self.mouse_source + "x" * MODULE.MAX_CONTRACT_SOURCE_BYTES,
+                self.glib_source,
+            )
 
 
 if __name__ == "__main__":

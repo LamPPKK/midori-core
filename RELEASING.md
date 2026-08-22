@@ -165,6 +165,22 @@ allowed historical material, never a shipping dependency or application ID.
    synthetic `.click()`, script-assigned location, redirect, iframe, modified
    click, inactive tab/window, navigation before message delivery, tab close,
    renderer termination and Clear Browsing Data; every case must fail closed.
+
+   Test new-window creation separately. A direct trusted left/middle-button
+   HTTP(S) link may create one related tab, including an exact `about:blank`
+   target, but the view must remain unattached until WebKit emits
+   `ready-to-show`. Confirm it inherits the opener's regular/private network
+   session and has the content filter plus isolated bridges installed before
+   WebKit receives it. Synthetic `.click()`, keyboard-only activation,
+   `window.open`, redirects, malformed/userinfo/control/oversized targets,
+   background or hidden openers, a stopped renderer, a second request within
+   one second and requests at 100 tabs must return no view. Navigate/switch the
+   opener, move the window inactive, terminate the renderer, clear data, close
+   the opener and withhold `ready-to-show` for 15 seconds; each pending popup
+   must stop loading and never appear. Recheck WebKit's pinned
+   `WebMouseEvent::mouseButton()` trusted-and-button-down invariant whenever the
+   shared WebKit baseline changes; keyboard activation stays blocked until an
+   equivalent trusted-event signal exists.
    Verify handler-registration failure also leaves external navigation blocked.
    Repeat in a private tab and confirm the handoff occurs only after the same
    explicit activation, with no browser history/session write.

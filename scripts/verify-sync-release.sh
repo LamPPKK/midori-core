@@ -42,6 +42,13 @@ case "$edition" in
     test -f .github/workflows/webview2-baseline.yml
     grep -F 'python3 scripts/verify_androidx_webkit_latest.py' .github/workflows/webkit-baseline.yml >/dev/null
     grep -F 'python3 scripts/verify_webview2_latest.py' .github/workflows/webview2-baseline.yml >/dev/null
+    grep -F 'def verify_popup_contract(' scripts/verify_webkit_latest.py >/dev/null
+    grep -F 'mouseEventData->buttonDown && mouseEventData->isTrusted' \
+      scripts/verify_webkit_latest.py >/dev/null
+    test "$(grep -Fc 'desktop/popup-policy.vala' \
+      .github/workflows/webkit-baseline.yml)" -eq 2
+    test "$(grep -Fc 'desktop/web-extension-bridge.vala' \
+      .github/workflows/webkit-baseline.yml)" -eq 2
     grep -F 'TargetCompatibleBrowserVersion = WebView2RuntimePolicy.MinimumVersion' \
       platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
     grep -F 'ReleaseChannels = CoreWebView2ReleaseChannels.Stable' \
@@ -131,6 +138,51 @@ case "$edition" in
     grep -F 'AddressResolver.is_safe_external_uri' desktop/browser-window.vala >/dev/null
     grep -F 'disconnect_tab_bridges (tab);' desktop/browser-window.vala >/dev/null
     grep -F 'add_executable(external-navigation-bridge-test' CMakeLists.txt >/dev/null
+    test -f desktop/popup-policy.vala
+    test -f tests-modern/popup-policy-test.vala
+    grep -F 'add_xanh_test(popup-policy-test' CMakeLists.txt >/dev/null
+    grep -F 'MAX_TABS = 100' desktop/popup-policy.vala >/dev/null
+    grep -F 'COOLDOWN_MICROSECONDS = 1000000' desktop/popup-policy.vala >/dev/null
+    grep -F 'READY_TIMEOUT_SECONDS = 15' desktop/popup-policy.vala >/dev/null
+    grep -F 'PopupPolicy.can_create (' desktop/browser-window.vala >/dev/null
+    grep -F 'navigation.is_user_gesture (), navigation.is_redirect ()' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'WebKit.NavigationType.LINK_CLICKED' desktop/browser-window.vala >/dev/null
+    grep -F 'navigation.get_mouse_button ()' desktop/browser-window.vala >/dev/null
+    grep -F '"related-view", related_view' desktop/browser-window.vala >/dev/null
+    grep -F 'popup.view.ready_to_show.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'active_tab () == opener && is_active' desktop/browser-window.vala >/dev/null
+    grep -F 'opener.view.uri == popup.popup_opener_uri' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_pending_popups (tab);' desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_pending_popups ();' desktop/browser-window.vala >/dev/null
+    grep -F 'popup_adblock_ready ()' desktop/browser-window.vala >/dev/null
+    grep -F 'if (!record.pending_popup)' desktop/browser-window.vala >/dev/null
+    grep -F 'bridge.set_message_dispatch_enabled (!pending_popup);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'popup.bridge.set_message_dispatch_enabled (true);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'if (!message_dispatch_enabled && !default_world)' \
+      desktop/web-extension-bridge.vala >/dev/null
+    grep -F 'tab.pending_popup_load_finished = true;' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'if (exposed_page) publish_page_loaded (tab);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'source_tab.pending_popup' desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.run_file_chooser.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.permission_request.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.authenticate.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.run_color_chooser.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.script_dialog.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.show_notification.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'load_tab_with_adblock.begin' desktop/browser-window.vala >/dev/null
+    grep -F 'expected_generation != adblock_generation' \
+      desktop/browser-window.vala >/dev/null
+    if sed -n '/tab.view.create.connect/,/^            });/p' \
+      desktop/browser-window.vala | grep -F 'add_tab (' >/dev/null; then
+      echo 'Linux popup creation must return a related view, not an ordinary tab' >&2
+      exit 1
+    fi
     test -f desktop/permission-policy.vala
     test -f tests-modern/permission-policy-test.vala
     grep -F 'add_xanh_test(permission-policy-test' CMakeLists.txt >/dev/null

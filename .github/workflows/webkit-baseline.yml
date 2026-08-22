@@ -9,6 +9,10 @@ on:
       - scripts/verify_androidx_webkit_latest.py
       - scripts/tests/test_verify_androidx_webkit_latest.py
       - WEBKITGTK_MIN_VERSION
+      - desktop/browser-window.vala
+      - desktop/web-extension-bridge.vala
+      - desktop/popup-policy.vala
+      - tests-modern/popup-policy-test.vala
       - app/build.gradle
       - app-webkit/build.gradle
       - sync-feature-common/build.gradle
@@ -22,6 +26,10 @@ on:
       - scripts/verify_androidx_webkit_latest.py
       - scripts/tests/test_verify_androidx_webkit_latest.py
       - WEBKITGTK_MIN_VERSION
+      - desktop/browser-window.vala
+      - desktop/web-extension-bridge.vala
+      - desktop/popup-policy.vala
+      - tests-modern/popup-policy-test.vala
       - app/build.gradle
       - app-webkit/build.gradle
       - sync-feature-common/build.gradle

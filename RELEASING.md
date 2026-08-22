@@ -391,6 +391,15 @@ Verify WebKit only exposes a button for trusted, button-down link events and tha
 `HTMLElement.click()` plus manually dispatched click events remain blocked even
 inside a real user-event handler. Keyboard-only activation is intentionally
 blocked in this preview until it has an equivalent trusted-event signal.
+Terminate the WinCairo WebProcess for crash, memory and CPU reasons. The first
+unexpected termination may restore the current committed back-forward item
+exactly once only when it has no stored HTTP body; form submissions and other
+body-bearing items must never be restored automatically. Start a provisional
+bodyless navigation over a committed form item and terminate before commit to
+confirm the old item remains blocked. A second termination before or after
+recovery must stop without a loop. Confirm explicit Reload restores one attempt
+subject to the same committed-item check, requested-by-client termination is
+not undone, and live automation attach/detach never blocks on a modal dialog.
 
 This preview is not production-ready until its upstream MiniBrowser-based UI
 has the same encrypted backup import/export surface as the WinUI and Android

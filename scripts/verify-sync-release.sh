@@ -167,9 +167,9 @@ case "$edition" in
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+    navigationClient.decidePolicyForNavigationAction = decidePolicyForNavigationAction;' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
-    grep -F '+        WKXanhNavigationActionIsRedirect(navigationAction),' \
+    grep -F '+    bool isRedirect = WKXanhNavigationActionIsRedirect(navigationAction);' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
-    grep -F '+        WKXanhNavigationActionIsTrustedLinkClick(navigationAction),' \
+    grep -F '+    bool isTrustedLinkClick = WKXanhNavigationActionIsTrustedLinkClick(navigationAction);' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+    bool shouldOpenExternal = decision == XanhNavigationPolicy::Decision::openExternal && WKXanhNavigationActionTakeUserGesture(navigationAction);' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
@@ -186,6 +186,51 @@ case "$edition" in
     grep -F '+inline constexpr size_t maximumURLCharacters = 8192;' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     test -f platform/windows-webkit/tests/XanhNavigationPolicyTest.cpp
+    grep -F '+    navigationClient.webProcessDidTerminate = webProcessDidTerminate;' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    navigationClient.didFinishNavigation = didFinishNavigation;' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+WK_EXPORT bool WKXanhPageCanSafelyRestoreCurrentItem(WKPageRef page);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    return item && XanhProcessRecovery::canSafelyRestoreFrameTree(item->mainFrameState().get());' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+inline constexpr std::size_t maximumFrameStatesToInspect = 4096;' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        for (const auto& child : state->children)' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        WKXanhPageCanSafelyRestoreCurrentItem(page));' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    refuseUnsafeRestore,' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        WKPageReload(page);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    if [[ "$(grep -Fc '+    if (WKPageGetIsControlledByAutomation(page))' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch)" -ne 2 ]]; then
+      echo 'WinCairo must query live automation state for termination and authentication' >&2
+      exit 1
+    fi
+    grep -F -- '-    m_isControlledByAutomation = WKPageGetIsControlledByAutomation(page);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F -- '-    bool m_isControlledByAutomation { false };' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    if grep -F '+    bool m_isControlledByAutomation' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null; then
+      echo 'WinCairo must not add a cached automation-state member' >&2
+      exit 1
+    fi
+    if grep -F '+    bool m_currentMainFrameNavigationIsSafeToReplay' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null; then
+      echo 'WinCairo must inspect the committed back-forward item instead of a provisional replay cache' >&2
+      exit 1
+    fi
+    grep -F '+        if (m_state != State::available) {' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+            m_state = State::exhausted;' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        if (m_state == State::recoveryLoading)' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    test -f platform/windows-webkit/tests/XanhProcessRecoveryPolicyTest.cpp
+    test -f platform/windows-webkit/tests/XanhFrameStateRestorePolicyTest.cpp
     grep -F 'WebKit WinCairo source preview' THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_release_tag" THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_revision" THIRD_PARTY_NOTICES.md >/dev/null

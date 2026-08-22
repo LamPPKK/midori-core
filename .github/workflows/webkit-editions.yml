@@ -90,13 +90,17 @@ jobs:
         run: |
           revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"
           files=(
+            Source/WebKit/Shared/SessionState.h
             Source/WebKit/Shared/WebMouseEvent.cpp
             Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
             Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
+            Source/WebKit/UIProcess/API/C/WKPage.cpp
+            Source/WebKit/UIProcess/API/C/WKPage.h
             Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
             Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
             Source/WebKit/UIProcess/API/C/WKUserScriptRef.cpp
             Source/WebKit/UIProcess/API/C/WKUserScriptRef.h
+            Source/WebKit/UIProcess/WebPageProxy.cpp
             Tools/MiniBrowser/win/CMakeLists.txt
             Tools/MiniBrowser/win/MainWindow.cpp
             Tools/MiniBrowser/win/MiniBrowserLib.rc
@@ -124,6 +128,11 @@ jobs:
           grep -F 'WK_EXPORT bool WKXanhNavigationActionIsRedirect' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
           grep -F 'WK_EXPORT bool WKXanhNavigationActionTakeUserGesture' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
           grep -F 'WK_EXPORT bool WKXanhNavigationActionIsTrustedLinkClick' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
+          grep -F 'std::optional<HTTPBody> httpBody;' _webkit/Source/WebKit/Shared/SessionState.h
+          grep -F 'We allow stale content when reloading a WebProcess' _webkit/Source/WebKit/UIProcess/WebPageProxy.cpp
+          grep -F 'WK_EXPORT bool WKXanhPageCanSafelyRestoreCurrentItem' _webkit/Source/WebKit/UIProcess/API/C/WKPage.h
+          grep -F 'XanhProcessRecovery::canSafelyRestoreFrameTree(item->mainFrameState().get())' _webkit/Source/WebKit/UIProcess/API/C/WKPage.cpp
+          grep -F 'for (const auto& child : state->children)' _webkit/Source/WebKit/UIProcess/API/C/XanhFrameStateRestorePolicy.h
           grep -F 'if (mouseEventData && mouseEventData->buttonDown && mouseEventData->isTrusted)' _webkit/Source/WebKit/Shared/WebMouseEvent.cpp
           grep -F 'if (!userInitiatedAction || userInitiatedAction->consumed())' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
           grep -F 'userInitiatedAction->setConsumed();' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
@@ -131,11 +140,30 @@ jobs:
           grep -F 'WKXanhNavigationActionIsRedirect(navigationAction)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
           grep -F 'WKXanhNavigationActionIsTrustedLinkClick(navigationAction)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
           grep -F 'bool shouldOpenExternal = decision == XanhNavigationPolicy::Decision::openExternal && WKXanhNavigationActionTakeUserGesture(navigationAction);' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'navigationClient.webProcessDidTerminate = webProcessDidTerminate' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'navigationClient.didFinishNavigation = didFinishNavigation' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'WKXanhPageCanSafelyRestoreCurrentItem(page)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'WKPageReload(page)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'WKPageGetIsControlledByAutomation(page)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          if grep -F 'm_isControlledByAutomation' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.h; then
+            echo 'WinCairo must read live automation state rather than a stale per-window cache' >&2
+            exit 1
+          fi
           c++ -std=c++17 -Wall -Wextra -Werror \
             -I _webkit/Tools/MiniBrowser/win \
             platform/windows-webkit/tests/XanhNavigationPolicyTest.cpp \
             -o /tmp/xanh-navigation-policy-test
           /tmp/xanh-navigation-policy-test
+          c++ -std=c++17 -Wall -Wextra -Werror \
+            -I _webkit/Tools/MiniBrowser/win \
+            platform/windows-webkit/tests/XanhProcessRecoveryPolicyTest.cpp \
+            -o /tmp/xanh-process-recovery-policy-test
+          /tmp/xanh-process-recovery-policy-test
+          c++ -std=c++17 -Wall -Wextra -Werror \
+            -I _webkit/Source/WebKit/UIProcess/API/C \
+            platform/windows-webkit/tests/XanhFrameStateRestorePolicyTest.cpp \
+            -o /tmp/xanh-frame-state-restore-policy-test
+          /tmp/xanh-frame-state-restore-policy-test
 
   dependency-review:
     if: github.event_name == 'pull_request'

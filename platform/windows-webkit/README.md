@@ -78,6 +78,19 @@ Every source-revision update must revalidate the upstream trusted-button
 invariant in `WebMouseEvent.cpp`; CI fetches and checks that exact file from the
 pinned commit.
 
+Web-process termination is recovered at most once per user-requested
+navigation, and only when the current committed back-forward item has no stored
+HTTP body. WebKit restores that item after a terminated process; this is
+deliberately not described as a cache-bypassing origin reload. Form submissions
+and every other body-bearing item are never restored automatically. Inspecting
+the committed item at termination also prevents a provisional navigation from
+making an older form entry appear safe. A completed recovery leaves the budget
+exhausted, so another termination stops instead of forming a crash loop.
+Address-bar loads, Back/Forward, explicit Reload and a trusted main-frame web
+link grant a new single attempt, still subject to the committed-item check.
+Client-requested termination is never undone, and the live automation state
+suppresses modal failure dialogs.
+
 The pinned commit is the peeled upstream `webkitgtk-2.52.6` tag rather than an
 arbitrary `main` snapshot. The GTK release tag is used because WinCairo and GTK
 are built from the same WebKit source tree, and this gives the Windows preview
@@ -95,6 +108,10 @@ tests plus browser navigation, TLS, download, media and process-crash tests.
 Navigation tests must include malformed and overlong URLs, userinfo, invalid
 ports, redirect-to-external, script-created external navigation and direct
 user-clicked `mailto:`/`tel:` links.
+Process tests must cover crash, memory/CPU termination, termination during the
+automatic restore, a successful recovery followed by another crash, explicit
+user retry, refusal to restore a body-bearing item, provisional-navigation races
+and client-requested termination.
 Verify the revision/provenance file, remove unrelated upstream test binaries
 from the package only after a dependency-closure audit, sign all shipped PE
 files and test on clean Windows 10 and Windows 11 systems. Compile and exercise

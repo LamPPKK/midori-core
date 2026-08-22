@@ -40,6 +40,51 @@ index 9c175e79..98fb44ee 100644
  
  #ifdef __cplusplus
  }
+diff --git a/Source/WebKit/UIProcess/API/C/WKPage.cpp b/Source/WebKit/UIProcess/API/C/WKPage.cpp
+index 54312083..af318330 100644
+--- a/Source/WebKit/UIProcess/API/C/WKPage.cpp
++++ b/Source/WebKit/UIProcess/API/C/WKPage.cpp
+@@ -26,6 +26,7 @@
+ #include "config.h"
+ #include "WKPage.h"
+ #include "WKPagePrivate.h"
++#include "XanhFrameStateRestorePolicy.h"
+ 
+ #include "APIArray.h"
+ #include "APICompletionListener.h"
+@@ -83,6 +84,7 @@
+ #include "WKPluginInformation.h"
+ #include "WebBackForwardCache.h"
+ #include "WebBackForwardList.h"
++#include "WebBackForwardListItem.h"
+ #include "WebFormClient.h"
+ #include "WebFrameProxy.h"
+ #include "WebFullScreenManagerProxy.h"
+@@ -365,6 +367,12 @@ void WKPageReloadExpiredOnly(WKPageRef pageRef)
+     toProtectedImpl(pageRef)->reload(WebCore::ReloadOption::ExpiredOnly);
+ }
+ 
++bool WKXanhPageCanSafelyRestoreCurrentItem(WKPageRef pageRef)
++{
++    RefPtr item = toProtectedImpl(pageRef)->backForwardList().currentItem();
++    return item && XanhProcessRecovery::canSafelyRestoreFrameTree(item->mainFrameState().get());
++}
++
+ bool WKPageTryClose(WKPageRef pageRef)
+ {
+     CRASH_IF_SUSPENDED;
+diff --git a/Source/WebKit/UIProcess/API/C/WKPage.h b/Source/WebKit/UIProcess/API/C/WKPage.h
+index 81f73d5f..88b61fe3 100644
+--- a/Source/WebKit/UIProcess/API/C/WKPage.h
++++ b/Source/WebKit/UIProcess/API/C/WKPage.h
+@@ -85,6 +85,7 @@ WK_EXPORT void WKPageReload(WKPageRef page);
+ WK_EXPORT void WKPageReloadWithoutContentBlockers(WKPageRef page);
+ WK_EXPORT void WKPageReloadFromOrigin(WKPageRef page);
+ WK_EXPORT void WKPageReloadExpiredOnly(WKPageRef page);
++WK_EXPORT bool WKXanhPageCanSafelyRestoreCurrentItem(WKPageRef page);
+ 
+ WK_EXPORT bool WKPageTryClose(WKPageRef page);
+ WK_EXPORT void WKPageClose(WKPageRef page);
 diff --git a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
 index 5519ce0e..78d36e3d 100644
 --- a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
@@ -182,6 +227,56 @@ index de8b6a3c..3afeadea 100644
  
  WK_EXPORT WKStringRef WKUserScriptCopySource(WKUserScriptRef userScript);
  WK_EXPORT _WKUserScriptInjectionTime WKUserScriptGetInjectionTime(WKUserScriptRef userScript);
+diff --git a/Source/WebKit/UIProcess/API/C/XanhFrameStateRestorePolicy.h b/Source/WebKit/UIProcess/API/C/XanhFrameStateRestorePolicy.h
+new file mode 100644
+index 00000000..b012ed32
+--- /dev/null
++++ b/Source/WebKit/UIProcess/API/C/XanhFrameStateRestorePolicy.h
+@@ -0,0 +1,44 @@
++/*
++ * Copyright (C) 2026 Xanh Browser contributors.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIMED.
++ */
++
++#pragma once
++
++#include <cstddef>
++#include <vector>
++
++namespace XanhProcessRecovery {
++
++inline constexpr std::size_t maximumFrameStatesToInspect = 4096;
++
++template<typename FrameState>
++bool canSafelyRestoreFrameTree(const FrameState& root)
++{
++    std::vector<const FrameState*> pending { &root };
++    std::size_t inspected = 0;
++    while (!pending.empty()) {
++        auto* state = pending.back();
++        pending.pop_back();
++        if (++inspected > maximumFrameStatesToInspect || state->httpBody)
++            return false;
++        if (state->children.size() > maximumFrameStatesToInspect - inspected - pending.size())
++            return false;
++        for (const auto& child : state->children)
++            pending.push_back(child.ptr());
++    }
++    return true;
++}
++
++} // namespace XanhProcessRecovery
 diff --git a/Tools/MiniBrowser/win/CMakeLists.txt b/Tools/MiniBrowser/win/CMakeLists.txt
 index fba0731a..7b4d600c 100644
 --- a/Tools/MiniBrowser/win/CMakeLists.txt
@@ -269,18 +364,19 @@ index a27a1f4e..87b5c052 100755
  
  #endif    // English (United States) resources
 diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
-index 990ba53c..9ff4fb0b 100644
+index 990ba53c..021a53be 100644
 --- a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
 +++ b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
-@@ -28,6 +28,7 @@
+@@ -28,6 +28,8 @@
  #include "Common.h"
  #include "Common2.h"
  #include "MiniBrowserLibResource.h"
 +#include "XanhNavigationPolicy.h"
++#include "XanhProcessRecoveryPolicy.h"
  #include <WebCore/GDIUtilities.h>
  #include <WebKit/WKAuthenticationChallenge.h>
  #include <WebKit/WKAuthenticationDecisionListener.h>
-@@ -39,6 +40,7 @@
+@@ -39,6 +41,7 @@
  #include <WebKit/WKFrameInfoRef.h>
  #include <WebKit/WKHTTPCookieStoreRef.h>
  #include <WebKit/WKInspector.h>
@@ -288,7 +384,7 @@ index 990ba53c..9ff4fb0b 100644
  #include <WebKit/WKNavigationResponseRef.h>
  #include <WebKit/WKPagePrivate.h>
  #include <WebKit/WKPreferencesRefPrivate.h>
-@@ -46,10 +48,10 @@
+@@ -46,10 +49,10 @@
  #include <WebKit/WKProtectionSpaceCurl.h>
  #include <WebKit/WKSecurityOriginRef.h>
  #include <WebKit/WKURLResponse.h>
@@ -300,7 +396,7 @@ index 990ba53c..9ff4fb0b 100644
  #include <sstream>
  #include <vector>
  
-@@ -118,22 +120,6 @@ WKRetainPtr<WKURLRef> createWKURL(const std::wstring& str)
+@@ -118,22 +121,6 @@ WKRetainPtr<WKURLRef> createWKURL(const std::wstring& str)
      return adoptWK(WKURLCreateWithUTF8CString(utf8.data()));
  }
  
@@ -323,7 +419,7 @@ index 990ba53c..9ff4fb0b 100644
  Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND mainWnd, bool)
  {
      auto websiteDataStoreConf = adoptWK(WKWebsiteDataStoreConfigurationCreate());
-@@ -141,13 +127,12 @@ Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND
+@@ -141,13 +128,12 @@ Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND
      auto websiteDataStore = adoptWK(WKWebsiteDataStoreCreateWithConfiguration(websiteDataStoreConf.get()));
  
      auto contextConf = adoptWK(WKContextConfigurationCreate());
@@ -338,15 +434,51 @@ index 990ba53c..9ff4fb0b 100644
  
      auto pageConf = adoptWK(WKPageConfigurationCreate());
      WKPageConfigurationSetWebsiteDataStore(pageConf.get(), websiteDataStore.get());
-@@ -171,6 +156,7 @@ WebKitBrowserWindow::WebKitBrowserWindow(BrowserWindowClient& client, WKPageConf
+@@ -166,17 +152,18 @@ WebKitBrowserWindow::WebKitBrowserWindow(BrowserWindowClient& client, WKPageConf
+     WKViewSetIsInWindow(m_view.get(), true);
+ 
+     auto page = WKViewGetPage(m_view.get());
+-    m_isControlledByAutomation = WKPageGetIsControlledByAutomation(page);
+-
      WKPageNavigationClientV3 navigationClient = { };
      navigationClient.base.version = 3;
      navigationClient.base.clientInfo = this;
 +    navigationClient.decidePolicyForNavigationAction = decidePolicyForNavigationAction;
      navigationClient.decidePolicyForNavigationResponse = decidePolicyForNavigationResponse;
++    navigationClient.didFinishNavigation = didFinishNavigation;
      navigationClient.didFailProvisionalNavigation = didFailProvisionalNavigation;
      navigationClient.didReceiveAuthenticationChallenge = didReceiveAuthenticationChallenge;
-@@ -486,7 +472,7 @@ void WebKitBrowserWindow::didChangeTitle(const void* clientInfo)
+     navigationClient.navigationActionDidBecomeDownload = navigationActionDidBecomeDownload;
+     navigationClient.navigationResponseDidBecomeDownload = navigationResponseDidBecomeDownload;
+     navigationClient.contextMenuDidCreateDownload = contextMenuDidCreateDownload;
++    navigationClient.webProcessDidTerminate = webProcessDidTerminate;
+     WKPageSetPageNavigationClient(page, &navigationClient.base);
+ 
+     WKPageUIClientV13 uiClient = { };
+@@ -298,6 +285,7 @@ HWND WebKitBrowserWindow::hwnd()
+ 
+ HRESULT WebKitBrowserWindow::loadURL(const BSTR& url)
+ {
++    m_processRecoveryPolicy.userRequestedNavigation();
+     auto page = WKViewGetPage(m_view.get());
+     WKPageLoadURL(page, createWKURL(_bstr_t(url)).get());
+     return true;
+@@ -305,12 +293,14 @@ HRESULT WebKitBrowserWindow::loadURL(const BSTR& url)
+ 
+ void WebKitBrowserWindow::reload()
+ {
++    m_processRecoveryPolicy.userRequestedNavigation();
+     auto page = WKViewGetPage(m_view.get());
+     WKPageReload(page);
+ }
+ 
+ void WebKitBrowserWindow::navigateForwardOrBackward(bool forward)
+ {
++    m_processRecoveryPolicy.userRequestedNavigation();
+     auto page = WKViewGetPage(m_view.get());
+     if (forward)
+         WKPageGoForward(page);
+@@ -486,7 +476,7 @@ void WebKitBrowserWindow::didChangeTitle(const void* clientInfo)
      auto& thisWindow = toWebKitBrowserWindow(clientInfo);
      auto page = WKViewGetPage(thisWindow.m_view.get());
      WKRetainPtr<WKStringRef> title = adoptWK(WKPageCopyTitle(page));
@@ -355,12 +487,13 @@ index 990ba53c..9ff4fb0b 100644
      SetWindowText(thisWindow.m_hMainWnd, titleString.c_str());
  }
  
-@@ -511,6 +497,40 @@ void WebKitBrowserWindow::didChangeActiveURL(const void* clientInfo)
+@@ -511,6 +501,49 @@ void WebKitBrowserWindow::didChangeActiveURL(const void* clientInfo)
      thisWindow.m_client.activeURLChanged(createString(url.get()));
  }
  
 +void WebKitBrowserWindow::decidePolicyForNavigationAction(WKPageRef, WKNavigationActionRef navigationAction, WKFramePolicyListenerRef listener, WKTypeRef, const void* clientInfo)
 +{
++    auto& thisWindow = toWebKitBrowserWindow(clientInfo);
 +    WKRetainPtr<WKURLRequestRef> request = adoptWK(WKNavigationActionCopyRequest(navigationAction));
 +    WKRetainPtr<WKURLRef> url;
 +    if (request)
@@ -374,12 +507,21 @@ index 990ba53c..9ff4fb0b 100644
 +    }
 +
 +    auto urlValue = createString(urlString.get());
++    bool hasUnconsumedUserGesture = WKNavigationActionHasUnconsumedUserGesture(navigationAction);
++    bool isTrustedLinkClick = WKXanhNavigationActionIsTrustedLinkClick(navigationAction);
++    bool isRedirect = WKXanhNavigationActionIsRedirect(navigationAction);
++    bool isMainFrame = false;
++    auto targetFrame = adoptWK(WKNavigationActionCopyTargetFrameInfo(navigationAction));
++    if (targetFrame)
++        isMainFrame = WKFrameInfoGetIsMainFrame(targetFrame.get());
 +    auto decision = XanhNavigationPolicy::decide(urlValue,
-+        WKNavigationActionHasUnconsumedUserGesture(navigationAction),
-+        WKXanhNavigationActionIsTrustedLinkClick(navigationAction),
-+        WKXanhNavigationActionIsRedirect(navigationAction),
++        hasUnconsumedUserGesture,
++        isTrustedLinkClick,
++        isRedirect,
 +        WKNavigationActionGetShouldOpenExternalSchemes(navigationAction));
 +    if (decision == XanhNavigationPolicy::Decision::allowInWebView) {
++        if (isMainFrame && hasUnconsumedUserGesture && isTrustedLinkClick && !isRedirect)
++            thisWindow.m_processRecoveryPolicy.userRequestedNavigation();
 +        WKFramePolicyListenerUse(listener);
 +        return;
 +    }
@@ -389,30 +531,121 @@ index 990ba53c..9ff4fb0b 100644
 +    if (!shouldOpenExternal)
 +        return;
 +
-+    auto& thisWindow = toWebKitBrowserWindow(clientInfo);
 +    ShellExecuteW(thisWindow.m_hMainWnd, L"open", urlValue.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 +}
 +
  void WebKitBrowserWindow::decidePolicyForNavigationResponse(WKPageRef, WKNavigationResponseRef navigationResponse, WKFramePolicyListenerRef listener, WKTypeRef, const void* clientInfo)
  {
      auto& thisWindow = toWebKitBrowserWindow(clientInfo);
-@@ -805,4 +825,3 @@ void WebKitBrowserWindow::runJavaScriptPrompt(WKPageRef, WKStringRef message, WK
+@@ -542,6 +575,51 @@ void WebKitBrowserWindow::decidePolicyForNavigationResponse(WKPageRef, WKNavigat
+     }
+ }
+ 
++void WebKitBrowserWindow::didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef, const void* clientInfo)
++{
++    auto& thisWindow = toWebKitBrowserWindow(clientInfo);
++    thisWindow.m_processRecoveryPolicy.navigationFinished();
++}
++
++void WebKitBrowserWindow::webProcessDidTerminate(WKPageRef page, WKProcessTerminationReason reason, const void* clientInfo)
++{
++    auto& thisWindow = toWebKitBrowserWindow(clientInfo);
++    auto action = thisWindow.m_processRecoveryPolicy.processTerminated(
++        reason == kWKProcessTerminationReasonRequestedByClient,
++        WKXanhPageCanSafelyRestoreCurrentItem(page));
++    if (action == XanhProcessRecovery::Action::ignoreRequestedTermination)
++        return;
++    if (action == XanhProcessRecovery::Action::restorePage) {
++        WKPageReload(page);
++        return;
++    }
++
++    if (WKPageGetIsControlledByAutomation(page))
++        return;
++
++    const wchar_t* detail = action == XanhProcessRecovery::Action::refuseUnsafeRestore
++        ? L"The web process stopped during a navigation that cannot be replayed safely. Automatic reload was blocked to avoid resubmitting data. Use the address bar to continue."
++        : L"The web process stopped repeatedly. Automatic recovery was paused to avoid a crash loop. Use Reload to try again.";
++    if (action == XanhProcessRecovery::Action::refuseUnsafeRestore) {
++        MessageBox(thisWindow.m_hMainWnd, detail, L"Web Process Stopped", MB_OK | MB_ICONWARNING);
++        return;
++    }
++    switch (reason) {
++    case kWKProcessTerminationReasonExceededMemoryLimit:
++        detail = L"The web process repeatedly exceeded its memory limit. Automatic recovery was paused. Use Reload to try again.";
++        break;
++    case kWKProcessTerminationReasonExceededCPULimit:
++        detail = L"The web process repeatedly exceeded its CPU limit. Automatic recovery was paused. Use Reload to try again.";
++        break;
++    case kWKProcessTerminationReasonCrash:
++        detail = L"The web process crashed repeatedly. Automatic recovery was paused. Use Reload to try again.";
++        break;
++    default:
++        break;
++    }
++    MessageBox(thisWindow.m_hMainWnd, detail, L"Web Process Stopped", MB_OK | MB_ICONWARNING);
++}
++
+ void WebKitBrowserWindow::didFailProvisionalNavigation(WKPageRef, WKNavigationRef, WKErrorRef error, WKTypeRef, const void* clientInfo)
+ {
+     auto& thisWindow = toWebKitBrowserWindow(clientInfo);
+@@ -617,14 +695,14 @@ std::wstring toAuthText(WKProtectionSpaceRef protectionSpace)
+     return text.str();
+ }
+ 
+-void WebKitBrowserWindow::didReceiveAuthenticationChallenge(WKPageRef, WKAuthenticationChallengeRef challenge, const void* clientInfo)
++void WebKitBrowserWindow::didReceiveAuthenticationChallenge(WKPageRef page, WKAuthenticationChallengeRef challenge, const void* clientInfo)
+ {
+     auto& thisWindow = toWebKitBrowserWindow(clientInfo);
+     auto protectionSpace = WKAuthenticationChallengeGetProtectionSpace(challenge);
+     auto decisionListener = WKAuthenticationChallengeGetDecisionListener(challenge);
+     auto authenticationScheme = WKProtectionSpaceGetAuthenticationScheme(protectionSpace);
+ 
+-    if (thisWindow.m_isControlledByAutomation) {
++    if (WKPageGetIsControlledByAutomation(page)) {
+         WKRetainPtr<WKStringRef> username = createWKString("accept server trust");
+         WKRetainPtr<WKStringRef> password = createWKString("");
+         WKRetainPtr<WKCredentialRef> wkCredential = adoptWK(WKCredentialCreate(username.get(), password.get(), kWKCredentialPersistenceForSession));
+@@ -805,4 +883,3 @@ void WebKitBrowserWindow::runJavaScriptPrompt(WKPageRef, WKStringRef message, WK
      MessageBox(thisWindow.m_hMainWnd, text.c_str(), title.c_str(), MB_OK);
      WKPageRunJavaScriptPromptResultListenerCall(listener, defaultValue);
  }
 -
 diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.h b/Tools/MiniBrowser/win/WebKitBrowserWindow.h
-index b21f403c..7b6b999f 100644
+index b21f403c..9fed98f0 100644
 --- a/Tools/MiniBrowser/win/WebKitBrowserWindow.h
 +++ b/Tools/MiniBrowser/win/WebKitBrowserWindow.h
-@@ -75,6 +75,7 @@ private:
+@@ -26,6 +26,7 @@
+ 
+ #include "BrowserWindow.h"
+ #include "Common.h"
++#include "XanhProcessRecoveryPolicy.h"
+ #include <WebKit/WKRetainPtr.h>
+ #include <WebKit/WebKit2_C.h>
+ #include <unordered_map>
+@@ -75,12 +76,15 @@ private:
      static void didChangeIsLoading(const void*);
      static void didChangeEstimatedProgress(const void*);
      static void didChangeActiveURL(const void*);
 +    static void decidePolicyForNavigationAction(WKPageRef, WKNavigationActionRef, WKFramePolicyListenerRef, WKTypeRef, const void*);
      static void decidePolicyForNavigationResponse(WKPageRef, WKNavigationResponseRef, WKFramePolicyListenerRef, WKTypeRef, const void*);
++    static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef, const void*);
      static void didFailProvisionalNavigation(WKPageRef, WKNavigationRef, WKErrorRef, WKTypeRef, const void*);
      static void didReceiveAuthenticationChallenge(WKPageRef, WKAuthenticationChallengeRef, const void*);
+     static void navigationActionDidBecomeDownload(WKPageRef, WKNavigationActionRef, WKDownloadRef, const void*);
+     static void navigationResponseDidBecomeDownload(WKPageRef, WKNavigationResponseRef, WKDownloadRef, const void*);
+     static void contextMenuDidCreateDownload(WKPageRef, WKDownloadRef, const void*);
++    static void webProcessDidTerminate(WKPageRef, WKProcessTerminationReason, const void*);
+     static void setDownloadClient(WKDownloadRef, const void*);
+     static WKStringRef downloadDecideDestinationWithResponse(WKDownloadRef, WKURLResponseRef, WKStringRef, const void*);
+     static void downloadDidFinish(WKDownloadRef, const void*);
+@@ -100,5 +104,5 @@ private:
+     std::unordered_map<std::wstring, std::wstring> m_acceptedServerTrustCerts;
+     std::vector<WKRetainPtr<WKStringRef>> m_experimentalFeatureKeys;
+     std::vector<WKRetainPtr<WKStringRef>> m_internalDebugFeatureKeys;
+-    bool m_isControlledByAutomation { false };
++    XanhProcessRecovery::Policy m_processRecoveryPolicy;
+ };
 diff --git a/Tools/MiniBrowser/win/XanhNavigationPolicy.h b/Tools/MiniBrowser/win/XanhNavigationPolicy.h
 new file mode 100644
 index 00000000..e397d150
@@ -704,3 +937,81 @@ index 00000000..e397d150
 +}
 +
 +} // namespace XanhNavigationPolicy
+diff --git a/Tools/MiniBrowser/win/XanhProcessRecoveryPolicy.h b/Tools/MiniBrowser/win/XanhProcessRecoveryPolicy.h
+new file mode 100644
+index 00000000..74d73a50
+--- /dev/null
++++ b/Tools/MiniBrowser/win/XanhProcessRecoveryPolicy.h
+@@ -0,0 +1,72 @@
++/*
++ * Copyright (C) 2026 Xanh Browser contributors.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIMED.
++ */
++
++#pragma once
++
++namespace XanhProcessRecovery {
++
++enum class Action {
++    ignoreRequestedTermination,
++    restorePage,
++    refuseUnsafeRestore,
++    stopAutomaticRecovery,
++};
++
++enum class State {
++    available,
++    recoveryLoading,
++    exhausted,
++};
++
++class Policy {
++public:
++    Action processTerminated(bool requestedByClient, bool canSafelyRestore)
++    {
++        if (requestedByClient)
++            return Action::ignoreRequestedTermination;
++        if (!canSafelyRestore) {
++            m_state = State::exhausted;
++            return Action::refuseUnsafeRestore;
++        }
++        if (m_state != State::available) {
++            m_state = State::exhausted;
++            return Action::stopAutomaticRecovery;
++        }
++        m_state = State::recoveryLoading;
++        return Action::restorePage;
++    }
++
++    void navigationFinished()
++    {
++        if (m_state == State::recoveryLoading)
++            m_state = State::exhausted;
++    }
++
++    void userRequestedNavigation()
++    {
++        m_state = State::available;
++    }
++
++    State state() const
++    {
++        return m_state;
++    }
++
++private:
++    State m_state { State::available };
++};
++
++} // namespace XanhProcessRecovery

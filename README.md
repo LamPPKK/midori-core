@@ -164,7 +164,10 @@ baseline and lives in
 Its pinned source delta includes isolated-world C API primitives, while the
 MiniBrowser host additionally blocks non-web navigation before load and only
 delegates trusted, direct user-clicked, non-redirected `mailto:`/`tel:` links,
-with one external launch per consumed gesture. The
+with one external launch per consumed gesture. Unexpected WebProcess
+termination receives at most one bounded back-forward restore when the current
+committed item has no stored HTTP body; form submissions are never restored and
+a repeatedly crashing page cannot form an automatic recovery loop. The
 credential host, vault and signed package remain deliberately release-gated.
 
 ## Encrypted backup and sync

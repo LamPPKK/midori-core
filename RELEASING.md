@@ -209,6 +209,14 @@ allowed historical material, never a shipping dependency or application ID.
    address resolution, BrowserDatabase and Sync; all three must return the same
    decision for userinfo, IDN, malformed hosts/ports, whitespace, controls and
    backslashes (including percent-decoded forms) at the exact 8 KiB boundary.
+   Seed the legacy SQLite tables with rejected URLs and a `private = 1` history
+   row. History, bookmark and Places UI queries must omit them, while the raw
+   migration pagination still traverses/counts every non-private source row so
+   rejected-record diagnostics remain accurate. Seed session positions with an
+   unsafe selected row, safe HTTP(S), exact `about:blank`, noncanonical
+   `ABOUT:BLANK` and gaps; restore must return only the safe rows and map the
+   selection to their compacted zero-based order. Saving the same list must
+   never persist the rejected entries.
    Verify handler-registration failure also leaves external navigation blocked.
    Repeat in a private tab and confirm the handoff occurs only after the same
    explicit activation, with no browser history/session write.

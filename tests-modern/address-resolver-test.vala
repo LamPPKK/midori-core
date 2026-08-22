@@ -43,6 +43,8 @@ void test_safe_web_uri_policy () {
 void test_navigation_and_external_uri_policy () {
     assert (Xanh.AddressResolver.is_safe_navigation_uri ("about:blank"));
     assert (Xanh.AddressResolver.is_safe_navigation_uri ("HTTPS://example.com/"));
+    assert (!Xanh.AddressResolver.is_safe_navigation_uri ("ABOUT:BLANK"));
+    assert (!Xanh.AddressResolver.is_safe_navigation_uri ("about:blank?query"));
     assert (!Xanh.AddressResolver.is_safe_navigation_uri ("about:config"));
     assert (!Xanh.AddressResolver.is_safe_navigation_uri ("file:///etc/passwd"));
     assert (!Xanh.AddressResolver.is_safe_navigation_uri ("data:text/html,test"));

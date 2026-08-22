@@ -107,6 +107,8 @@ case "$edition" in
     grep -F 'decoded.contains ("\\")' desktop/page-data-policy.vala >/dev/null
     grep -F 'return PageDataPolicy.is_safe_web_uri (input);' \
       desktop/address-resolver.vala >/dev/null
+    grep -F 'return PageDataPolicy.is_safe_navigation_uri (input);' \
+      desktop/address-resolver.vala >/dev/null
     grep -F 'return PageDataPolicy.is_safe_web_uri (uri);' \
       desktop/database.vala >/dev/null
     grep -F 'return PageDataPolicy.is_safe_web_uri (uri);' \
@@ -234,6 +236,13 @@ case "$edition" in
       desktop/database.vala >/dev/null
     grep -F 'return PageDataPolicy.sanitized_title (value, "Untitled");' \
       desktop/sync-data.vala >/dev/null
+    grep -F 'if (!is_web_uri (uri)) continue;' desktop/database.vala >/dev/null
+    grep -F 'if (!PageDataPolicy.is_safe_navigation_uri (tab.uri)) continue;' \
+      desktop/database.vala >/dev/null
+    grep -F 'if (!PageDataPolicy.is_safe_navigation_uri (uri)) continue;' \
+      desktop/database.vala >/dev/null
+    grep -F 'SELECT id, uri, title, visited_at FROM history WHERE private = 0' \
+      desktop/database.vala >/dev/null
     if grep -F 'tab.state.title = tab.view.title' desktop/browser-window.vala >/dev/null; then
       echo 'Linux page titles must pass the shared bounded data policy' >&2
       exit 1

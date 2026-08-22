@@ -61,6 +61,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   history, bookmarks, session, Places mirrors and Sync. Control, zero-width and
   bidi-formatting characters no longer reach durable data or browser chrome;
   navigation, database and Sync now share the same bounded HTTP(S) validator.
+- Quarantined malformed legacy URLs and legacy private-history rows from Linux
+  history/bookmark/Places UI queries and session restoration. Unsafe session
+  entries are skipped on read and write, with the selected index compacted onto
+  the remaining bounded HTTP(S) or exact `about:blank` entries.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

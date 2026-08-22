@@ -31,6 +31,10 @@ namespace Xanh {
             }
         }
 
+        public static bool is_safe_navigation_uri (string? value) {
+            return value == "about:blank" || is_safe_web_uri (value);
+        }
+
         public static string sanitized_title (
                 string? value,
                 string? fallback = null) {

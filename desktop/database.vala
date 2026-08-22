@@ -195,6 +195,7 @@ namespace Xanh {
         }
 
         public bool has_bookmark (string uri) throws DatabaseError {
+            if (!is_web_uri (uri)) return false;
             Sqlite.Statement statement;
             prepare ("SELECT 1 FROM bookmarks WHERE uri = ? LIMIT 1", out statement);
             statement.bind_text (1, uri);
@@ -228,7 +229,8 @@ namespace Xanh {
 
         public List<StoredPage> list_history (int limit = 100) throws DatabaseError {
             return query_pages (
-                "SELECT id, uri, title, visited_at FROM history ORDER BY visited_at DESC LIMIT ?", limit);
+                "SELECT id, uri, title, visited_at FROM history WHERE private = 0 " +
+                "ORDER BY visited_at DESC LIMIT ?", limit);
         }
 
         public List<StoredPage> list_places_bookmarks (int limit = 100) throws DatabaseError {
@@ -244,6 +246,10 @@ namespace Xanh {
         }
 
         public void upsert_places_bookmark (StoredPage page) throws DatabaseError {
+            if (!is_web_uri (page.uri)) {
+                throw new DatabaseError.QUERY (
+                    "Only safe HTTP(S) pages can enter the Places bookmark mirror");
+            }
             Sqlite.Statement statement;
             prepare ("INSERT OR REPLACE INTO places_bookmarks_mirror" +
                 "(uri, title, created_at) VALUES(?, ?, ?)", out statement);
@@ -255,6 +261,10 @@ namespace Xanh {
         }
 
         public void append_places_history (StoredPage page) throws DatabaseError {
+            if (!is_web_uri (page.uri)) {
+                throw new DatabaseError.QUERY (
+                    "Only safe HTTP(S) pages can enter the Places history mirror");
+            }
             Sqlite.Statement statement;
             prepare ("INSERT INTO places_history_mirror(uri, title, visited_at) VALUES(?, ?, ?)",
                 out statement);
@@ -315,7 +325,9 @@ namespace Xanh {
             statement.bind_int (1, limit);
             int result;
             while ((result = statement.step ()) == Sqlite.ROW) {
-                var page = new StoredPage (statement.column_text (1), statement.column_text (2),
+                string uri = statement.column_text (1);
+                if (!is_web_uri (uri)) continue;
+                var page = new StoredPage (uri, statement.column_text (2),
                     statement.column_int64 (3));
                 page.id = statement.column_int64 (0);
                 pages.append (page);
@@ -329,8 +341,13 @@ namespace Xanh {
         public void save_session (List<StoredPage> tabs, int selected) throws DatabaseError {
             execute ("BEGIN IMMEDIATE; DELETE FROM session_tabs;");
             try {
+                int input_position = 0;
                 int position = 0;
+                bool selected_stored = false;
                 foreach (var tab in tabs) {
+                    bool is_selected = input_position == selected;
+                    input_position++;
+                    if (!PageDataPolicy.is_safe_navigation_uri (tab.uri)) continue;
                     Sqlite.Statement statement;
                     prepare ("INSERT INTO session_tabs(position, uri, title, selected) VALUES(?, ?, ?, ?)",
                         out statement);
@@ -338,9 +355,13 @@ namespace Xanh {
                     statement.bind_text (2, tab.uri);
                     statement.bind_text (3,
                         PageDataPolicy.sanitized_title (tab.title, tab.uri));
-                    statement.bind_int (4, position == selected ? 1 : 0);
+                    statement.bind_int (4, is_selected ? 1 : 0);
                     step_done (statement);
+                    if (is_selected) selected_stored = true;
                     position++;
+                }
+                if (position > 0 && !selected_stored) {
+                    execute ("UPDATE session_tabs SET selected = 1 WHERE position = 0;");
                 }
                 execute ("COMMIT;");
             } catch (DatabaseError error) {
@@ -359,12 +380,18 @@ namespace Xanh {
             Sqlite.Statement statement;
             prepare ("SELECT position, uri, title, selected FROM session_tabs ORDER BY position", out statement);
             int result;
+            int safe_position = 0;
+            bool found_selected = false;
             while ((result = statement.step ()) == Sqlite.ROW) {
-                var page = new StoredPage (statement.column_text (1), statement.column_text (2));
+                string uri = statement.column_text (1);
+                if (!PageDataPolicy.is_safe_navigation_uri (uri)) continue;
+                var page = new StoredPage (uri, statement.column_text (2));
                 tabs.append (page);
-                if (statement.column_int (3) == 1) {
-                    selected = statement.column_int (0);
+                if (!found_selected && statement.column_int (3) == 1) {
+                    selected = safe_position;
+                    found_selected = true;
                 }
+                safe_position++;
             }
             if (result != Sqlite.DONE) {
                 throw new DatabaseError.QUERY ("%s", handle.errmsg ());
@@ -560,6 +587,7 @@ namespace Xanh {
             try {
                 execute ("DELETE FROM places_bookmarks_mirror; DELETE FROM places_history_mirror;");
                 foreach (var page in bookmarks) {
+                    if (!is_web_uri (page.uri)) continue;
                     Sqlite.Statement statement;
                     prepare ("INSERT INTO places_bookmarks_mirror(uri, title, created_at) VALUES(?, ?, ?)",
                         out statement);
@@ -570,6 +598,7 @@ namespace Xanh {
                     step_done (statement);
                 }
                 foreach (var page in history) {
+                    if (!is_web_uri (page.uri)) continue;
                     Sqlite.Statement statement;
                     prepare ("INSERT INTO places_history_mirror(uri, title, visited_at) VALUES(?, ?, ?)",
                         out statement);

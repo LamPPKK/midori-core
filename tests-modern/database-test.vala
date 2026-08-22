@@ -110,6 +110,96 @@ void test_page_titles_are_sanitized_at_persistence () {
     }
 }
 
+void test_unsafe_legacy_navigation_data_is_filtered () {
+    try {
+        var dir = DirUtils.make_tmp ("xanh-browser-test-XXXXXX");
+        var database = new Xanh.BrowserDatabase (
+            Path.build_filename (dir, "browser.db"));
+        database.execute ("""
+            INSERT INTO history(uri, title, visited_at, private) VALUES
+                ('https://safe-history.example/', 'Safe', 10, 0),
+                ('https://history.example/%5cunsafe', 'Unsafe', 11, 0),
+                ('https://legacy-private.example/', 'Private', 12, 1);
+            INSERT INTO bookmarks(uri, title, created_at) VALUES
+                ('https://safe-bookmark.example/', 'Safe', 10),
+                ('https://user@bookmark.example/', 'Unsafe', 11);
+            INSERT INTO places_history_mirror(uri, title, visited_at) VALUES
+                ('https://safe-places-history.example/', 'Safe', 10),
+                ('https://foo_bar.example/', 'Unsafe', 11);
+            INSERT INTO places_bookmarks_mirror(uri, title, created_at) VALUES
+                ('https://safe-places-bookmark.example/', 'Safe', 10),
+                ('https://places.example/%0dunsafe', 'Unsafe', 11);
+            INSERT INTO session_tabs(position, uri, title, selected) VALUES
+                (0, 'javascript:alert(1)', 'Unsafe', 1),
+                (1, 'https://safe-session.example/', 'Safe', 0),
+                (2, 'about:blank', 'Blank', 0),
+                (3, 'ABOUT:BLANK', 'Noncanonical', 0);
+        """);
+
+        assert (database.list_history (10).length () == 1);
+        assert (database.list_bookmarks (10).length () == 1);
+        assert (database.list_places_history (10).length () == 1);
+        assert (database.list_places_bookmarks (10).length () == 1);
+        assert (database.list_history_page (10, 0).length () == 2);
+        assert (database.list_bookmarks_page (10, 0).length () == 2);
+        assert (!database.has_bookmark ("https://user@bookmark.example/"));
+
+        int selected;
+        var restored = database.load_session (out selected);
+        assert (restored.length () == 2);
+        assert (selected == 0);
+        assert (restored.data.uri == "https://safe-session.example/");
+        assert (restored.next.data.uri == "about:blank");
+
+        var tabs = new List<Xanh.StoredPage> ();
+        tabs.append (new Xanh.StoredPage ("data:text/html,unsafe", "Unsafe"));
+        tabs.append (new Xanh.StoredPage ("https://saved.example/", "Saved"));
+        tabs.append (new Xanh.StoredPage ("about:blank", "Blank"));
+        database.save_session (tabs, 0);
+        restored = database.load_session (out selected);
+        assert (restored.length () == 2);
+        assert (selected == 0);
+        assert (restored.data.uri == "https://saved.example/");
+        database.save_session (tabs, 2);
+        restored = database.load_session (out selected);
+        assert (restored.length () == 2);
+        assert (selected == 1);
+
+        bool bookmark_rejected = false;
+        bool history_rejected = false;
+        try {
+            database.upsert_places_bookmark (
+                new Xanh.StoredPage ("https://user@unsafe.example/", "Unsafe"));
+        } catch (Xanh.DatabaseError error) {
+            bookmark_rejected = true;
+        }
+        try {
+            database.append_places_history (
+                new Xanh.StoredPage ("https://unsafe.example/%5cpath", "Unsafe"));
+        } catch (Xanh.DatabaseError error) {
+            history_rejected = true;
+        }
+        assert (bookmark_rejected);
+        assert (history_rejected);
+
+        var mirror_bookmarks = new List<Xanh.StoredPage> ();
+        mirror_bookmarks.append (new Xanh.StoredPage (
+            "https://new-safe-bookmark.example/", "Safe"));
+        mirror_bookmarks.append (new Xanh.StoredPage (
+            "https://user@new-unsafe-bookmark.example/", "Unsafe"));
+        var mirror_history = new List<Xanh.StoredPage> ();
+        mirror_history.append (new Xanh.StoredPage (
+            "https://new-safe-history.example/", "Safe"));
+        mirror_history.append (new Xanh.StoredPage (
+            "https://new-unsafe-history.example/%5cpath", "Unsafe"));
+        database.replace_places_mirror (mirror_bookmarks, mirror_history);
+        assert (database.list_places_bookmarks (10).length () == 1);
+        assert (database.list_places_history (10).length () == 1);
+    } catch (Error error) {
+        Test.fail_printf ("Database error: %s", error.message);
+    }
+}
+
 void test_sync_migration_backup_and_mirror () {
     try {
         var dir = DirUtils.make_tmp ("xanh-browser-test-XXXXXX");
@@ -197,6 +287,8 @@ int main (string[] args) {
     Test.add_func ("/database/import-history-idempotent", test_import_history_is_idempotent);
     Test.add_func ("/database/page-title-sanitization",
         test_page_titles_are_sanitized_at_persistence);
+    Test.add_func ("/database/unsafe-legacy-navigation-filter",
+        test_unsafe_legacy_navigation_data_is_filtered);
     Test.add_func ("/database/sync-migration-backup-mirror", test_sync_migration_backup_and_mirror);
     return Test.run ();
 }

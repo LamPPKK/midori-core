@@ -11,8 +11,7 @@ namespace Xanh {
         }
 
         public static bool is_safe_navigation_uri (string? input) {
-            return (input != null && input.down () == "about:blank") ||
-                is_safe_web_uri (input);
+            return PageDataPolicy.is_safe_navigation_uri (input);
         }
 
         public static bool is_safe_secure_web_uri (string? input) {

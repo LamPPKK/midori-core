@@ -43,6 +43,11 @@ void test_web_uri_policy () {
     assert (!Xanh.PageDataPolicy.is_safe_web_uri (
         "https://example.com/" + string.nfill (
             Xanh.PageDataPolicy.MAX_WEB_URI_BYTES, 'a')));
+    assert (Xanh.PageDataPolicy.is_safe_navigation_uri ("about:blank"));
+    assert (Xanh.PageDataPolicy.is_safe_navigation_uri ("https://example.com/"));
+    assert (!Xanh.PageDataPolicy.is_safe_navigation_uri ("ABOUT:BLANK"));
+    assert (!Xanh.PageDataPolicy.is_safe_navigation_uri ("about:blank#fragment"));
+    assert (!Xanh.PageDataPolicy.is_safe_navigation_uri ("data:text/html,test"));
 }
 
 int main (string[] args) {

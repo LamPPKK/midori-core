@@ -163,7 +163,12 @@ back to the bounded page URL or `Untitled`. The same core policy now validates
 HTTP(S) URLs for navigation, legacy storage and Sync, so userinfo, malformed
 hosts/ports, whitespace and raw or percent-decoded controls cannot be accepted
 by one data path after another path rejects them; backslashes are rejected to
-avoid GLib/WHATWG parser differentials.
+avoid GLib/WHATWG parser differentials. UI-facing history, bookmark and Places
+queries quarantine unsafe legacy URL rows, including legacy private-history
+rows, while the bounded migration scanner still counts every source row and
+audits each rejection. Session persistence accepts only those HTTP(S) URLs or
+exact `about:blank`, skips unsafe legacy rows and remaps the selected tab to the
+remaining safe list instead of reopening rejected content as a search.
 
 ### Build and test
 

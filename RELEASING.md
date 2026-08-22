@@ -442,9 +442,11 @@ recovery must stop without a loop. Confirm explicit Reload restores one attempt
 subject to the same committed-item check, requested-by-client termination is
 not undone, and live automation attach/detach never blocks on a modal dialog.
 
-This preview is not production-ready until its upstream MiniBrowser-based UI
-has the same encrypted backup import/export surface as the WinUI and Android
-editions. Windows ARM64 support also remains unavailable in upstream WinCairo.
+Run the WinCairo CNG portable-backup suite against both fixed golden vectors,
+then export/import through OneDrive, Google Drive for desktop and a local Git
+working tree. Confirm tampering, wrong passwords, oversized input, unsafe URLs
+and partial writes all fail without replacing the destination or opening any
+window. Windows ARM64 support remains unavailable in upstream WinCairo.
 
 ## 6. Produce signed source artifacts
 
@@ -478,7 +480,8 @@ review, CodeQL and the Play pre-launch report before promotion.
 - All signed products install cleanly with the intended name, ID and version.
 - Core browsing, privacy and recovery checklists pass on every supported target.
 - `.xanhbackup` golden-vector and provider round-trips pass between Android
-  Lite and Windows; no private state appears in the decoded payload.
+  Lite, Windows WebView2 and WinCairo; no private state appears in the decoded
+  payload.
 - CI is green for the exact release commit and tag.
 - No release surface advertises Android legacy-data import, Manifest V3 or
   complete browser-extension compatibility.

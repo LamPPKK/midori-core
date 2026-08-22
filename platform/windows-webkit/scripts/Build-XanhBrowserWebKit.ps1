@@ -18,8 +18,12 @@ $releaseTag = (Get-Content (Join-Path $PSScriptRoot "../WEBKIT_RELEASE_TAG") -Ra
 $minimumVersion = (Get-Content (Join-Path $repositoryRoot "WEBKITGTK_MIN_VERSION") -Raw).Trim()
 $patch = (Resolve-Path (Join-Path $PSScriptRoot "../patches/xanh-browser-webkit.patch")).Path
 $icon = (Resolve-Path (Join-Path $repositoryRoot "platform/windows/src/XanhBrowser.Windows/Assets/XanhBrowser.ico")).Path
+$portableBackupHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhPortableBackup.h")).Path
+$portableBackupImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhPortableBackup.cpp")).Path
 $mainIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/MiniBrowser.ico"
 $smallIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/small.ico"
+$portableBackupHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhPortableBackup.h"
+$portableBackupImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhPortableBackup.cpp"
 
 if ($releaseTag -ne "webkitgtk-$minimumVersion") {
     throw "WinCairo release tag $releaseTag does not match the shared WebKit stable baseline $minimumVersion."
@@ -59,22 +63,45 @@ if ($LASTEXITCODE -ne 0) {
 if ($LASTEXITCODE -ne 0) {
     throw "The WebKit source has staged local changes. Use a clean checkout."
 }
+$initialUntracked = @(& git -C $sourceRoot ls-files --others --exclude-standard)
+$initialUntrackedExitCode = $LASTEXITCODE
+if ($initialUntrackedExitCode -ne 0 -or $initialUntracked.Count -ne 0) {
+    throw "The WebKit source has untracked non-ignored files. Use a clean checkout."
+}
 
 & git -C $sourceRoot apply --check --ignore-space-change $patch
 if ($LASTEXITCODE -ne 0) {
     throw "The Xanh Browser WebKit patch does not apply to the pinned revision."
+}
+if ((Test-Path $portableBackupHeaderDestination) -or (Test-Path $portableBackupImplementationDestination)) {
+    throw "The pinned WebKit source unexpectedly contains Xanh portable-backup sources. Use a clean exact checkout."
 }
 
 $mainIconBackup = [IO.Path]::GetTempFileName()
 $smallIconBackup = [IO.Path]::GetTempFileName()
 Copy-Item $mainIcon $mainIconBackup -Force
 Copy-Item $smallIcon $smallIconBackup -Force
+$copiedPortableBackupFiles = @()
+$buildFailure = $null
+$cleanupFailures = [System.Collections.Generic.List[string]]::new()
+$output = $null
+$outputCreatedByThisRun = $false
+$patchApplied = $false
+$portableBackupHeaderHash = $null
+$portableBackupImplementationHash = $null
 
 try {
     & git -C $sourceRoot apply --ignore-space-change $patch
     if ($LASTEXITCODE -ne 0) {
         throw "Could not apply the Xanh Browser WebKit patch."
     }
+    $patchApplied = $true
+    $copiedPortableBackupFiles += $portableBackupHeaderDestination
+    Copy-Item $portableBackupHeader $portableBackupHeaderDestination
+    $copiedPortableBackupFiles += $portableBackupImplementationDestination
+    Copy-Item $portableBackupImplementation $portableBackupImplementationDestination
+    $portableBackupHeaderHash = (Get-FileHash $portableBackupHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $portableBackupImplementationHash = (Get-FileHash $portableBackupImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     Copy-Item $icon $mainIcon -Force
     Copy-Item $icon $smallIcon -Force
 
@@ -100,6 +127,12 @@ try {
     if (-not (Test-Path $browserExecutable)) {
         throw "Missing branded browser executable: $browserExecutable"
     }
+    if ((Get-FileHash $portableBackupHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupHeaderHash
+        -or (Get-FileHash $portableBackupImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupImplementationHash
+        -or (Get-FileHash $portableBackupHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupHeaderHash
+        -or (Get-FileHash $portableBackupImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupImplementationHash) {
+        throw "Portable-backup sources changed during the WebKit build. Discard this build and retry from a stable checkout."
+    }
 
     $output = [IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputDirectory))
     $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
@@ -110,6 +143,7 @@ try {
         throw "Output directory already exists; move it aside before building: $output"
     }
     New-Item -ItemType Directory -Path $output | Out-Null
+    $outputCreatedByThisRun = $true
     Copy-Item (Join-Path $binaryDirectory "*") $output -Recurse -Force
     $unusedInjectedBundle = Join-Path $output "MiniBrowserInjectedBundle.dll"
     if (Test-Path $unusedInjectedBundle) {
@@ -120,6 +154,8 @@ try {
         "Engine: WebKit WinCairo"
         "Upstream release: $releaseTag"
         "WebKit revision: $revision"
+        "Portable backup header SHA-256: $portableBackupHeaderHash"
+        "Portable backup implementation SHA-256: $portableBackupImplementationHash"
         "Architecture: x64"
         "Built: $([DateTimeOffset]::UtcNow.ToString('O'))"
     ) | Set-Content (Join-Path $output "ENGINE.txt") -Encoding UTF8
@@ -128,12 +164,74 @@ try {
     "$executableHash  $executableName" |
         Set-Content (Join-Path $output "$executableName.sha256") -Encoding ascii
 }
+catch {
+    $buildFailure = $_
+}
 finally {
-    & git -C $sourceRoot apply --reverse --check --ignore-space-change $patch 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        & git -C $sourceRoot apply --reverse --ignore-space-change $patch
+    try {
+        foreach ($copiedFile in $copiedPortableBackupFiles) {
+            if (Test-Path $copiedFile) {
+                try {
+                    Remove-Item $copiedFile -Force
+                }
+                catch {
+                    $cleanupFailures.Add("Could not remove temporary portable-backup source $copiedFile: $($_.Exception.Message)")
+                }
+            }
+        }
     }
-    Copy-Item $mainIconBackup $mainIcon -Force
-    Copy-Item $smallIconBackup $smallIcon -Force
-    Remove-Item $mainIconBackup, $smallIconBackup -Force
+    finally {
+        if ($patchApplied) {
+            & git -C $sourceRoot apply --reverse --check --ignore-space-change $patch 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                & git -C $sourceRoot apply --reverse --ignore-space-change $patch
+                if ($LASTEXITCODE -ne 0) {
+                    $cleanupFailures.Add("Could not remove the reviewed Xanh WebKit patch.")
+                }
+            }
+            else {
+                $cleanupFailures.Add("The reviewed Xanh WebKit patch could not be removed cleanly.")
+            }
+        }
+        try {
+            Copy-Item $mainIconBackup $mainIcon -Force
+            Copy-Item $smallIconBackup $smallIcon -Force
+            Remove-Item $mainIconBackup, $smallIconBackup -Force
+        }
+        catch {
+            $cleanupFailures.Add("Could not restore the upstream icons or remove their temporary copies: $($_.Exception.Message)")
+        }
+
+        & git -C $sourceRoot diff --quiet
+        if ($LASTEXITCODE -ne 0) {
+            $cleanupFailures.Add("The WebKit checkout has tracked changes after cleanup.")
+        }
+        & git -C $sourceRoot diff --cached --quiet
+        if ($LASTEXITCODE -ne 0) {
+            $cleanupFailures.Add("The WebKit checkout has staged changes after cleanup.")
+        }
+        $remainingUntracked = @(& git -C $sourceRoot ls-files --others --exclude-standard)
+        $remainingUntrackedExitCode = $LASTEXITCODE
+        if ($remainingUntrackedExitCode -ne 0 -or $remainingUntracked.Count -ne 0) {
+            $cleanupFailures.Add("The WebKit checkout has untracked non-ignored files after cleanup.")
+        }
+    }
+}
+
+if ($buildFailure -or $cleanupFailures.Count) {
+    if ($outputCreatedByThisRun -and $output -and (Test-Path $output)) {
+        try {
+            Remove-Item $output -Recurse -Force
+        }
+        catch {
+            $cleanupFailures.Add("Could not remove the invalid output directory $output: $($_.Exception.Message)")
+        }
+    }
+    if ($buildFailure -and $cleanupFailures.Count) {
+        throw "$($buildFailure.Exception.Message) Cleanup also failed: $($cleanupFailures -join '; ')"
+    }
+    if ($buildFailure) {
+        throw $buildFailure
+    }
+    throw "WebKit build cleanup failed: $($cleanupFailures -join '; ')"
 }

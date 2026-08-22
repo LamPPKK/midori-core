@@ -186,11 +186,13 @@ credential host, vault and signed package remain deliberately release-gated.
 
 ## Encrypted backup and sync
 
-The full Android edition, Android Lite, Android Lite WebKit and Windows WebView2
-can export and import the same portable `.xanhbackup` file. The file is
-encrypted with a user password using PBKDF2-HMAC-SHA256 and AES-256-GCM. It
-contains only regular tab URLs, the selected tab and the desktop-site setting;
-cookies, passwords, cache and private tabs are excluded.
+The full Android edition, Android Lite, Android Lite WebKit, Windows WebView2
+and the WinCairo preview can export and import the same portable `.xanhbackup`
+file. The file is encrypted with a user password using PBKDF2-HMAC-SHA256 and
+AES-256-GCM. It contains only regular tab/window URLs, the selected item and
+the desktop-site setting; cookies, passwords, cache and private state are
+excluded. Full URL query/fragment data remains part of the encrypted snapshot
+and can itself be sensitive.
 
 The application uses the operating-system file picker. On Android this can
 write directly to Google Drive or another installed Documents provider. On

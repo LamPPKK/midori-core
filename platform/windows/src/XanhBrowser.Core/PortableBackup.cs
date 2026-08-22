@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -27,6 +28,7 @@ public static class PortableBackup
     private const int KeyBytes = 32;
     private const int MaxUrls = 50;
     private const int MaxStringBytes = 4_096;
+    private static readonly IdnMapping StrictIdn = new() { UseStd3AsciiRules = true };
 
     public static byte[] Encode(PortableBackupPayload payload, string passphrase)
     {
@@ -147,10 +149,17 @@ public static class PortableBackup
             || string.IsNullOrWhiteSpace(payload.SourceEdition)
             || payload.Urls.Count is < 1 or > MaxUrls
             || payload.SelectedIndex < 0
-            || payload.SelectedIndex >= payload.Urls.Count
-            || payload.Urls.Any(url => !IsSupportedWebUrl(url)))
+            || payload.SelectedIndex >= payload.Urls.Count)
         {
             throw new InvalidDataException("Invalid backup payload.");
+        }
+        var canonicalUrls = new string[payload.Urls.Count];
+        for (var index = 0; index < payload.Urls.Count; index++)
+        {
+            if (!TryCanonicalizeSupportedWebUrl(payload.Urls[index], out canonicalUrls[index]))
+            {
+                throw new InvalidDataException("Backup contains an unsafe URL.");
+            }
         }
 
         using var output = new MemoryStream();
@@ -160,7 +169,7 @@ public static class PortableBackup
         WriteInt32(output, payload.SelectedIndex);
         output.WriteByte(payload.DesktopSite ? (byte)1 : (byte)0);
         WriteInt32(output, payload.Urls.Count);
-        foreach (var url in payload.Urls)
+        foreach (var url in canonicalUrls)
         {
             WriteString(output, url);
         }
@@ -191,11 +200,11 @@ public static class PortableBackup
         for (var index = 0; index < count; index++)
         {
             var url = input.ReadString();
-            if (!IsSupportedWebUrl(url))
+            if (!TryCanonicalizeSupportedWebUrl(url, out var canonicalUrl))
             {
                 throw new InvalidDataException("Backup contains an unsafe URL.");
             }
-            urls.Add(url);
+            urls.Add(canonicalUrl);
         }
         if (selectedIndex < 0 || selectedIndex >= urls.Count || input.Remaining != 0)
         {
@@ -238,11 +247,44 @@ public static class PortableBackup
     }
 
     public static bool IsSupportedWebUrl(string value) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri)
-        && (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-            || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        && !string.IsNullOrWhiteSpace(uri.IdnHost)
-        && string.IsNullOrEmpty(uri.UserInfo);
+        TryCanonicalizeSupportedWebUrl(value, out _);
+
+    private static bool TryCanonicalizeSupportedWebUrl(string value, out string canonical)
+    {
+        canonical = string.Empty;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || (!uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                && !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            || string.IsNullOrWhiteSpace(uri.Host)
+            || !string.IsNullOrEmpty(uri.UserInfo))
+        {
+            return false;
+        }
+
+        try
+        {
+            var canonicalHost = uri.HostNameType switch
+            {
+                UriHostNameType.Dns => StrictIdn.GetAscii(uri.DnsSafeHost),
+                UriHostNameType.IPv4 or UriHostNameType.IPv6 => uri.Host,
+                _ => string.Empty,
+            };
+            if (string.IsNullOrEmpty(canonicalHost))
+            {
+                return false;
+            }
+            canonical = new UriBuilder(uri) { Host = canonicalHost }.Uri.AbsoluteUri;
+            return Encoding.UTF8.GetByteCount(canonical) is > 0 and <= MaxStringBytes;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (UriFormatException)
+        {
+            return false;
+        }
+    }
 
     private ref struct BackupReader
     {

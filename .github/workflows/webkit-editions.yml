@@ -108,7 +108,9 @@ jobs:
             Source/WebKit/UIProcess/WebPageProxy.cpp
             Tools/MiniBrowser/win/CMakeLists.txt
             Tools/MiniBrowser/win/MainWindow.cpp
+            Tools/MiniBrowser/win/MainWindow.h
             Tools/MiniBrowser/win/MiniBrowserLib.rc
+            Tools/MiniBrowser/win/MiniBrowserLibResource.h
             Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
             Tools/MiniBrowser/win/WebKitBrowserWindow.h
           )
@@ -124,6 +126,10 @@ jobs:
           git -C _webkit apply --check --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-browser-webkit.patch"
           git -C _webkit apply --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-browser-webkit.patch"
           grep -F 'OUTPUT_NAME "XanhBrowser.WebKit"' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
+          grep -F 'XanhPortableBackup.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
+          grep -F 'IDM_EXPORT_PORTABLE_BACKUP' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'IDM_IMPORT_PORTABLE_BACKUP' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'Export encrypted backup...' _webkit/Tools/MiniBrowser/win/MiniBrowserLib.rc
           grep -F 'https://duckduckgo.com/' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
           grep -F 'WKPreferencesSetDeveloperExtrasEnabled(preferences.get(), false)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
           grep -F 'WK_EXPORT WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld' _webkit/Source/WebKit/UIProcess/API/C/WKUserScriptRef.h
@@ -169,6 +175,21 @@ jobs:
             platform/windows-webkit/tests/XanhFrameStateRestorePolicyTest.cpp \
             -o /tmp/xanh-frame-state-restore-policy-test
           /tmp/xanh-frame-state-restore-policy-test
+
+  windows-wincairo-portable-backup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure portable-backup golden-vector tests
+        run: >-
+          cmake
+          -S platform/windows-webkit/tests/portable-backup
+          -B _build/wincairo-portable-backup
+          -A x64
+      - name: Build portable-backup golden-vector tests
+        run: cmake --build _build/wincairo-portable-backup --config Release --parallel
+      - name: Run portable-backup golden-vector tests
+        run: ctest --test-dir _build/wincairo-portable-backup -C Release --output-on-failure
 
   dependency-review:
     if: github.event_name == 'pull_request'

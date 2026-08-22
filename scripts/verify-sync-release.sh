@@ -309,6 +309,54 @@ case "$edition" in
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     test -f platform/windows-webkit/tests/XanhProcessRecoveryPolicyTest.cpp
     test -f platform/windows-webkit/tests/XanhFrameStateRestorePolicyTest.cpp
+    test -f platform/windows-webkit/src/XanhPortableBackup.h
+    test -f platform/windows-webkit/src/XanhPortableBackup.cpp
+    test -f platform/windows-webkit/tests/portable-backup/CMakeLists.txt
+    test -f platform/windows-webkit/tests/portable-backup/XanhPortableBackupTest.cpp
+    grep -F '+    XanhPortableBackup.cpp' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    normaliz' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        case IDM_EXPORT_PORTABLE_BACKUP:' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        case IDM_IMPORT_PORTABLE_BACKUP:' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        MENUITEM "Export encrypted backup...", IDM_EXPORT_PORTABLE_BACKUP' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F "Copy-Item \$portableBackupHeader \$portableBackupHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$portableBackupImplementation \$portableBackupImplementationDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Remove-Item \$copiedFile -Force" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Portable backup implementation SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$portableBackupImplementationDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Portable-backup sources changed during the WebKit build.' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'ls-files --others --exclude-standard' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'The WebKit checkout has tracked changes after cleanup.' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Remove-Item \$output -Recurse -Force" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "\$outputCreatedByThisRun = \$true" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "if (\$outputCreatedByThisRun -and \$output -and (Test-Path \$output))" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'IdnToAscii(IDN_USE_STD3_ASCII_RULES' \
+      platform/windows-webkit/src/XanhPortableBackup.cpp >/dev/null
+    grep -F 'xn--bcher-kva.example' \
+      platform/windows-webkit/tests/portable-backup/XanhPortableBackupTest.cpp >/dev/null
+    grep -F 'UseStd3AsciiRules = true' \
+      platform/windows/src/XanhBrowser.Core/PortableBackup.cs >/dev/null
+    grep -F 'https://foo_bar.example/' \
+      platform/windows/tests/XanhBrowser.Core.Tests/PortableBackupTests.cs >/dev/null
+    grep -F 'windows-wincairo-portable-backup:' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F '| Windows WebKit/WinCairo preview | Yes' \
+      docs/PORTABLE_BACKUP.md >/dev/null
     grep -F 'WebKit WinCairo source preview' THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_release_tag" THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_revision" THIRD_PARTY_NOTICES.md >/dev/null

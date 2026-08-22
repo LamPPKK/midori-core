@@ -46,6 +46,18 @@ directory, writes engine provenance and a standard SHA-256 file, then restores
 the checkout. It refuses an output directory that already exists so stale
 runtime files cannot leak into a new artifact.
 
+The reviewed source delta also exposes **Export encrypted backup** and **Import
+encrypted backup** in the File menu. The build script temporarily copies the
+standalone CNG implementation into the pinned MiniBrowser tree, records both
+source hashes in `ENGINE.txt`, and removes the files while restoring the
+checkout. Export places the selected window first and includes up to 49 other
+regular HTTP(S) windows. Import authenticates and validates the complete file
+before opening any new regular windows; cookie/credential/form stores, cache
+and private state are never read into the format. Full URLs are included, so
+query or fragment data may still be sensitive and is protected by the backup
+password. Unicode domain names are canonicalized with Windows IDN support and
+then checked by the same ASCII pre-load policy used for navigation.
+
 `scripts/verify_webkit_latest.py` independently enumerates official WebKit Git
 tags, ignores odd-minor development series, selects the greatest stable semantic
 version and requires this edition's tag and peeled commit to match it. CI runs
@@ -125,9 +137,8 @@ the isolated-world C API with forged page-world messages, duplicate handler
 names, invalid world names, navigation/process swaps and repeated teardown;
 page JavaScript must never reach the isolated handler.
 
-The portable `.xanhbackup` session format is currently exposed by the WinUI
+The portable `.xanhbackup` session format is exposed by this preview, the WinUI
 edition and both Android Lite editions. It deliberately excludes cookies,
-passwords, cache and private tabs. See
-[`../../docs/PORTABLE_BACKUP.md`](../../docs/PORTABLE_BACKUP.md). Wiring it into
-the upstream WinCairo UI is a separate release gate because that UI is rebuilt
-with each pinned WebKit source baseline.
+passwords, cache and private tabs. Before release, run the CNG golden-vector
+suite and provider round-trips against Android and WinUI artifacts. See
+[`../../docs/PORTABLE_BACKUP.md`](../../docs/PORTABLE_BACKUP.md).

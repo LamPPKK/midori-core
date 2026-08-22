@@ -96,7 +96,7 @@ public sealed class PortableBackupTests
     [TestMethod]
     public void RejectsUnsafeUrls()
     {
-        foreach (var unsafeUrl in new[] { "file:///C:/private.txt", "https://user:secret@example.com/" })
+        foreach (var unsafeUrl in new[] { "file:///C:/private.txt", "https://user:secret@example.com/", "https://foo_bar.example/" })
         {
             var unsafePayload = Payload with
             {
@@ -106,5 +106,22 @@ public sealed class PortableBackupTests
             Assert.ThrowsException<InvalidDataException>(() =>
                 PortableBackup.Encode(unsafePayload, "correct password"));
         }
+    }
+
+    [TestMethod]
+    public void CanonicalizesIdnHostsForCrossEngineBackups()
+    {
+        var idnPayload = Payload with
+        {
+            Urls = ["https://bücher.example/catalogue"],
+            SelectedIndex = 0,
+        };
+
+        var encoded = PortableBackup.Encode(idnPayload, "correct password");
+        var decoded = PortableBackup.Decode(encoded, "correct password");
+
+        CollectionAssert.AreEqual(
+            new[] { "https://xn--bcher-kva.example/catalogue" },
+            decoded.Urls.ToArray());
     }
 }

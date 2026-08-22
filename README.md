@@ -161,6 +161,8 @@ publish commands. A real WebKit/WinCairo x64 preview is built from a pinned
 upstream stable release commit matching the shared WebKit 2.52.6 security
 baseline and lives in
 [`platform/windows-webkit/`](platform/windows-webkit/README.md).
+Its pinned source delta includes isolated-world C API primitives, while the
+credential host, vault and signed package remain deliberately release-gated.
 
 ## Encrypted backup and sync
 

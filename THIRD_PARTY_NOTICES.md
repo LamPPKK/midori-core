@@ -41,3 +41,20 @@ Xanh's source changes are recorded in
 `app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch`. Any distributed fork
 artifact must provide the corresponding complete source, license texts,
 notices, relinking materials where required and an SBOM for the exact binary.
+
+## WebKit WinCairo source preview
+
+The Windows WebKit preview builds the upstream WebKit WinCairo port from the
+peeled `webkitgtk-2.52.6` tag at revision
+`4fb33923db2f945803df49546f75867980365c08`. WebKit contains LGPL-2.1-or-later
+and permissively licensed components; individual upstream file notices remain
+authoritative.
+
+- WebKit source: <https://github.com/WebKit/WebKit>
+- Stable release: <https://webkitgtk.org/2026/08/19/webkitgtk2.52.6-released.html>
+- Xanh source delta: `platform/windows-webkit/patches/xanh-browser-webkit.patch`
+
+Any distributed WinCairo artifact must retain the applicable license texts and
+notices and provide the corresponding complete source, Xanh patch, relinking
+materials where required and an SBOM for the exact shipped runtime and native
+dependency closure.

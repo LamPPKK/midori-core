@@ -134,13 +134,30 @@ case "$edition" in
     test -f app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/WebKitNavigationPolicy.kt
     test -f platform/windows-webkit/WEBKIT_RELEASE_TAG
     test -f platform/windows-webkit/WEBKIT_REVISION
-    test "$(cat platform/windows-webkit/WEBKIT_RELEASE_TAG)" = \
+    wincairo_release_tag="$(cat platform/windows-webkit/WEBKIT_RELEASE_TAG)"
+    test "$wincairo_release_tag" = \
       "webkitgtk-$(cat WEBKITGTK_MIN_VERSION)"
     wincairo_revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"
     if [[ ! "$wincairo_revision" =~ ^[0-9a-f]{40}$ ]]; then
       echo 'WinCairo WEBKIT_REVISION must contain exactly one lowercase 40-character Git object ID' >&2
       exit 1
     fi
+    test -f platform/windows-webkit/patches/xanh-browser-webkit.patch
+    grep -F '+WK_EXPORT WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+WK_EXPORT bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+WK_EXPORT void WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        Ref message = API::ScriptMessage::create(result.toAPI(), page, API::FrameInfo::create(WTF::move(frameInfo)), m_name, contentWorld);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F 'worldName.length() > 128' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F 'WebKit WinCairo source preview' THIRD_PARTY_NOTICES.md >/dev/null
+    grep -F "$wincairo_release_tag" THIRD_PARTY_NOTICES.md >/dev/null
+    grep -F "$wincairo_revision" THIRD_PARTY_NOTICES.md >/dev/null
+    grep -F 'platform/windows-webkit/patches/xanh-browser-webkit.patch' \
+      THIRD_PARTY_NOTICES.md >/dev/null
     ;;
   linux)
     verify_native_core

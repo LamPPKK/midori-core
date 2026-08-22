@@ -377,6 +377,10 @@ and Windows 11 x64 systems. The generated `ENGINE.txt` and executable SHA-256
 must match the reviewed build. CI must also resolve `WEBKIT_RELEASE_TAG` to the
 exact commit in `WEBKIT_REVISION`; do not ship a moving `main` snapshot or a
 commit older than the shared `WEBKITGTK_MIN_VERSION` security baseline.
+The source-fork isolated-world C API must compile in the Windows build and pass
+message-world, request/reply, duplicate-handler and teardown tests. Its presence
+alone is not a credential bridge: keep Sync disabled until the WinCairo host,
+vault, packaged native core and security evidence are complete.
 
 This preview is not production-ready until its upstream MiniBrowser-based UI
 has the same encrypted backup import/export surface as the WinUI and Android

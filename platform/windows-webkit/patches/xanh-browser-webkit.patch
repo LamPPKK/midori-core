@@ -1,12 +1,157 @@
+diff --git a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
+index 5519ce0e..78d36e3d 100644
+--- a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
++++ b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
+@@ -28,6 +28,7 @@
+ 
+ #include "APIArray.h"
+ #include "APICompletionListener.h"
++#include "APIContentWorld.h"
+ #include "APIContentRuleList.h"
+ #include "APIFrameInfo.h"
+ #include "APIScriptMessage.h"
+@@ -66,6 +67,19 @@ void WKUserContentControllerRemoveAllUserScripts(WKUserContentControllerRef user
+     toProtectedImpl(userContentControllerRef)->removeAllUserScripts();
+ }
+ 
++void WKXanhUserContentControllerRemoveAllUserScriptsInWorld(WKUserContentControllerRef userContentControllerRef, WKStringRef worldNameRef)
++{
++    if (!worldNameRef)
++        return;
++
++    String worldName = toWTFString(worldNameRef);
++    if (worldName.isEmpty() || worldName.length() > 128)
++        return;
++
++    auto world = API::ContentWorld::sharedWorldWithName(worldName);
++    toProtectedImpl(userContentControllerRef)->removeAllUserScripts(world.get());
++}
++
+ void WKUserContentControllerAddUserContentFilter(WKUserContentControllerRef userContentControllerRef, WKUserContentFilterRef userContentFilterRef)
+ {
+ #if ENABLE(CONTENT_EXTENSIONS)
+@@ -88,9 +102,9 @@ public:
+         , m_callback(callback)
+         , m_context(context) { }
+ private:
+-    void didPostMessage(WebPageProxy& page, FrameInfoData&& frameInfo, API::ContentWorld&, JavaScriptEvaluationResult&& result, CompletionHandler<void(Expected<JavaScriptEvaluationResult, String>&&)>&& completionHandler) override
++    void didPostMessage(WebPageProxy& page, FrameInfoData&& frameInfo, API::ContentWorld& contentWorld, JavaScriptEvaluationResult&& result, CompletionHandler<void(Expected<JavaScriptEvaluationResult, String>&&)>&& completionHandler) override
+     {
+-        Ref message = API::ScriptMessage::create(result.toAPI(), page, API::FrameInfo::create(WTF::move(frameInfo)), m_name, API::ContentWorld::pageContentWorldSingleton());
++        Ref message = API::ScriptMessage::create(result.toAPI(), page, API::FrameInfo::create(WTF::move(frameInfo)), m_name, contentWorld);
+         Ref listener = API::CompletionListener::create([completionHandler = WTF::move(completionHandler)] (WKTypeRef reply) mutable {
+             if (auto result = JavaScriptEvaluationResult::extract(toProtectedImpl(reply).get()))
+                 return completionHandler(WTF::move(*result));
+@@ -118,3 +132,32 @@ void WKUserContentControllerRemoveAllUserMessageHandlers(WKUserContentController
+ {
+     toProtectedImpl(userContentController)->removeAllUserMessageHandlers();
+ }
++
++bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld(WKUserContentControllerRef userContentController, WKStringRef wkName, WKStringRef worldNameRef, WKScriptMessageHandlerCallback callback, const void* context)
++{
++    if (!wkName || !worldNameRef || !callback)
++        return false;
++
++    String name = toWTFString(wkName);
++    String worldName = toWTFString(worldNameRef);
++    if (name.isEmpty() || name.length() > 128 || worldName.isEmpty() || worldName.length() > 128)
++        return false;
++
++    auto world = API::ContentWorld::sharedWorldWithName(worldName);
++    auto handler = WebKit::WebScriptMessageHandler::create(makeUnique<WebScriptMessageClient>(name, callback, context), name, world.get());
++    return toProtectedImpl(userContentController)->addUserScriptMessageHandler(handler);
++}
++
++void WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld(WKUserContentControllerRef userContentController, WKStringRef wkName, WKStringRef worldNameRef)
++{
++    if (!wkName || !worldNameRef)
++        return;
++
++    String name = toWTFString(wkName);
++    String worldName = toWTFString(worldNameRef);
++    if (name.isEmpty() || name.length() > 128 || worldName.isEmpty() || worldName.length() > 128)
++        return;
++
++    auto world = API::ContentWorld::sharedWorldWithName(worldName);
++    toProtectedImpl(userContentController)->removeUserMessageHandlerForName(name, world.get());
++}
+diff --git a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
+index fbd55b98..cfb3788a 100644
+--- a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
++++ b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
+@@ -39,6 +39,7 @@ WK_EXPORT WKUserContentControllerRef WKUserContentControllerCreate(void);
+ WK_EXPORT WKArrayRef WKUserContentControllerCopyUserScripts(WKUserContentControllerRef userContentController);
+ WK_EXPORT void WKUserContentControllerAddUserScript(WKUserContentControllerRef userContentController, WKUserScriptRef userScript);
+ WK_EXPORT void WKUserContentControllerRemoveAllUserScripts(WKUserContentControllerRef userContentController);
++WK_EXPORT void WKXanhUserContentControllerRemoveAllUserScriptsInWorld(WKUserContentControllerRef userContentController, WKStringRef worldName);
+ 
+ WK_EXPORT void WKUserContentControllerAddUserContentFilter(WKUserContentControllerRef userContentController, WKUserContentFilterRef userContentFilter);
+ WK_EXPORT void WKUserContentControllerRemoveAllUserContentFilters(WKUserContentControllerRef userContentController);
+@@ -46,6 +47,8 @@ WK_EXPORT void WKUserContentControllerRemoveAllUserContentFilters(WKUserContentC
+ typedef void (*WKScriptMessageHandlerCallback)(WKScriptMessageRef message, WKCompletionListenerRef reply, const void *context);
+ WK_EXPORT void WKUserContentControllerAddScriptMessageHandler(WKUserContentControllerRef userContentController, WKStringRef name, WKScriptMessageHandlerCallback callback, const void* context);
+ WK_EXPORT void WKUserContentControllerRemoveAllUserMessageHandlers(WKUserContentControllerRef userContentController);
++WK_EXPORT bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld(WKUserContentControllerRef userContentController, WKStringRef name, WKStringRef worldName, WKScriptMessageHandlerCallback callback, const void* context);
++WK_EXPORT void WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld(WKUserContentControllerRef userContentController, WKStringRef name, WKStringRef worldName);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/Source/WebKit/UIProcess/API/C/WKUserScriptRef.cpp b/Source/WebKit/UIProcess/API/C/WKUserScriptRef.cpp
+index 04ffeda9..c6f999bd 100644
+--- a/Source/WebKit/UIProcess/API/C/WKUserScriptRef.cpp
++++ b/Source/WebKit/UIProcess/API/C/WKUserScriptRef.cpp
+@@ -27,6 +27,7 @@
+ #include "WKUserScriptRef.h"
+ 
+ #include "APIArray.h"
++#include "APIContentWorld.h"
+ #include "APIUserScript.h"
+ #include "WKAPICast.h"
+ 
+@@ -42,6 +43,19 @@ WKUserScriptRef WKUserScriptCreateWithSource(WKStringRef sourceRef, _WKUserScrip
+     return toAPILeakingRef(API::UserScript::create(WebCore::UserScript { toWTFString(sourceRef), { }, { }, { }, toUserScriptInjectionTime(injectionTime), forMainFrameOnly ? WebCore::UserContentInjectedFrames::InjectInTopFrameOnly : WebCore::UserContentInjectedFrames::InjectInAllFrames }, API::ContentWorld::pageContentWorldSingleton()));
+ }
+ 
++WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld(WKStringRef sourceRef, _WKUserScriptInjectionTime injectionTime, bool forMainFrameOnly, WKStringRef worldNameRef)
++{
++    if (!worldNameRef)
++        return nullptr;
++
++    String worldName = toWTFString(worldNameRef);
++    if (worldName.isEmpty() || worldName.length() > 128)
++        return nullptr;
++
++    auto world = API::ContentWorld::sharedWorldWithName(worldName);
++    return toAPILeakingRef(API::UserScript::create(WebCore::UserScript { toWTFString(sourceRef), { }, { }, { }, toUserScriptInjectionTime(injectionTime), forMainFrameOnly ? WebCore::UserContentInjectedFrames::InjectInTopFrameOnly : WebCore::UserContentInjectedFrames::InjectInAllFrames }, world.get()));
++}
++
+ WKStringRef WKUserScriptCopySource(WKUserScriptRef userScriptRef)
+ {
+     return toCopiedAPI(toImpl(userScriptRef)->userScript().source());
+diff --git a/Source/WebKit/UIProcess/API/C/WKUserScriptRef.h b/Source/WebKit/UIProcess/API/C/WKUserScriptRef.h
+index de8b6a3c..3afeadea 100644
+--- a/Source/WebKit/UIProcess/API/C/WKUserScriptRef.h
++++ b/Source/WebKit/UIProcess/API/C/WKUserScriptRef.h
+@@ -36,6 +36,7 @@ extern "C" {
+ WK_EXPORT WKTypeID WKUserScriptGetTypeID(void);
+ 
+ WK_EXPORT WKUserScriptRef WKUserScriptCreateWithSource(WKStringRef source, _WKUserScriptInjectionTime injectionTime, bool forMainFrameOnly);
++WK_EXPORT WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld(WKStringRef source, _WKUserScriptInjectionTime injectionTime, bool forMainFrameOnly, WKStringRef worldName);
+ 
+ WK_EXPORT WKStringRef WKUserScriptCopySource(WKUserScriptRef userScript);
+ WK_EXPORT _WKUserScriptInjectionTime WKUserScriptGetInjectionTime(WKUserScriptRef userScript);
 diff --git a/Tools/MiniBrowser/win/CMakeLists.txt b/Tools/MiniBrowser/win/CMakeLists.txt
+index fba0731a..71f08fa8 100644
 --- a/Tools/MiniBrowser/win/CMakeLists.txt
 +++ b/Tools/MiniBrowser/win/CMakeLists.txt
-@@ -39,3 +39,3 @@ WEBKIT_EXECUTABLE_DECLARE(MiniBrowser)
+@@ -38,4 +38,4 @@ target_include_directories(MiniBrowserInjectedBundle PRIVATE ${CMAKE_BINARY_DIR}
+ WEBKIT_EXECUTABLE_DECLARE(MiniBrowser)
  WEBKIT_EXECUTABLE(MiniBrowser)
  
 -set_target_properties(MiniBrowser PROPERTIES WIN32_EXECUTABLE ON)
 +set_target_properties(MiniBrowser PROPERTIES WIN32_EXECUTABLE ON OUTPUT_NAME "XanhBrowser.WebKit")
 diff --git a/Tools/MiniBrowser/win/MainWindow.cpp b/Tools/MiniBrowser/win/MainWindow.cpp
+index f6fff84c..1772b91c 100644
 --- a/Tools/MiniBrowser/win/MainWindow.cpp
 +++ b/Tools/MiniBrowser/win/MainWindow.cpp
 @@ -35,7 +35,7 @@ namespace WebCore {
@@ -18,7 +163,7 @@ diff --git a/Tools/MiniBrowser/win/MainWindow.cpp b/Tools/MiniBrowser/win/MainWi
  
  static constexpr int kToolbarImageSize = 32;
  static constexpr int kToolbarURLBarIndex = 4;
-@@ -583,15 +583,11 @@ INT_PTR CALLBACK MainWindow::serverTrustDialogProc(HWND hDlg, UINT message, WPAR
+@@ -583,15 +583,11 @@ INT_PTR CALLBACK MainWindow::customUserAgentDialogProc(HWND hDlg, UINT message,
  
  void MainWindow::loadURL(std::wstring url)
  {
@@ -48,9 +193,11 @@ diff --git a/Tools/MiniBrowser/win/MainWindow.cpp b/Tools/MiniBrowser/win/MainWi
      DWORD urlLength = sizeof(url);
      if (!RegGetValue(HKEY_CURRENT_USER, kMiniBrowserRegistryKey, L"DefaultURL", RRF_RT_REG_SZ, nullptr, &url, &urlLength))
 diff --git a/Tools/MiniBrowser/win/MiniBrowserLib.rc b/Tools/MiniBrowser/win/MiniBrowserLib.rc
+index a27a1f4e..87b5c052 100755
 --- a/Tools/MiniBrowser/win/MiniBrowserLib.rc
 +++ b/Tools/MiniBrowser/win/MiniBrowserLib.rc
-@@ -168,6 +168,6 @@ FONT 8, "MS Shell Dlg", 0, 0, 0x0
+@@ -169,8 +169,8 @@ CAPTION "About"
+ FONT 8, "MS Shell Dlg", 0, 0, 0x0
  BEGIN
      ICON            IDI_MINIBROWSER,IDC_MYICON,14,9,20,20
 -    LTEXT           "MiniBrowser Version 1.1",IDC_STATIC,49,10,119,8
@@ -59,7 +206,9 @@ diff --git a/Tools/MiniBrowser/win/MiniBrowserLib.rc b/Tools/MiniBrowser/win/Min
 +    LTEXT           "Powered by WebKit",IDC_STATIC,49,20,119,8
      DEFPUSHBUTTON   "OK",IDOK,186,10,30,11,WS_GROUP
  END
-@@ -419,6 +419,6 @@ IDB_TOOLBAR             BITMAP                  "toolbar.bmp"
+ 
+@@ -420,8 +420,8 @@ IDB_TOOLBAR             BITMAP                  "toolbar.bmp"
+ 
  STRINGTABLE
  BEGIN
 -    IDS_APP_TITLE           "MiniBrowser"
@@ -68,7 +217,9 @@ diff --git a/Tools/MiniBrowser/win/MiniBrowserLib.rc b/Tools/MiniBrowser/win/Min
 +    IDC_MINIBROWSER         "XANHBROWSERWEBKIT"
  END
  
+ #endif    // English (United States) resources
 diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+index 990ba53c..6a9b9078 100644
 --- a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
 +++ b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
 @@ -49,7 +49,6 @@
@@ -117,7 +268,7 @@ diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp b/Tools/MiniBrowser/w
  
      auto pageConf = adoptWK(WKPageConfigurationCreate());
      WKPageConfigurationSetWebsiteDataStore(pageConf.get(), websiteDataStore.get());
-@@ -486,6 +468,6 @@ void WebKitBrowserWindow::didChangeTitle(const void* clientInfo)
+@@ -486,7 +468,7 @@ void WebKitBrowserWindow::didChangeTitle(const void* clientInfo)
      auto& thisWindow = toWebKitBrowserWindow(clientInfo);
      auto page = WKViewGetPage(thisWindow.m_view.get());
      WKRetainPtr<WKStringRef> title = adoptWK(WKPageCopyTitle(page));
@@ -125,3 +276,4 @@ diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp b/Tools/MiniBrowser/w
 +    std::wstring titleString = createString(title.get()) + L" [Xanh Browser WebKit]";
      SetWindowText(thisWindow.m_hMainWnd, titleString.c_str());
  }
+ 

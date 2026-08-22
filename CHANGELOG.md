@@ -80,6 +80,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   snapshot to the peeled `webkitgtk-2.52.6` stable tag and made CI verify the
   release tag, shared minimum version and exact source commit as one
   fail-closed provenance contract.
+- Added bounded WinCairo C APIs for user scripts and request/reply message
+  handlers in a shared named isolated `API::ContentWorld`, including actual
+  message-world propagation and deterministic per-world teardown. The host,
+  vault and native Sync packaging remain release-gated; distribution notices
+  now identify the exact upstream source and published Xanh delta.
 - Added a reproducible WPE Android source-fork contract pinned to WPEView 0.3.3,
   WPE WebKit 2.52.6 and an exact Cerbero revision. The delta adds 16 KiB linker
   alignment and a bounded main-frame-only isolated script/message bridge; CI

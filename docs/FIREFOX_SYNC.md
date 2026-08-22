@@ -278,9 +278,13 @@ verification enables the source-fork build flag, and it fails closed on any
 API drift. The AAR
 must still pass build, ELF, device, SBOM and security evidence gates in
 `RELEASING.md`.
-WinCairo remains blocked until its isolated bridge, vault and packaged native
-core pass security tests. `scripts/verify-sync-release.sh` is a fail-closed
-mechanical prerequisite check, not an audit substitute. Its Linux production
+The pinned WinCairo source delta now exposes bounded named-isolated-world C APIs
+for user scripts, request/reply message handlers and deterministic per-world
+teardown without restoring the privileged injected bundle. Its MiniBrowser host
+does not register the credential bridge yet, so WinCairo remains blocked until
+host origin/nonce/private-mode validation, the vault and packaged native core
+pass security tests. `scripts/verify-sync-release.sh` is a fail-closed mechanical
+prerequisite check, not an audit substitute. Its Linux production
 mode requires evidence files for the Sync-enabled build, Secret Service,
 four-engine interoperability, data migration, Flatpak and security review;
 release reviewers must still validate that those files belong to the exact

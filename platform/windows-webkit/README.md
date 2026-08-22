@@ -51,6 +51,16 @@ stops loading the upstream privileged injected bundle and disables Web
 Inspector developer extras in the browser process. The build script also omits
 that unused injected-bundle DLL from the packaged artifact.
 
+The source delta also adds bounded Xanh-specific C APIs for main-frame user
+scripts and request/reply message handlers in the same named isolated
+`API::ContentWorld`. Invalid or overlong world/handler names fail closed, the
+handler preserves the actual source world in `WKScriptMessageRef`, and explicit
+per-world removal APIs provide deterministic teardown. This is an engine
+capability only: MiniBrowser does not register a credential handler yet, and
+the API does not open the Firefox Sync production gate without the native core,
+vault, origin/nonce validation, private-mode exclusion and Windows security
+evidence listed below.
+
 The pinned commit is the peeled upstream `webkitgtk-2.52.6` tag rather than an
 arbitrary `main` snapshot. The GTK release tag is used because WinCairo and GTK
 are built from the same WebKit source tree, and this gives the Windows preview
@@ -67,7 +77,10 @@ Before publishing, build on a clean Windows x64 host and run upstream WebKit
 tests plus browser navigation, TLS, download, media and process-crash tests.
 Verify the revision/provenance file, remove unrelated upstream test binaries
 from the package only after a dependency-closure audit, sign all shipped PE
-files and test on clean Windows 10 and Windows 11 systems.
+files and test on clean Windows 10 and Windows 11 systems. Compile and exercise
+the isolated-world C API with forged page-world messages, duplicate handler
+names, invalid world names, navigation/process swaps and repeated teardown;
+page JavaScript must never reach the isolated handler.
 
 The portable `.xanhbackup` session format is currently exposed by the WinUI
 edition and both Android Lite editions. It deliberately excludes cookies,

@@ -94,7 +94,11 @@ resolution, reload, sharing, desktop mode, file upload, geolocation consent,
 scoped downloads and asynchronous privacy clearing.
 Its serviced System WebView integration uses the stable AndroidX WebKit 1.17.0
 compatibility layer; the separately packaged WPE edition remains governed by
-the engine-specific baseline below. If the serviced renderer is terminated,
+the engine-specific baseline below. The scheduled stable-baseline workflow
+reads Google Maven metadata weekly and fails if any shipping Gradle module or,
+when present, its strict dependency checksums lag the newest stable AndroidX
+WebKit release; alpha, beta and RC versions never satisfy this production gate.
+If the serviced renderer is terminated,
 Lite destroys the dead WebView and recreates the Activity from only its last
 validated HTTP(S) URL instead of restoring a form body. Recovery waits until
 the Activity is foreground, runs at most once and closes a repeatedly crashing

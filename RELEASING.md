@@ -70,6 +70,10 @@ GitHub source-release automation additionally requires
 5. Run `python3 scripts/verify_webkit_latest.py` with network access and confirm
    the shared floor plus WinCairo tag/revision match the newest official stable
    WebKitGTK tag. An odd-minor development tag is never a release substitute.
+6. Run `python3 scripts/verify_androidx_webkit_latest.py` with network access
+   and confirm every Lite/System WebView Gradle module equals the newest stable
+   AndroidX WebKit version published in Google Maven. Prereleases never satisfy
+   this gate.
 
 Verification:
 

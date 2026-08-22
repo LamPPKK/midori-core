@@ -1,4 +1,4 @@
-name: WebKit stable baseline
+name: WebKit stable baselines
 
 on:
   push:
@@ -6,7 +6,12 @@ on:
       - .github/workflows/webkit-baseline.yml
       - scripts/verify_webkit_latest.py
       - scripts/tests/test_verify_webkit_latest.py
+      - scripts/verify_androidx_webkit_latest.py
+      - scripts/tests/test_verify_androidx_webkit_latest.py
       - WEBKITGTK_MIN_VERSION
+      - app/build.gradle
+      - app-webkit/build.gradle
+      - sync-feature-common/build.gradle
       - platform/windows-webkit/WEBKIT_RELEASE_TAG
       - platform/windows-webkit/WEBKIT_REVISION
   pull_request:
@@ -14,7 +19,12 @@ on:
       - .github/workflows/webkit-baseline.yml
       - scripts/verify_webkit_latest.py
       - scripts/tests/test_verify_webkit_latest.py
+      - scripts/verify_androidx_webkit_latest.py
+      - scripts/tests/test_verify_androidx_webkit_latest.py
       - WEBKITGTK_MIN_VERSION
+      - app/build.gradle
+      - app-webkit/build.gradle
+      - sync-feature-common/build.gradle
       - platform/windows-webkit/WEBKIT_RELEASE_TAG
       - platform/windows-webkit/WEBKIT_REVISION
   schedule:
@@ -37,3 +47,7 @@ jobs:
         run: python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webkit_latest.py' -v
       - name: Verify project uses latest official stable WebKitGTK
         run: python3 scripts/verify_webkit_latest.py
+      - name: Test AndroidX WebKit latest-stable parser
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_verify_androidx_webkit_latest.py' -v
+      - name: Verify Android editions use latest stable AndroidX WebKit
+        run: python3 scripts/verify_androidx_webkit_latest.py

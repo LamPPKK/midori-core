@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   signed-source GitHub Actions workflows.
 - Added a scheduled, fail-closed official-tag verifier so the shared WebKitGTK,
   WPE and WinCairo security baseline cannot silently lag a newer stable release.
+- Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
+  rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
+  checksums when present and runs weekly in both Android repositories.
 - Added WinCairo encrypted `.xanhbackup` import/export using the native Windows
   file picker, PBKDF2-HMAC-SHA256 and AES-256-GCM through CNG, atomic file
   replacement and the shared Android/C# ASCII and Unicode golden vectors.

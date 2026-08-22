@@ -34,8 +34,12 @@ case "$edition" in
   source)
     test -x scripts/verify_webkit_latest.py
     test -f scripts/tests/test_verify_webkit_latest.py
+    test -x scripts/verify_androidx_webkit_latest.py
+    test -f scripts/tests/test_verify_androidx_webkit_latest.py
     test -f .github/workflows/webkit-baseline.yml
+    grep -F 'python3 scripts/verify_androidx_webkit_latest.py' .github/workflows/webkit-baseline.yml >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webkit_latest.py' >/dev/null
+    python3 -B -m unittest discover -s scripts/tests -p 'test_verify_androidx_webkit_latest.py' >/dev/null
     test -f xanh-sync-core/Cargo.lock
     test -f xanh-sync-core/include/xanh_sync.h
     grep -F 'xanh_sync_runtime_update_local_tabs' xanh-sync-core/include/xanh_sync.h >/dev/null

@@ -92,6 +92,25 @@ case "$edition" in
     test -f desktop/credential-bridge.c
     test -f desktop/credential-bridge.vapi
     test -f desktop/credential-data.vala
+    test -f desktop/web-process-recovery.vala
+    test -f tests-modern/web-process-recovery-test.vala
+    grep -F 'MAX_WEB_URI_BYTES = 8192' desktop/address-resolver.vala >/dev/null
+    grep -F 'parsed.get_userinfo () == null' desktop/address-resolver.vala >/dev/null
+    grep -F 'take_automatic_recovery (true)' desktop/browser-window.vala >/dev/null
+    sed -n '/void maybe_recover_tab/,/void show_process_stopped/p' \
+      desktop/browser-window.vala | grep -F 'tab.view.load_uri (uri);' >/dev/null
+    if sed -n '/tab.view.web_process_terminated.connect/,/^            });/p' \
+      desktop/browser-window.vala | \
+      grep -E 'load_alternate_html|\.reload \(|go_back|go_forward' >/dev/null; then
+      echo 'Linux WebProcess termination must not reload or restore navigation automatically' >&2
+      exit 1
+    fi
+    if sed -n '/void maybe_recover_tab/,/void show_process_stopped/p' \
+      desktop/browser-window.vala | \
+      grep -E 'load_alternate_html|\.reload \(|go_back|go_forward' >/dev/null; then
+      echo 'Linux automatic recovery must use a fresh URI load only' >&2
+      exit 1
+    fi
     grep -F 'webkit_user_script_new_for_world' desktop/credential-bridge.c >/dev/null
     grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' desktop/credential-bridge.c >/dev/null
     grep -F 'webkit_web_view_call_async_javascript_function' desktop/credential-bridge.c >/dev/null

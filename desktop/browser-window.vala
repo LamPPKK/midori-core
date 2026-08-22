@@ -7,11 +7,13 @@ namespace Xanh {
         public Gtk.Label label { get; construct; }
         public WebExtensionBridge bridge { get; construct; }
         public CredentialBridge? credential_bridge { get; construct; }
+        public WebProcessRecoveryPolicy recovery { get; construct; }
 
         public TabRecord (TabState state, WebKit.WebView view, Gtk.Label label,
                 WebExtensionBridge bridge, CredentialBridge? credential_bridge) {
             Object (state: state, view: view, label: label, bridge: bridge,
-                credential_bridge: credential_bridge);
+                credential_bridge: credential_bridge,
+                recovery: new WebProcessRecoveryPolicy ());
         }
     }
 
@@ -79,6 +81,14 @@ namespace Xanh {
                 if (!is_active) {
                     cancel_credential_picker ();
                     (application as BrowserApplication)?.lock_sync_vault ();
+                    tabs.foreach ((id, tab) => {
+                        if (tab.recovery.cancel_automatic_recovery ()) {
+                            tab.view.stop_loading ();
+                            show_process_stopped (tab);
+                        }
+                    });
+                } else {
+                    maybe_recover_active_tab ();
                 }
             });
             close_request.connect (on_close_request);
@@ -94,7 +104,7 @@ namespace Xanh {
             back.clicked.connect (() => {
                 var tab = active_tab ();
                 if (tab != null) {
-                    tab.state.recovery_uri = null;
+                    begin_explicit_navigation (tab);
                     tab.view.go_back ();
                 }
             });
@@ -104,7 +114,7 @@ namespace Xanh {
             forward.clicked.connect (() => {
                 var tab = active_tab ();
                 if (tab != null) {
-                    tab.state.recovery_uri = null;
+                    begin_explicit_navigation (tab);
                     tab.view.go_forward ();
                 }
             });
@@ -116,9 +126,10 @@ namespace Xanh {
                 if (tab == null) return;
                 if (tab.state.recovery_uri != null) {
                     string recovery_uri = tab.state.recovery_uri;
-                    tab.state.recovery_uri = null;
+                    begin_explicit_navigation (tab);
                     tab.view.load_uri (recovery_uri);
                 } else {
+                    begin_explicit_navigation (tab);
                     tab.view.reload ();
                 }
             });
@@ -130,7 +141,7 @@ namespace Xanh {
             address.activate.connect (() => {
                 var tab = active_tab ();
                 if (tab != null) {
-                    tab.state.recovery_uri = null;
+                    begin_explicit_navigation (tab);
                     tab.view.load_uri (resolve_address (address.text));
                 }
             });
@@ -166,7 +177,16 @@ namespace Xanh {
             notebook.enable_popup = true;
             notebook.switch_page.connect ((page, index) => {
                 cancel_credential_picker ();
+                var selected = page as WebKit.WebView;
+                tabs.foreach ((id, tab) => {
+                    if (tab.view != selected &&
+                            tab.recovery.cancel_automatic_recovery ()) {
+                        tab.view.stop_loading ();
+                        show_process_stopped (tab);
+                    }
+                });
                 update_chrome ();
+                maybe_recover_active_tab ();
                 schedule_session_save ();
             });
             notebook.page_reordered.connect ((child, index) => schedule_session_save ());
@@ -273,6 +293,7 @@ namespace Xanh {
             settings.enable_javascript = enabled;
             try { database.set_setting ("enable-javascript", enabled.to_string ()); }
             catch (Error error) { warning ("Cannot save JavaScript setting: %s", error.message); }
+            begin_explicit_navigation (tab);
             tab.view.reload ();
         }
 
@@ -284,6 +305,7 @@ namespace Xanh {
             settings.auto_load_images = enabled;
             try { database.set_setting ("auto-load-images", enabled.to_string ()); }
             catch (Error error) { warning ("Cannot save image setting: %s", error.message); }
+            begin_explicit_navigation (tab);
             tab.view.reload ();
         }
 
@@ -447,7 +469,7 @@ namespace Xanh {
 
         void connect_view (TabRecord tab) {
             tab.view.notify["title"].connect (() => {
-                if (tab.state.recovery_uri == null) {
+                if (!tab.recovery.process_stopped) {
                     tab.state.title = tab.view.title ?? "New Tab";
                 }
                 update_tab_label (tab);
@@ -455,7 +477,7 @@ namespace Xanh {
                 schedule_session_save ();
             });
             tab.view.notify["uri"].connect (() => {
-                if (tab.state.recovery_uri == null) {
+                if (!tab.recovery.process_stopped) {
                     tab.state.uri = tab.view.uri ?? "about:blank";
                 }
                 update_chrome ();
@@ -471,19 +493,23 @@ namespace Xanh {
                         credential_picker_bridge == tab.credential_bridge) {
                     cancel_credential_picker ();
                 }
-                if (event == WebKit.LoadEvent.STARTED && tab.state.recovery_uri != null &&
-                        tab.view.uri != "xanh:error") {
-                    tab.state.recovery_uri = null;
+                if (event == WebKit.LoadEvent.COMMITTED) {
+                    tab.recovery.record_committed_uri (tab.view.uri);
                 }
                 if (event == WebKit.LoadEvent.FINISHED) {
-                    if (tab.state.recovery_uri == null) {
+                    if (tab.recovery.finish_automatic_recovery (true)) {
+                        tab.state.recovery_uri = null;
+                        status.label = "Page process recovered";
+                    }
+                    bool usable_page = !tab.recovery.process_stopped;
+                    if (usable_page) {
                         tab.state.uri = tab.view.uri ?? "about:blank";
                         tab.state.title = tab.view.title ?? tab.state.uri;
                     }
                     var browser_application = application as BrowserApplication;
                     bool application_clear = browser_application != null &&
                         browser_application.is_browsing_data_clear_in_progress ();
-                    if (!clearing_data && !application_clear) {
+                    if (usable_page && !clearing_data && !application_clear) {
                         try { database.record_history (
                             tab.state.uri, tab.state.title, tab.state.private_mode); }
                         catch (Error error) {
@@ -491,12 +517,19 @@ namespace Xanh {
                         }
                         (application as BrowserApplication)?.record_synced_history (tab.state);
                     }
-                    plugin_host.page_loaded (tab.state);
+                    if (usable_page) plugin_host.page_loaded (tab.state);
                     update_chrome ();
                     schedule_session_save ();
                 }
             });
+            tab.view.load_failed.connect ((event, uri, error) => {
+                if (!tab.recovery.finish_automatic_recovery (false)) return false;
+                show_process_stopped (tab);
+                return true;
+            });
             tab.view.load_failed_with_tls_errors.connect ((uri, certificate, errors) => {
+                if (tab.recovery.finish_automatic_recovery (false))
+                    show_process_stopped (tab);
                 show_tls_error.begin (tab, uri, certificate, errors);
                 return true;
             });
@@ -507,12 +540,10 @@ namespace Xanh {
             tab.view.web_process_terminated.connect ((reason) => {
                 if (credential_picker_bridge == tab.credential_bridge)
                     cancel_credential_picker ();
-                string? failed_uri = tab.view.uri;
-                if (BrowserDatabase.is_web_uri (failed_uri)) tab.state.recovery_uri = failed_uri;
-                tab.view.load_alternate_html (
-                    "<meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'\">" +
-                    "<h1>Page process stopped</h1><p>Reload this tab to continue.</p>",
-                    "xanh:error", null);
+                tab.recovery.record_termination ();
+                tab.state.recovery_uri = tab.recovery.recovery_uri;
+                show_process_stopped (tab);
+                maybe_recover_tab (tab);
             });
             tab.view.create.connect ((navigation) => {
                 add_tab ("about:blank", tab.state.private_mode);
@@ -552,9 +583,13 @@ namespace Xanh {
                     if (parsed_uri.get_host () != null) {
                         tab.view.get_network_session ().allow_tls_certificate_for_host (
                             tls, parsed_uri.get_host ());
+                        begin_explicit_navigation (tab);
                         tab.view.load_uri (uri);
                     }
-                } else if (tab.view.can_go_back ()) tab.view.go_back ();
+                } else if (tab.view.can_go_back ()) {
+                    begin_explicit_navigation (tab);
+                    tab.view.go_back ();
+                }
             } catch (Error error) {
                 warning ("TLS dialog failed: %s", error.message);
             }
@@ -605,6 +640,43 @@ namespace Xanh {
             TabRecord? result = null;
             tabs.foreach ((id, tab) => { if (tab.view == view) result = tab; });
             return result;
+        }
+
+        void begin_explicit_navigation (TabRecord tab) {
+            if (credential_picker_bridge == tab.credential_bridge)
+                cancel_credential_picker ();
+            tab.recovery.reset_for_explicit_navigation ();
+            tab.state.recovery_uri = null;
+        }
+
+        void maybe_recover_active_tab () {
+            var tab = active_tab ();
+            if (tab != null) maybe_recover_tab (tab);
+        }
+
+        void maybe_recover_tab (TabRecord tab) {
+            if (!is_active || clearing_data || active_tab () != tab) return;
+            var browser_application = application as BrowserApplication;
+            if (browser_application != null &&
+                    browser_application.is_browsing_data_clear_in_progress ()) return;
+            string? uri = tab.recovery.take_automatic_recovery (true);
+            if (uri == null) return;
+            tab.state.recovery_uri = uri;
+            status.label = "Recovering page process…";
+            tab.view.load_uri (uri);
+        }
+
+        void show_process_stopped (TabRecord tab) {
+            tab.state.recovery_uri = tab.recovery.recovery_uri;
+            tab.state.title = "Page process stopped";
+            tab.state.progress = 0.0;
+            update_tab_label (tab);
+            if (active_tab () == tab) {
+                status.label = tab.state.recovery_uri == null ?
+                    "Page process stopped; open another address to continue" :
+                    "Page process stopped; use Reload to try again";
+                update_chrome ();
+            }
         }
 
         void close_active_tab () {

@@ -101,6 +101,7 @@ target_link_libraries(xanh-browser-core PRIVATE PkgConfig::XANH)
 
 vala_precompile(XANH_APP_C xanh-browser
     desktop/address-resolver.vala
+    desktop/web-process-recovery.vala
     desktop/credential-data.vala
     desktop/sync-data.vala
     desktop/profile-importer.vala
@@ -211,6 +212,9 @@ if(BUILD_TESTING)
     add_xanh_test(database-test SOURCE tests-modern/database-test.vala)
     add_xanh_test(address-resolver-test SOURCE tests-modern/address-resolver-test.vala
         SUPPORT desktop/address-resolver.vala)
+    add_xanh_test(web-process-recovery-test
+        SOURCE tests-modern/web-process-recovery-test.vala
+        SUPPORT desktop/address-resolver.vala desktop/web-process-recovery.vala)
     add_xanh_test(credential-data-test SOURCE tests-modern/credential-data-test.vala
         SUPPORT desktop/credential-data.vala)
     add_xanh_test(importer-test SOURCE tests-modern/importer-test.vala
@@ -227,6 +231,7 @@ if(BUILD_TESTING)
     add_xanh_test(application-smoke-test SOURCE tests-modern/application-smoke-test.vala
         SUPPORT
             desktop/address-resolver.vala
+            desktop/web-process-recovery.vala
             desktop/credential-data.vala
             desktop/sync-data.vala
             desktop/profile-importer.vala

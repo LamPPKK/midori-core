@@ -70,6 +70,15 @@ weekly and fails when this floor, the WinCairo tag or its peeled revision no
 longer matches the newest even-minor stable series; development tags are never
 accepted as a production baseline.
 
+Linux address and recovery targets are limited to validated HTTP(S) URLs no
+larger than 8 KiB. They reject userinfo, raw or decoded control characters,
+raw whitespace, malformed IDN/DNS/IP hosts and invalid ports. If a WebProcess
+terminates, only the selected tab in an active window may make one automatic
+fresh URI load from its last validated committed URL. A background tab waits;
+leaving the foreground cancels an in-flight attempt, and a second termination
+stops with an explicit Reload action instead of looping or restoring
+back-forward/form state.
+
 ### Build and test
 
 ```sh
@@ -309,6 +318,11 @@ and device/security evidence pass the WPE release gate.
 - The desktop build links only against GTK4, WebKitGTK 6.0 and libsoup 3.
 - Linux CI enforces WebKitGTK/JavaScriptCoreGTK 2.52.6 or newer at configure
   time and again against the linked runtime.
+- Linux WebProcess recovery is limited to one selected, foreground, body-free
+  URI load from an 8 KiB validated committed HTTP(S) URL. It never invokes
+  automatic reload or back-forward restoration. Background recovery is
+  deferred; focus loss cancels an in-flight attempt, and repeat failure stops
+  for explicit user action.
 - Apple editions use only the system WebKit data stores, keep their gated
   credential bridge in an isolated content world and use a nonpersistent store
   without that bridge for private tabs; macOS runs in the App Sandbox. Web and

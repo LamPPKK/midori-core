@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   signed-source GitHub Actions workflows.
 - Added a scheduled, fail-closed official-tag verifier so the shared WebKitGTK,
   WPE and WinCairo security baseline cannot silently lag a newer stable release.
+- Added bounded Linux WebProcess recovery from the last validated committed
+  HTTP(S) URL. Only the selected foreground tab gets one fresh body-free URI
+  load; hidden/background attempts are deferred, while an in-flight attempt
+  canceled by focus loss and repeat failures stop for explicit user action.
+  Recovery never uses automatic reload or back-forward/form restoration.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

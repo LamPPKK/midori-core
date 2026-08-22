@@ -111,7 +111,18 @@ allowed historical material, never a shipping dependency or application ID.
    errors, media permissions, downloads, private mode, session recovery,
    profile import and every native plugin.
 
-4. For a Sync-enabled candidate, start with a populated pre-Sync profile and
+4. Use `webkit_web_view_terminate_web_process()` and a deliberately crashing
+   test page to exercise every `WebKitWebProcessTerminationReason`. A selected
+   foreground tab may perform exactly one fresh body-free URI load from its
+   last committed HTTP(S) URL. Confirm userinfo, malformed hosts/ports, decoded
+   controls and URLs over 8 KiB never become recovery targets. Repeat while the
+   window is inactive, while the tab is hidden and while changing focus during
+   recovery: no background attempt may continue. A second termination must
+   stop for an explicit Reload, without automatic `reload()`, back-forward
+   restore, form resubmission or a process-creation loop. Verify renderer
+   termination also cancels the native saved-login picker and stale reply.
+
+5. For a Sync-enabled candidate, start with a populated pre-Sync profile and
    verify that the private migration snapshot is mode `0600`, the stored
    checksum matches it, all source rows are processed, every safe/eligible
    record is acknowledged and rejected-row counts are audited before the
@@ -141,7 +152,7 @@ allowed historical material, never a shipping dependency or application ID.
    that a pending marker blocks scheduled, pre-sleep and manual Sync as well as
    reconnect until cleanup acknowledgement succeeds.
 
-5. On a clean regular profile, unlock the Logins vault through the reviewed OS
+6. On a clean regular profile, unlock the Logins vault through the reviewed OS
    user-presence flow, activate a password field with a real pointer/keyboard
    event and choose a username in the native GTK picker. Confirm the selected
    value fills only the exact committed HTTPS top frame. Repeat with HTTP,

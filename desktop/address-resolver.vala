@@ -2,22 +2,111 @@
 
 namespace Xanh {
     public class AddressResolver : Object {
+        public const int MAX_WEB_URI_BYTES = 8192;
+        const int MAX_SEARCH_INPUT_BYTES = 2048;
+
+        public static bool is_safe_web_uri (string? input) {
+            if (input == null || input.length == 0 ||
+                    input.length > MAX_WEB_URI_BYTES || !input.validate () ||
+                    contains_control_character (input) || contains_whitespace (input)) {
+                return false;
+            }
+            string? decoded = Uri.unescape_string (input);
+            if (decoded == null || !decoded.validate () ||
+                    contains_control_character (decoded)) {
+                return false;
+            }
+            try {
+                var parsed = Uri.parse (input, UriFlags.SCHEME_NORMALIZE);
+                string scheme = parsed.get_scheme ();
+                string? host = parsed.get_host ();
+                int port = parsed.get_port ();
+                return (scheme == "http" || scheme == "https") &&
+                    parsed.get_userinfo () == null && host != null &&
+                    valid_host (host) && (port == -1 || (port > 0 && port <= 65535));
+            } catch (UriError error) {
+                return false;
+            }
+        }
+
         public static string resolve (string input, string search_template = "https://duckduckgo.com/?q=%s") {
+            if (input.length > MAX_WEB_URI_BYTES || !input.validate () ||
+                    contains_control_character (input))
+                return "about:blank";
             string value = input.strip ();
             if (value == "") {
                 return "about:blank";
             }
-            if (BrowserDatabase.is_web_uri (value)) {
+            if (is_safe_web_uri (value)) {
                 return value;
             }
-            if (!value.contains (" ") && (value == "localhost" || value.has_prefix ("localhost:") ||
+            if (!value.contains (" ") && !value.contains ("://") &&
+                    (value == "localhost" || value.has_prefix ("localhost:") ||
                     value.contains ("."))) {
                 string candidate = "https://" + value;
-                if (BrowserDatabase.is_web_uri (candidate)) {
+                if (is_safe_web_uri (candidate)) {
                     return candidate;
                 }
             }
-            return search_template.replace ("%s", Uri.escape_string (value, null, true));
+            if (Uri.parse_scheme (value) != null) return "about:blank";
+            if (value.length > MAX_SEARCH_INPUT_BYTES || !value.validate () ||
+                    contains_control_character (value)) {
+                return "about:blank";
+            }
+            string search = search_template.replace (
+                "%s", Uri.escape_string (value, null, true));
+            return is_safe_web_uri (search) ? search : "about:blank";
+        }
+
+        static bool contains_control_character (string value) {
+            int index = 0;
+            unichar current;
+            while (value.get_next_char (ref index, out current)) {
+                if (current.iscntrl ()) return true;
+            }
+            return false;
+        }
+
+        static bool contains_whitespace (string value) {
+            int index = 0;
+            unichar current;
+            while (value.get_next_char (ref index, out current)) {
+                if (current.isspace ()) return true;
+            }
+            return false;
+        }
+
+        static bool valid_host (string value) {
+            string? ascii_host = Hostname.to_ascii (value);
+            if (ascii_host == null) return false;
+            string ascii = ascii_host.down ();
+            if (ascii == "" || ascii.length > 253 || ascii.has_prefix (".") ||
+                    ascii.has_suffix (".")) {
+                return false;
+            }
+            if (Hostname.is_ip_address (ascii)) return true;
+
+            bool numeric_or_dot = true;
+            for (int index = 0; index < ascii.length; index++) {
+                char current = ascii[index];
+                if (!(current.isdigit () || current == '.')) {
+                    numeric_or_dot = false;
+                    break;
+                }
+            }
+            if (numeric_or_dot) return false;
+
+            foreach (string label in ascii.split (".")) {
+                if (label == "" || label.length > 63 || label.has_prefix ("-") ||
+                        label.has_suffix ("-")) {
+                    return false;
+                }
+                for (int index = 0; index < label.length; index++) {
+                    char current = label[index];
+                    if (!(current.isalnum () || current == '-')) return false;
+                }
+            }
+            return true;
         }
     }
 }

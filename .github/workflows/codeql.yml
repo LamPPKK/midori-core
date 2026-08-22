@@ -46,7 +46,7 @@ jobs:
           ./gradlew --no-daemon --no-build-cache
           -PxanhEnableSyncFeature=true
           -PxanhSyncSelfHostedOnly=true
-          -PxanhSyncRepository=$GITHUB_WORKSPACE/_sync_android/sync-core/build/maven
+          -PxanhSyncRepository="$GITHUB_WORKSPACE/_sync_android/sync-core/build/maven"
           clean
           :app:assembleDebug
           :app-webkit:assembleDebug

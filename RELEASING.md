@@ -27,6 +27,8 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 - Push access to this repository and access to its GitHub Actions results
 - Linux with the dependencies listed in [README.md](README.md)
 - JDK 17, Android SDK 36 and an emulator/device matrix for API 26, 30, 33 and 36
+- AndroidX WebKit 1.17.0 resolved from Google Maven for the Lite System WebView
+  artifact; do not substitute an alpha compatibility library in production
 - `flatpak-builder`, `appstreamcli`, GPG and an offline source-release key
 - Access to the Lite Play listing and its dedicated Play App Signing upload key
 - Xcode 26+, Apple Developer membership, dedicated distribution certificates,
@@ -188,6 +190,10 @@ Flatpak manifest.
 3. Exercise navigation, predictive back, rotation/process death, downloads,
    sharing, external schemes, file upload, geolocation, privacy clearing and
    encrypted backup import/export through an Android Documents provider.
+   Force renderer termination in foreground and background: the exact failed
+   WebView must be detached and destroyed before the callback returns, recovery
+   must wait for foreground, restore only a bounded HTTP(S) GET target and stop
+   after one attempt rather than looping.
 4. Export the four `XANH_LITE_*` values and build the signed candidate:
 
    ```sh

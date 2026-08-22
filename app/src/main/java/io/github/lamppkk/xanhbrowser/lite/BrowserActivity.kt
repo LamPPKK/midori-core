@@ -13,6 +13,7 @@ import android.provider.Settings
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.text.InputType
@@ -38,6 +39,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
 import io.github.lamppkk.xanhbrowser.lite.databinding.ActivityBrowserBinding
 import io.github.lamppkk.xanhbrowser.backup.PortableBackup
 import io.github.lamppkk.xanhbrowser.backup.PortableBackupPayload
@@ -57,6 +59,11 @@ class BrowserActivity : AppCompatActivity() {
     private var currentNavigationUrl: String? = null
     private var pendingNavigationUrl: String? = null
     private var pendingBackupPassword: CharArray? = null
+    private var webView: WebView? = null
+    private var rendererGone = false
+    private var rendererRecoveryUsed = false
+    private var rendererRecoveryScheduled = false
+    private var rendererRecoveryLoadPending = false
     private val syncFeature by lazy { SyncFeatureInstaller(this) }
 
     private val createBackupDocument = registerForActivityResult(
@@ -95,6 +102,7 @@ class BrowserActivity : AppCompatActivity() {
         enableEdgeToEdge()
         binding = ActivityBrowserBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        rendererRecoveryUsed = savedInstanceState?.getBoolean(STATE_RENDERER_RECOVERY_USED) ?: false
         setSupportActionBar(binding.toolbar)
         applyInsets()
         configureWebView()
@@ -104,40 +112,79 @@ class BrowserActivity : AppCompatActivity() {
         desktopSite = savedInstanceState?.getBoolean(STATE_DESKTOP_SITE) ?: false
         if (desktopSite) requestDesktopSite(true, reload = false)
         val savedUrl = savedInstanceState?.getString(STATE_CURRENT_URL)
-        val restored = savedInstanceState?.getBundle(STATE_WEB_VIEW)?.let(binding.webView::restoreState)
-        val restoredUrl = restored?.currentItem?.url
-        if (savedUrl != null && savedUrl != restoredUrl) {
-            loadUrlOrSearch(savedUrl)
-        } else if (restored == null) {
-            val restoredUrl = AddressResolver.resolveWebIntent(intent.dataString)
-                ?: preferences.getString(LAST_URL, null)
+        val recoveringRenderer = savedInstanceState?.getBoolean(STATE_RECREATE_AFTER_RENDERER) ?: false
+        if (recoveringRenderer) {
+            val target = RendererRecoveryPolicy.selectUrl(savedUrl, getString(R.string.app_website))
+                ?: getString(R.string.app_website)
+            pendingNavigationUrl = target
+            currentNavigationUrl = target
+            rendererRecoveryLoadPending = true
+        } else {
+            val restoredUrl = RendererRecoveryPolicy.selectUrl(
+                savedUrl,
+                AddressResolver.resolveWebIntent(intent.dataString),
+                preferences.getString(LAST_URL, null),
+            )
                 ?: getString(R.string.app_website)
             loadUrlOrSearch(restoredUrl.orEmpty())
-        } else {
-            currentNavigationUrl = restoredUrl
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        AddressResolver.resolveWebIntent(intent.dataString)?.let(::loadUrlOrSearch)
+        AddressResolver.resolveWebIntent(intent.dataString)?.let { url ->
+            if (rendererGone || rendererRecoveryLoadPending) {
+                pendingNavigationUrl = url
+                currentNavigationUrl = url
+            } else {
+                loadUrlOrSearch(url)
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        syncFeature.attachCredentialBridge(binding.webView)
+        if (rendererRecoveryLoadPending) {
+            rendererRecoveryLoadPending = false
+            if (rendererRecoveryUsed) {
+                Toast.makeText(this, R.string.renderer_recovery_stopped, Toast.LENGTH_LONG).show()
+                finish()
+                return
+            }
+            rendererRecoveryUsed = true
+            val target = RendererRecoveryPolicy.selectUrl(
+                pendingNavigationUrl,
+                currentNavigationUrl,
+                getString(R.string.app_website),
+            ) ?: getString(R.string.app_website)
+            loadUrlOrSearch(target)
+            webView?.let(syncFeature::attachCredentialBridge)
+            return
+        }
+        if (rendererGone) {
+            scheduleRendererRecovery()
+            return
+        }
+        webView?.let(syncFeature::attachCredentialBridge)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        val webViewState = Bundle()
-        binding.webView.saveState(webViewState)
-        outState.putBundle(STATE_WEB_VIEW, webViewState)
+        val liveWebViewUrl = if (rendererGone) null else webView?.url
         outState.putString(
             STATE_CURRENT_URL,
-            pendingNavigationUrl ?: currentNavigationUrl ?: binding.webView.url,
+            RendererRecoveryPolicy.selectUrl(
+                pendingNavigationUrl,
+                currentNavigationUrl,
+                liveWebViewUrl,
+            ),
         )
         outState.putBoolean(STATE_DESKTOP_SITE, desktopSite)
+        outState.putBoolean(STATE_RENDERER_RECOVERY_USED, rendererRecoveryUsed)
+        outState.putBoolean(
+            STATE_RECREATE_AFTER_RENDERER,
+            rendererGone || rendererRecoveryLoadPending,
+        )
         super.onSaveInstanceState(outState)
     }
 
@@ -151,11 +198,14 @@ class BrowserActivity : AppCompatActivity() {
         geolocationDialog = null
         completeGeolocation(false)
         syncFeature.destroy()
-        binding.webView.apply {
-            stopLoading()
-            webChromeClient = null
-            webViewClient = android.webkit.WebViewClient()
-            destroy()
+        webView?.let { current ->
+            webView = null
+            binding.webContainer.removeView(current)
+            current.apply {
+                stopLoading()
+                webChromeClient = null
+                destroy()
+            }
         }
         super.onDestroy()
     }
@@ -168,28 +218,76 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    private fun configureWebView() = with(binding.webView) {
-        WebView.setWebContentsDebuggingEnabled(false)
-        settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            allowFileAccess = false
-            allowContentAccess = true
-            mediaPlaybackRequiresUserGesture = true
-            setSupportMultipleWindows(false)
-            safeBrowsingEnabled = true
+    private fun configureWebView() {
+        check(webView == null)
+        val current = WebView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
         }
-        CookieManager.getInstance().apply {
-            setAcceptCookie(true)
-            setAcceptThirdPartyCookies(this@with, false)
+        webView = current
+        binding.webContainer.addView(current)
+        with(current) {
+            WebView.setWebContentsDebuggingEnabled(false)
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                allowFileAccess = false
+                allowContentAccess = true
+                mediaPlaybackRequiresUserGesture = true
+                setSupportMultipleWindows(false)
+                safeBrowsingEnabled = true
+            }
+            CookieManager.getInstance().apply {
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(current, false)
+            }
+            mobileUserAgent = settings.userAgentString
+            settings.userAgentString = "$mobileUserAgent XanhBrowser/1.0"
+            webViewClient = XanhWebViewClient(this@BrowserActivity)
+            webChromeClient = XanhWebChromeClient(this@BrowserActivity)
+            setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+                enqueueDownload(url, userAgent, contentDisposition, mimeType)
+            }
         }
-        mobileUserAgent = settings.userAgentString
-        settings.userAgentString = "$mobileUserAgent XanhBrowser/1.0"
-        webViewClient = XanhWebViewClient(this@BrowserActivity)
-        webChromeClient = XanhWebChromeClient(this@BrowserActivity)
-        setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-            enqueueDownload(url, userAgent, contentDisposition, mimeType)
+    }
+
+    internal fun onRendererGone(view: WebView): Boolean {
+        if (rendererGone || webView !== view) return true
+        rendererGone = true
+        syncFeature.abandonRenderer()
+        fileCallback?.onReceiveValue(null)
+        fileCallback = null
+        cancelGeolocation()
+        webView = null
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.destroy()
+        scheduleRendererRecovery()
+        return true
+    }
+
+    private fun scheduleRendererRecovery() {
+        if (isFinishing || isDestroyed) return
+        if (rendererRecoveryScheduled) return
+        if (rendererRecoveryUsed) {
+            Toast.makeText(this, R.string.renderer_recovery_stopped, Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        rendererRecoveryScheduled = true
+        binding.root.post {
+            rendererRecoveryScheduled = false
+            if (
+                !isFinishing &&
+                !isDestroyed &&
+                rendererGone &&
+                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            ) {
+                recreate()
+            }
         }
     }
 
@@ -208,7 +306,8 @@ class BrowserActivity : AppCompatActivity() {
     private fun configureBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (binding.webView.canGoBack()) binding.webView.goBack() else finish()
+                val current = webView
+                if (current?.canGoBack() == true) current.goBack() else finish()
             }
         })
     }
@@ -226,11 +325,12 @@ class BrowserActivity : AppCompatActivity() {
         } else {
             pendingNavigationUrl = resolved
             currentNavigationUrl = resolved
-            binding.webView.loadUrl(resolved)
+            webView?.loadUrl(resolved)
         }
     }
 
     internal fun onPageStarted(url: String?) {
+        if (rendererGone) return
         syncFeature.navigationStarted(url)
         if (!url.isNullOrBlank() && url != "about:blank") {
             currentNavigationUrl = url
@@ -240,6 +340,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     internal fun onPageChanged(url: String?, title: String?) {
+        if (rendererGone) return
         syncFeature.navigationCommitted(url, title)
         if (
             !url.isNullOrBlank() &&
@@ -250,12 +351,15 @@ class BrowserActivity : AppCompatActivity() {
             currentNavigationUrl = url
             pendingNavigationUrl = null
             binding.urlBar.setText(url)
-            preferences.edit { putString(LAST_URL, url) }
+            RendererRecoveryPolicy.selectUrl(url)?.let { safeUrl ->
+                preferences.edit { putString(LAST_URL, safeUrl) }
+            }
             supportActionBar?.subtitle = title
         }
     }
 
     internal fun onProgress(progress: Int) {
+        if (rendererGone) return
         binding.loadingProgress.progress = progress
         binding.loadingProgress.visibility = if (progress in 0..99) android.view.View.VISIBLE else android.view.View.GONE
     }
@@ -264,23 +368,27 @@ class BrowserActivity : AppCompatActivity() {
     internal fun loadWebUrlForTest(url: String) = loadUrlOrSearch(url)
 
     @VisibleForTesting
-    internal fun currentWebUrlForTest(): String? = binding.webView.url
+    internal fun currentWebUrlForTest(): String? = webView?.url
 
     internal fun openExternal(uri: Uri): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
-        return if (intent.resolveActivity(packageManager) != null) {
-            startActivity(intent)
-            true
-        } else {
+        if (intent.resolveActivity(packageManager) == null) {
             Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_SHORT).show()
-            false
+            return false
         }
+        return runCatching { startActivity(intent) }
+            .onFailure { Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_SHORT).show() }
+            .isSuccess
     }
 
     internal fun chooseFiles(
         callback: ValueCallback<Array<Uri>>,
         acceptTypes: Array<String>,
     ): Boolean {
+        if (rendererGone || webView == null) {
+            callback.onReceiveValue(null)
+            return false
+        }
         fileCallback?.onReceiveValue(null)
         fileCallback = callback
         val types = acceptTypes.filter { it.isNotBlank() }.ifEmpty { listOf("*/*") }.toTypedArray()
@@ -295,6 +403,10 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     internal fun requestGeolocation(origin: String, callback: GeolocationPermissions.Callback) {
+        if (rendererGone || webView == null) {
+            callback.invoke(origin, false, false)
+            return
+        }
         geolocationDialog?.setOnCancelListener(null)
         geolocationDialog?.dismiss()
         geolocationDialog = null
@@ -360,22 +472,25 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    private fun requestDesktopSite(enabled: Boolean, reload: Boolean = true) = with(binding.webView.settings) {
-        desktopSite = enabled
-        userAgentString = if (enabled) {
-            mobileUserAgent.replace("; wv", "").replace(" Mobile", "") + " XanhBrowser/1.0"
-        } else {
-            "$mobileUserAgent XanhBrowser/1.0"
+    private fun requestDesktopSite(enabled: Boolean, reload: Boolean = true) {
+        val current = webView ?: return
+        with(current.settings) {
+            desktopSite = enabled
+            userAgentString = if (enabled) {
+                mobileUserAgent.replace("; wv", "").replace(" Mobile", "") + " XanhBrowser/1.0"
+            } else {
+                "$mobileUserAgent XanhBrowser/1.0"
+            }
+            useWideViewPort = enabled
+            loadWithOverviewMode = enabled
+            if (reload) current.reload()
         }
-        useWideViewPort = enabled
-        loadWithOverviewMode = enabled
-        if (reload) binding.webView.reload()
     }
 
     private fun clearPrivateData() {
         WebStorage.getInstance().deleteAllData()
         clearLegacyWebViewCredentials()
-        binding.webView.apply {
+        webView?.apply {
             clearCache(true)
             clearHistory()
             clearFormData()
@@ -406,11 +521,12 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun sharePage() {
-        val url = binding.webView.url ?: return
+        val current = webView ?: return
+        val url = current.url ?: return
         val share = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, url)
-            putExtra(Intent.EXTRA_TITLE, binding.webView.title)
+            putExtra(Intent.EXTRA_TITLE, current.title)
         }
         startActivity(Intent.createChooser(share, getString(R.string.share)))
     }
@@ -457,7 +573,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun exportBackup(uri: Uri, password: CharArray) {
-        val candidate = pendingNavigationUrl ?: currentNavigationUrl ?: binding.webView.url
+        val candidate = pendingNavigationUrl ?: currentNavigationUrl ?: webView?.url
         val url = candidate?.takeIf(PortableBackup::isSupportedWebUrl)
             ?: getString(R.string.app_website)
         val payload = PortableBackupPayload(
@@ -536,15 +652,15 @@ class BrowserActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.action_back -> {
-            if (binding.webView.canGoBack()) binding.webView.goBack()
+            webView?.let { if (it.canGoBack()) it.goBack() }
             true
         }
         R.id.action_forward -> {
-            if (binding.webView.canGoForward()) binding.webView.goForward()
+            webView?.let { if (it.canGoForward()) it.goForward() }
             true
         }
         R.id.action_reload -> {
-            binding.webView.reload()
+            webView?.reload()
             true
         }
         R.id.action_share -> {
@@ -569,7 +685,7 @@ class BrowserActivity : AppCompatActivity() {
             true
         }
         R.id.action_firefox_sync -> {
-            syncFeature.open(binding.webView.url, binding.webView.title)
+            syncFeature.open(webView?.url, webView?.title)
             true
         }
         R.id.action_clear_private_data -> {
@@ -586,8 +702,9 @@ class BrowserActivity : AppCompatActivity() {
     companion object {
         private const val PREFERENCES = "xanh_browser_lite"
         private const val LAST_URL = "last_url"
-        private const val STATE_WEB_VIEW = "state_web_view"
         private const val STATE_CURRENT_URL = "state_current_url"
         private const val STATE_DESKTOP_SITE = "state_desktop_site"
+        private const val STATE_RENDERER_RECOVERY_USED = "state_renderer_recovery_used"
+        private const val STATE_RECREATE_AFTER_RENDERER = "state_recreate_after_renderer"
     }
 }

@@ -27,6 +27,7 @@
     <string name="no_app_for_link">No app can open this link</string>
     <string name="tls_error">The secure connection could not be verified</string>
     <string name="unsafe_page_blocked">Unsafe page blocked</string>
+    <string name="renderer_recovery_stopped">This page stopped repeatedly, so automatic recovery was stopped</string>
     <string name="location_request_title">Allow location access?</string>
     <string name="location_request_message">%1$s wants to use your location.</string>
     <string name="deny">Deny</string>

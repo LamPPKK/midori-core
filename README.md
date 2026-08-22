@@ -92,6 +92,13 @@ Xanh Browser Lite intentionally has one tab and no history manager, tab
 manager or bookmark database. It includes navigation, address/search
 resolution, reload, sharing, desktop mode, file upload, geolocation consent,
 scoped downloads and asynchronous privacy clearing.
+Its serviced System WebView integration uses the stable AndroidX WebKit 1.17.0
+compatibility layer; the separately packaged WPE edition remains governed by
+the engine-specific baseline below. If the serviced renderer is terminated,
+Lite destroys the dead WebView and recreates the Activity from only its last
+validated HTTP(S) URL instead of restoring a form body. Recovery waits until
+the Activity is foreground, runs at most once and closes a repeatedly crashing
+page instead of looping.
 
 Use JDK 17 and Android SDK 36:
 

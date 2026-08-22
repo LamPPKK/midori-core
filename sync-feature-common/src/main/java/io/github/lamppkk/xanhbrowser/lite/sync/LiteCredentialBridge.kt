@@ -4,6 +4,7 @@ import android.net.Uri
 import android.webkit.WebView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
@@ -36,6 +37,8 @@ class LiteCredentialBridge private constructor(
     private var navigationNonce = UUID.randomUUID().toString()
     private var scriptHandler: ScriptHandler? = null
     private var installed = false
+    private var abandoned = false
+    private var credentialDialog: AlertDialog? = null
 
     init {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
@@ -53,6 +56,7 @@ class LiteCredentialBridge private constructor(
     }
 
     fun navigationStarted(url: String?) {
+        if (abandoned) return
         committedUrl = canonicalHttpsUrl(url)
         navigationNonce = UUID.randomUUID().toString()
         if (!installed || committedUrl == null ||
@@ -68,10 +72,14 @@ class LiteCredentialBridge private constructor(
     }
 
     fun navigationCommitted(url: String?) {
+        if (abandoned) return
         committedUrl = canonicalHttpsUrl(url)
     }
 
     fun destroy() {
+        credentialDialog?.dismiss()
+        credentialDialog = null
+        if (abandoned) return
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             scriptHandler?.remove()
         }
@@ -83,6 +91,17 @@ class LiteCredentialBridge private constructor(
         committedUrl = null
     }
 
+    // Renderer-death path: invalidate callbacks without invoking a WebView API.
+    fun abandonRenderer() {
+        abandoned = true
+        installed = false
+        scriptHandler = null
+        committedUrl = null
+        navigationNonce = UUID.randomUUID().toString()
+        credentialDialog?.dismiss()
+        credentialDialog = null
+    }
+
     private fun onMessage(
         view: WebView,
         message: WebMessageCompat,
@@ -90,6 +109,7 @@ class LiteCredentialBridge private constructor(
         isMainFrame: Boolean,
         reply: JavaScriptReplyProxy,
     ) {
+        if (abandoned) return
         if (!isMainFrame || message.type != WebMessageCompat.TYPE_STRING) return
         val currentUrl = committedUrl ?: return
         val data = message.data ?: return
@@ -111,6 +131,7 @@ class LiteCredentialBridge private constructor(
         ) return
         val requestUrl = view.url ?: return
         activity.lifecycleScope.launch {
+            if (abandoned || navigationNonce != envelope.navigationNonce) return@launch
             val runtime = LiteSyncCoordinator.get(activity).runtimeOrNull() ?: return@launch
             if (!runCatching { runtime.touchVault() }.getOrDefault(false)) return@launch
             val requestedOrigin = CredentialPolicy.canonicalHttpsOrigin(
@@ -127,32 +148,49 @@ class LiteCredentialBridge private constructor(
             val logins = withContext(Dispatchers.IO) {
                 runCatching { runtime.credentialLogins(context) }
             }.getOrElse { return@launch }
-            if (logins.isEmpty() || activity.isFinishing) return@launch
-            AlertDialog.Builder(activity)
+            if (
+                logins.isEmpty() ||
+                activity.isFinishing ||
+                abandoned ||
+                navigationNonce != envelope.navigationNonce ||
+                !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            ) return@launch
+            val dialog = AlertDialog.Builder(activity)
                 .setTitle(R.string.sync_passwords)
                 .setItems(logins.map { it.username.ifBlank { activity.getString(R.string.sync_empty_username) } }.toTypedArray()) {
                     _, index ->
                     val selected = logins[index]
                     val allowed = runCatching { runtime.touchVault() }.getOrDefault(false) &&
                         CredentialPolicy.isAllowed(context, vaultUnlocked = true)
-                    if (!allowed || navigationNonce != envelope.navigationNonce || webView.url != requestUrl) {
+                    if (
+                        !allowed ||
+                        abandoned ||
+                        navigationNonce != envelope.navigationNonce ||
+                        webView.url != requestUrl
+                    ) {
                         return@setItems
                     }
                     if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-                        reply.postMessage(
+                        val delivered = runCatching { reply.postMessage(
                             JSONObject()
                                 .put("type", "credential-selected")
                                 .put("username", selected.username)
                                 .put("password", selected.password)
                                 .toString(),
-                        )
-                    }
-                    activity.lifecycleScope.launch(Dispatchers.IO) {
-                        runCatching { runtime.touchLogin(selected.id) }
+                        ) }.isSuccess
+                        if (delivered) {
+                            activity.lifecycleScope.launch(Dispatchers.IO) {
+                                runCatching { runtime.touchLogin(selected.id) }
+                            }
+                        }
                     }
                 }
                 .setNegativeButton(android.R.string.cancel, null)
-                .show()
+                .create()
+            dialog.setOnDismissListener { if (credentialDialog === dialog) credentialDialog = null }
+            credentialDialog?.dismiss()
+            credentialDialog = dialog
+            if (!abandoned && navigationNonce == envelope.navigationNonce) dialog.show()
         }
     }
 

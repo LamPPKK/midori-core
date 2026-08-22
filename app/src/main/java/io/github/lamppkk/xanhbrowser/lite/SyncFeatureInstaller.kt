@@ -75,6 +75,12 @@ internal class SyncFeatureInstaller(private val activity: AppCompatActivity) {
         credentialBridge = null
     }
 
+    // Invalidates a bridge after renderer death without calling back into its WebView.
+    fun abandonRenderer() {
+        runCatching { credentialBridge?.javaClass?.getMethod("abandonRenderer")?.invoke(credentialBridge) }
+        credentialBridge = null
+    }
+
     private fun invokeBridge(name: String, value: String?) {
         runCatching {
             credentialBridge?.javaClass?.getMethod(name, String::class.java)?.invoke(credentialBridge, value)

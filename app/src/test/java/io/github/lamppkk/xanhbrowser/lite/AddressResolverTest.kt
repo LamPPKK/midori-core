@@ -40,6 +40,9 @@ class AddressResolverTest {
     fun recognizesOnlyAllowlistedExternalSchemes() {
         assertTrue(AddressResolver.isExternal("tel:+84123456789"))
         assertTrue(!AddressResolver.isExternal("intent://malicious"))
+        assertTrue(!AddressResolver.isExternal("mailto:\nuser@example.com"))
+        assertTrue(!AddressResolver.isExternal("mailto:user@example.com?subject=x%0d%0aBcc:test@example.com"))
+        assertTrue(!AddressResolver.isExternal("tel:%00+84123456789"))
     }
 
     @Test
@@ -47,5 +50,8 @@ class AddressResolverTest {
         assertEquals("https://example.com", AddressResolver.resolveWebIntent("https://example.com"))
         assertEquals(null, AddressResolver.resolveWebIntent("tel:+84123456789"))
         assertEquals(null, AddressResolver.resolveWebIntent("intent://malicious"))
+        assertEquals(null, AddressResolver.resolveWebIntent("https://user:secret@example.com"))
+        assertEquals(null, AddressResolver.resolveWebIntent("https://example.com:70000/"))
+        assertEquals(null, AddressResolver.resolveWebIntent("https://example.com/${"a".repeat(8_193)}"))
     }
 }

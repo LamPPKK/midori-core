@@ -129,6 +129,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   GCR 4.
 - Modernized Android builds to JDK 17, Android SDK 36, AGP 9.3, Gradle 9.5,
   AndroidX and View Binding.
+- Updated Xanh Browser Lite to the stable AndroidX WebKit 1.17.0 compatibility
+  layer used by the serviced System WebView edition.
+- Recreate the Lite browser after a System WebView renderer termination using
+  only the last bounded HTTP(S) URL; dead WebView state and form bodies are not
+  restored or resubmitted. Recovery is foreground-only, destroys the failed
+  WebView synchronously and stops after one attempt.
 - Updated the Lite on-demand Sync feature to use the lifecycle-safe Android AAR
   facade for Places and Logins instead of retaining native storage handles.
 

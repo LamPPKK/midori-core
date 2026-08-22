@@ -10,6 +10,7 @@ internal object WebKitAddressResolver {
     private const val MAX_URL_LENGTH = 8_192
     private val externalSchemes = setOf("mailto", "tel", "geo", "market")
     private val schemePattern = Regex("^([A-Za-z][A-Za-z0-9+.-]*):")
+    private val encodedControlPattern = Regex("%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[fF])")
 
     fun resolve(input: String): String {
         val value = input.trim()
@@ -33,7 +34,12 @@ internal object WebKitAddressResolver {
 
     fun isExternal(value: String): Boolean = runCatching {
         val normalized = value.trim()
-        if (normalized.isEmpty() || !isWithinUrlLimit(normalized) || normalized.any(Char::isISOControl)) {
+        if (
+            normalized.isEmpty() ||
+            !isWithinUrlLimit(normalized) ||
+            normalized.any(Char::isISOControl) ||
+            encodedControlPattern.containsMatchIn(normalized)
+        ) {
             return@runCatching false
         }
         val uri = URI(normalized)

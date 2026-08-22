@@ -237,8 +237,12 @@ class WebKitBrowserActivity : AppCompatActivity() {
 
     private fun openExternal(uri: Uri) {
         val external = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
-        if (external.resolveActivity(packageManager) != null) startActivity(external)
-        else Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_SHORT).show()
+        if (external.resolveActivity(packageManager) == null) {
+            Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { startActivity(external) }
+            .onFailure { Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_SHORT).show() }
     }
 
     private fun onProgress(progress: Int) {

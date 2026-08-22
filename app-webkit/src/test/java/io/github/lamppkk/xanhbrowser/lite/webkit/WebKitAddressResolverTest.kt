@@ -31,6 +31,8 @@ class WebKitAddressResolverTest {
         assertTrue(WebKitAddressResolver.isExternal("tel:+84123456789"))
         assertFalse(WebKitAddressResolver.isExternal("https://example.com"))
         assertFalse(WebKitAddressResolver.isExternal("mailto:\nuser@example.com"))
+        assertFalse(WebKitAddressResolver.isExternal("mailto:user@example.com?subject=x%0d%0aBcc:test@example.com"))
+        assertFalse(WebKitAddressResolver.isExternal("tel:%00+84123456789"))
         assertFalse(WebKitAddressResolver.isExternal("tel:"))
         assertTrue(WebKitAddressResolver.isValidWebUrl("https://example.com"))
         assertFalse(WebKitAddressResolver.isValidWebUrl("file:///tmp/private"))

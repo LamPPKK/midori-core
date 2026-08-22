@@ -1,7 +1,9 @@
 package io.github.lamppkk.xanhbrowser.lite
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Build
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SafeBrowsingResponse
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
@@ -11,15 +13,21 @@ import android.net.http.SslError
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 
+@SuppressLint("MissingOnRenderProcessGone") // This client handles renderer loss below.
 internal class XanhWebViewClient(
     private val activity: BrowserActivity,
 ) : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val uri = request.url
         return when (uri.scheme?.lowercase()) {
-            "http", "https" -> uri.host.isNullOrBlank()
+            "http", "https" -> !AddressResolver.isValidWebUrl(uri.toString())
             "mailto", "tel", "geo", "market" -> {
-                if (request.isForMainFrame && request.hasGesture()) activity.openExternal(uri) else true
+                if (
+                    request.isForMainFrame &&
+                    request.hasGesture() &&
+                    !request.isRedirect &&
+                    AddressResolver.isExternal(uri.toString())
+                ) activity.openExternal(uri) else true
             }
             else -> true
         }
@@ -47,5 +55,9 @@ internal class XanhWebViewClient(
     ) {
         callback.backToSafety(true)
         Toast.makeText(activity, R.string.unsafe_page_blocked, Toast.LENGTH_LONG).show()
+    }
+
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        return activity.onRendererGone(view)
     }
 }

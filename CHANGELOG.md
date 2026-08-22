@@ -119,6 +119,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   identities, creates upstream Sync tombstones, handles offline-only rows
   without guessed identifiers, rejects private-tab mutations and rebuilds
   metadata-less schema-v1 mirrors.
+- Added bounded bookmark rename to the same Linux panel. The host updates the
+  exact Places GUID and title only, preserves URL/folder/position, reconciles
+  the rollback row and rejects stale, metadata-less or private-tab mutations.
 - Added a native Linux Logins picker and a document-start, top-frame-only
   WebKitGTK bridge in a named isolated world. It requires trusted input,
   validates request/navigation nonce and exact HTTPS origin, passes secrets as

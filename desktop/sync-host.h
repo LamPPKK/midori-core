@@ -121,6 +121,16 @@ gchar *xanh_sync_host_bookmarks_json_finish (
     XanhSyncHost *self,
     GAsyncResult *result,
     GError **error);
+void xanh_sync_host_update_bookmark_async (
+    XanhSyncHost *self,
+    const gchar *update_json,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gboolean xanh_sync_host_update_bookmark_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
 void xanh_sync_host_delete_bookmark_async (
     XanhSyncHost *self,
     const gchar *guid,

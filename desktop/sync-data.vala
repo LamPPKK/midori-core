@@ -356,6 +356,50 @@ namespace Xanh {
             host.mark_local_change ();
         }
 
+        public async string rename_bookmark (StoredPage page, string title)
+                throws Error {
+            if (!is_sync_guid (page.sync_id))
+                throw new SyncDataError.INVALID_DATA (
+                    "The bookmark mirror has no durable Places identity");
+            string safe_title = sanitized_sync_title (title);
+            string update_json = bookmark_title_update_json (
+                page.sync_id, safe_title);
+            if (!(yield host.update_bookmark_async (update_json)))
+                throw new SyncDataError.INVALID_DATA (
+                    "Places did not acknowledge the bookmark rename");
+            if (!database.finalize_places_bookmark_rename (
+                    page.sync_id, page.uri, safe_title))
+                throw new SyncDataError.INVALID_DATA (
+                    "The renamed bookmark no longer exists in the mirror");
+            page.title = safe_title;
+            host.mark_local_change ();
+            return safe_title;
+        }
+
+        public static string bookmark_title_update_json (string guid, string title)
+                throws SyncDataError {
+            if (!is_sync_guid (guid))
+                throw new SyncDataError.INVALID_DATA (
+                    "Bookmark update requires a valid Places GUID");
+            string safe_title = sanitized_sync_title (title);
+            var builder = new Json.Builder ();
+            builder.begin_object ();
+            builder.set_member_name ("guid");
+            builder.add_string_value (guid);
+            builder.set_member_name ("title");
+            builder.add_string_value (safe_title);
+            builder.set_member_name ("url");
+            builder.add_null_value ();
+            builder.set_member_name ("parent_guid");
+            builder.add_null_value ();
+            builder.set_member_name ("position");
+            builder.add_null_value ();
+            builder.set_member_name ("is_private");
+            builder.add_boolean_value (false);
+            builder.end_object ();
+            return generate_json (builder);
+        }
+
         public async void delete_history (StoredPage page) throws Error {
             if (!is_sync_web_uri (page.uri) || page.sync_timestamp_millis <= 0)
                 throw new SyncDataError.INVALID_DATA (

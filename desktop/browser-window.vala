@@ -1998,8 +1998,8 @@ namespace Xanh {
             try {
                 var app = application as BrowserApplication;
                 bool use_places = app != null && app.synced_places_available ();
-                bool deletion_waiting_for_identity = app != null &&
-                    app.places_deletion_waiting_for_identity ();
+                bool mutation_waiting_for_identity = app != null &&
+                    app.places_mutation_waiting_for_identity ();
                 var pages = bookmarks
                     ? (use_places ? database.list_places_bookmarks () : database.list_bookmarks ())
                     : (use_places ? database.list_places_history () : database.list_history ());
@@ -2028,18 +2028,32 @@ namespace Xanh {
                     box.append (title_label);
                     box.append (uri_label);
                     outer.append (box);
+                    var actions = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 6);
+                    actions.valign = Gtk.Align.CENTER;
+                    if (bookmarks) {
+                        var rename_button = new Gtk.Button.with_label ("Rename");
+                        rename_button.sensitive = !mutation_waiting_for_identity;
+                        rename_button.tooltip_text = mutation_waiting_for_identity
+                            ? "Firefox Sync is rebuilding exact bookmark identities"
+                            : "Rename bookmark";
+                        rename_button.clicked.connect (() => {
+                            confirm_page_rename.begin (row, rename_button,
+                                title_label, page, use_places);
+                        });
+                        actions.append (rename_button);
+                    }
                     var delete_button = new Gtk.Button.with_label ("Delete");
-                    delete_button.valign = Gtk.Align.CENTER;
                     delete_button.add_css_class ("destructive-action");
-                    delete_button.sensitive = !deletion_waiting_for_identity;
-                    delete_button.tooltip_text = deletion_waiting_for_identity
+                    delete_button.sensitive = !mutation_waiting_for_identity;
+                    delete_button.tooltip_text = mutation_waiting_for_identity
                         ? "Firefox Sync is rebuilding exact deletion identities"
                         : (bookmarks ? "Delete bookmark" : "Delete history visit");
                     delete_button.clicked.connect (() => {
                         confirm_page_deletion.begin (window, list, row,
                             delete_button, page, bookmarks, use_places);
                     });
-                    outer.append (delete_button);
+                    actions.append (delete_button);
+                    outer.append (actions);
                     row.set_child (outer);
                     row.set_data<string> ("uri", page.uri);
                     list.append (row);
@@ -2075,7 +2089,8 @@ namespace Xanh {
             dialog.buttons = { "Cancel", "Delete" };
             dialog.cancel_button = 0;
             dialog.default_button = 0;
-            button.sensitive = false;
+            Gtk.Widget? controls = button.get_parent ();
+            if (controls != null) controls.sensitive = false;
             try {
                 if ((yield dialog.choose (window, null)) != 1) return;
                 var app = application as BrowserApplication;
@@ -2091,8 +2106,99 @@ namespace Xanh {
                 show_message (bookmark ? "Unable to Delete Bookmark" :
                     "Unable to Delete History", error.message);
             } finally {
-                if (row.get_parent () == list) button.sensitive = true;
+                if (row.get_parent () == list && controls != null)
+                    controls.sensitive = true;
             }
+        }
+
+        async void confirm_page_rename (Gtk.ListBoxRow row, Gtk.Button button,
+                Gtk.Label title_label, StoredPage page, bool from_places) {
+            Gtk.Widget? controls = button.get_parent ();
+            Gtk.Widget anchor = button;
+            if (controls != null) {
+                Gtk.Widget? parent = controls.get_parent ();
+                if (parent != null) anchor = parent;
+            }
+            if (controls != null) controls.sensitive = false;
+            try {
+                string? title = yield choose_bookmark_title (anchor, page.title);
+                if (title == null) return;
+                var app = application as BrowserApplication;
+                if (app == null)
+                    throw new IOError.NOT_INITIALIZED (
+                        "Browser application is unavailable");
+                var current_tab = active_tab ();
+                bool private_context = current_tab == null ||
+                    current_tab.state.private_mode;
+                string renamed = yield app.rename_stored_bookmark (
+                    page, title, from_places, private_context);
+                title_label.label = renamed;
+            } catch (Error error) {
+                show_message ("Unable to Rename Bookmark", error.message);
+            } finally {
+                if (row.get_parent () != null && controls != null)
+                    controls.sensitive = true;
+            }
+        }
+
+        async string? choose_bookmark_title (Gtk.Widget anchor, string current_title) {
+            var picker = new Gtk.Popover ();
+            picker.autohide = false;
+            picker.has_arrow = true;
+            picker.set_size_request (420, -1);
+            var root = new Gtk.Box (Gtk.Orientation.VERTICAL, 10);
+            root.margin_start = 16;
+            root.margin_end = 16;
+            root.margin_top = 16;
+            root.margin_bottom = 16;
+            var heading = new Gtk.Label ("Rename bookmark");
+            heading.halign = Gtk.Align.START;
+            root.append (heading);
+            var entry = new Gtk.Entry ();
+            entry.text = current_title;
+            entry.max_length = PageDataPolicy.MAX_TITLE_BYTES;
+            entry.activates_default = true;
+            root.append (entry);
+            var buttons = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 8);
+            buttons.halign = Gtk.Align.END;
+            var cancel = new Gtk.Button.with_label ("Cancel");
+            var rename = new Gtk.Button.with_label ("Rename");
+            rename.add_css_class ("suggested-action");
+            buttons.append (cancel);
+            buttons.append (rename);
+            root.append (buttons);
+            picker.child = root;
+
+            string? selected = null;
+            bool completed = false;
+            SourceFunc resume = choose_bookmark_title.callback;
+            picker.closed.connect (() => {
+                if (!completed) {
+                    completed = true;
+                    Idle.add (() => {
+                        resume ();
+                        return Source.REMOVE;
+                    });
+                }
+            });
+            cancel.clicked.connect (() => picker.popdown ());
+            rename.clicked.connect (() => {
+                if (completed) return;
+                selected = entry.text;
+                completed = true;
+                picker.popdown ();
+                Idle.add (() => {
+                    resume ();
+                    return Source.REMOVE;
+                });
+            });
+            entry.activate.connect (() => rename.activate ());
+            picker.set_parent (anchor);
+            picker.popup ();
+            entry.grab_focus ();
+            yield;
+            picker.unparent ();
+            return selected;
         }
 
         void show_downloads () {

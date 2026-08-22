@@ -348,8 +348,9 @@ The GTK bookmark/history panels preserve the native bookmark GUID and exact
 visit timestamp in a schema-v2 compatibility mirror. Confirmed row deletion
 therefore calls the upstream Places API and creates the precise tombstone for
 the next Firefox Sync; rows created offline remain removable without guessing
-a native identity. Delete mutations are rejected from private tabs. Existing
-schema-v1 mirrors are discarded and safely rebuilt.
+a native identity. The same panel can rename a bookmark by GUID while leaving
+its URL, folder and position unchanged. Rename/delete mutations are rejected
+from private tabs. Existing schema-v1 mirrors are discarded and safely rebuilt.
 Clearing browsing data quiesces every open window, clears upstream Places
 history locally for the next Sync and removes migration snapshots. Linux
 regular tabs now use a native GTK username picker and a document-start,

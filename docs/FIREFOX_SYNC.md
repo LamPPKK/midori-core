@@ -140,7 +140,13 @@ and each history visit's exact millisecond timestamp. The GTK panels require a
 native confirmation before deleting a row, then call the upstream Places
 delete operation and mark the mutation for Sync. Offline-only rows have no
 invented identity and are removed from the pending legacy import instead.
-Deletion is rejected while the owning browser window is in a private tab.
+The bookmark panel also exposes a bounded native title editor. Its update JSON
+contains the exact GUID and sanitized title while URL, parent and position stay
+unset, so no structural bookmark change is inferred. Rename/deletion is
+rejected while the owning browser window is in a private tab.
+Legacy and offline-only rename/delete commits migration-marker invalidation in
+the same SQLite transaction, so a process stop cannot make a later import skip
+the mutation.
 Local tombstones also remove the corresponding rollback row; a remote visit is
 marked explicitly so a same-second local legacy visit is never removed by
 mistake.

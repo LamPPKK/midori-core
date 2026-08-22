@@ -429,7 +429,7 @@ namespace Xanh {
             return places_mirror_ready;
         }
 
-        public bool places_deletion_waiting_for_identity () {
+        public bool places_mutation_waiting_for_identity () {
             if (places_mirror_ready) return false;
             try {
                 ensure_database ();
@@ -476,7 +476,6 @@ namespace Xanh {
                             deleted = true;
                         } else if (page.sync_id == "") {
                             deleted = database.delete_pending_bookmark (page.uri);
-                            if (deleted) database.invalidate_sync_migration ();
                         } else {
                             throw new IOError.INVALID_DATA (
                                 "The bookmark Sync identity is malformed");
@@ -491,20 +490,18 @@ namespace Xanh {
                         } else if (page.sync_timestamp_millis == 0) {
                             deleted = database.delete_pending_history (
                                 page.uri, page.visited_at);
-                            if (deleted) database.invalidate_sync_migration ();
                         } else {
                             throw new IOError.INVALID_DATA (
                                 "The history Sync identity is malformed");
                         }
                     }
                 } else {
-                    if (places_deletion_waiting_for_identity ())
+                    if (places_mutation_waiting_for_identity ())
                         throw new IOError.BUSY (
                             "Firefox Sync is rebuilding exact deletion identities");
                     deleted = bookmark
                         ? database.delete_bookmark (page.id)
                         : database.delete_history (page.id);
-                    if (deleted) database.invalidate_sync_migration ();
                 }
                 if (!deleted)
                     throw new IOError.NOT_FOUND (
@@ -513,6 +510,57 @@ namespace Xanh {
                 sync_workflow_running = false;
             }
             maybe_sync (SyncReason.LOCAL_CHANGE);
+        }
+
+        public async string rename_stored_bookmark (StoredPage page, string title,
+                bool from_places, bool private_context) throws Error {
+            if (private_context)
+                throw new IOError.PERMISSION_DENIED (
+                    "Bookmark mutations are disabled in private tabs");
+            if (sync_workflow_running)
+                throw new IOError.BUSY ("A Firefox Sync workflow is already running");
+            string safe_title = PageDataPolicy.sanitized_title (title, page.uri);
+            sync_workflow_running = true;
+            try {
+                ensure_database ();
+                require_sync_allowed ();
+                if (from_places != places_mirror_ready)
+                    throw new IOError.BUSY (
+                        "Browser data changed; reopen this panel before renaming");
+                bool renamed = false;
+                if (from_places) {
+                    if (!database.places_bookmark_identity_matches (
+                            page.uri, page.sync_id))
+                        throw new IOError.BUSY (
+                            "Browser data changed; reopen this panel before renaming");
+                    if (SyncDataCoordinator.is_sync_guid (page.sync_id)) {
+                        if (sync_data == null)
+                            throw new IOError.NOT_INITIALIZED (
+                                "Firefox Sync data is unavailable");
+                        safe_title = yield sync_data.rename_bookmark (page, safe_title);
+                        renamed = true;
+                    } else if (page.sync_id == "") {
+                        renamed = database.rename_pending_bookmark (
+                            page.uri, safe_title);
+                    } else {
+                        throw new IOError.INVALID_DATA (
+                            "The bookmark Sync identity is malformed");
+                    }
+                } else {
+                    if (places_mutation_waiting_for_identity ())
+                        throw new IOError.BUSY (
+                            "Firefox Sync is rebuilding exact bookmark identities");
+                    renamed = database.rename_bookmark (page.id, safe_title);
+                }
+                if (!renamed)
+                    throw new IOError.NOT_FOUND (
+                        "The selected bookmark no longer exists");
+                page.title = safe_title;
+            } finally {
+                sync_workflow_running = false;
+            }
+            maybe_sync (SyncReason.LOCAL_CHANGE);
+            return safe_title;
         }
 
         public bool begin_browsing_data_clear () {

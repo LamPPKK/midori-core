@@ -254,6 +254,13 @@ allowed historical material, never a shipping dependency or application ID.
    exact history visit. Verify Firefox receives the corresponding tombstone,
    an absent bookmark retry is idempotent, private-mode deletion is rejected,
    and deleting a queued offline-only row removes it from the later import.
+   Rename a native bookmark and verify Firefox receives only the new bounded
+   title: URL, folder and position must remain unchanged. Repeat for an
+   offline-only bookmark and verify the later import retains the new title.
+   Rename from a private tab and with a stale panel identity; both must fail
+   closed without changing Places or the rollback table. Kill the process at
+   legacy/offline rename and delete boundaries; mutation and migration-marker
+   invalidation must remain atomic after restart.
    Open a schema-v1 profile and verify both metadata-less mirrors are cleared
    and rebuilt with a valid bookmark GUID/exact millisecond visit timestamp
    before their Delete actions become available.

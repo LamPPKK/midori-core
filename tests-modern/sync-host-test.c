@@ -108,6 +108,21 @@ unavailable_delete_bookmark_finished (GObject      *source,
 }
 
 static void
+unavailable_update_bookmark_finished (GObject      *source,
+                                      GAsyncResult *result,
+                                      gpointer      user_data)
+{
+    GMainLoop *loop = user_data;
+    g_autoptr (GError) error = NULL;
+
+    g_assert_false (xanh_sync_host_update_bookmark_finish (
+        XANH_SYNC_HOST (source), result, &error));
+    g_assert_error (error, XANH_SYNC_HOST_ERROR,
+                    XANH_SYNC_HOST_ERROR_UNAVAILABLE);
+    g_main_loop_quit (loop);
+}
+
+static void
 unavailable_delete_history_finished (GObject      *source,
                                      GAsyncResult *result,
                                      gpointer      user_data)
@@ -168,6 +183,9 @@ test_disabled_data_bridge_fails_closed (void)
     xanh_sync_host_delete_bookmark_async (
         host, "AbCdEf123_-x", FALSE, NULL,
         unavailable_delete_bookmark_finished, loop);
+    g_main_loop_run (loop);
+    xanh_sync_host_update_bookmark_async (
+        host, "{}", NULL, unavailable_update_bookmark_finished, loop);
     g_main_loop_run (loop);
     xanh_sync_host_delete_history_visit_async (
         host, "https://example.com/", 1000, NULL,

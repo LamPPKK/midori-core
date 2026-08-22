@@ -353,6 +353,59 @@ namespace Xanh {
             return delete_by_id ("history", id);
         }
 
+        public bool rename_bookmark (int64 id, string title) throws DatabaseError {
+            if (id <= 0) return false;
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("UPDATE bookmarks SET title = ? WHERE id = ?", out statement);
+                statement.bind_text (1, PageDataPolicy.sanitized_title (title));
+                statement.bind_int64 (2, id);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                if (changed) invalidate_sync_migration_rows ();
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Legacy bookmark rename rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
+        public bool rename_pending_bookmark (string uri, string title)
+                throws DatabaseError {
+            string safe_title = PageDataPolicy.sanitized_title (title, uri);
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("UPDATE bookmarks SET title = ? WHERE uri = ?", out statement);
+                statement.bind_text (1, safe_title);
+                statement.bind_text (2, uri);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                prepare ("UPDATE places_bookmarks_mirror SET title = ? " +
+                    "WHERE uri = ? AND sync_guid = ''", out statement);
+                statement.bind_text (1, safe_title);
+                statement.bind_text (2, uri);
+                step_done (statement);
+                changed = changed || handle.changes () > 0;
+                if (changed) invalidate_sync_migration_rows ();
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Pending bookmark rename rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
         public bool delete_pending_bookmark (string uri) throws DatabaseError {
             execute ("BEGIN IMMEDIATE;");
             try {
@@ -366,6 +419,7 @@ namespace Xanh {
                 statement.bind_text (1, uri);
                 step_done (statement);
                 changed = changed || handle.changes () > 0;
+                if (changed) invalidate_sync_migration_rows ();
                 execute ("COMMIT;");
                 return changed;
             } catch (DatabaseError error) {
@@ -395,6 +449,7 @@ namespace Xanh {
                 statement.bind_int64 (2, visited_at);
                 step_done (statement);
                 changed = changed || handle.changes () > 0;
+                if (changed) invalidate_sync_migration_rows ();
                 execute ("COMMIT;");
                 return changed;
             } catch (DatabaseError error) {
@@ -472,6 +527,35 @@ namespace Xanh {
             }
         }
 
+        public bool finalize_places_bookmark_rename (string sync_guid, string uri,
+                string title) throws DatabaseError {
+            string safe_title = PageDataPolicy.sanitized_title (title, uri);
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("UPDATE places_bookmarks_mirror SET title = ? " +
+                    "WHERE sync_guid = ? AND uri = ?", out statement);
+                statement.bind_text (1, safe_title);
+                statement.bind_text (2, sync_guid);
+                statement.bind_text (3, uri);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                prepare ("UPDATE bookmarks SET title = ? WHERE uri = ?", out statement);
+                statement.bind_text (1, safe_title);
+                statement.bind_text (2, uri);
+                step_done (statement);
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Bookmark rename mirror rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
         public bool finalize_places_history_deletion (string uri, int64 sync_millis,
                 int64 legacy_seconds, bool remove_legacy) throws DatabaseError {
             execute ("BEGIN IMMEDIATE;");
@@ -510,11 +594,24 @@ namespace Xanh {
 
         bool delete_by_id (string table, int64 id) throws DatabaseError {
             if (id <= 0) return false;
-            Sqlite.Statement statement;
-            prepare ("DELETE FROM %s WHERE id = ?".printf (table), out statement);
-            statement.bind_int64 (1, id);
-            step_done (statement);
-            return handle.changes () > 0;
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("DELETE FROM %s WHERE id = ?".printf (table), out statement);
+                statement.bind_int64 (1, id);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                if (changed) invalidate_sync_migration_rows ();
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Legacy browser-data deletion rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
         }
 
         public List<StoredPage> list_history_page (int limit, int offset) throws DatabaseError {
@@ -913,8 +1010,7 @@ namespace Xanh {
         public void invalidate_sync_migration () throws DatabaseError {
             execute ("BEGIN IMMEDIATE;");
             try {
-                execute ("DELETE FROM schema_meta WHERE key = 'places_migration_v1_complete'; " +
-                    "DELETE FROM settings WHERE key = 'places_migration_v1_sha256';");
+                invalidate_sync_migration_rows ();
                 execute ("COMMIT;");
             } catch (DatabaseError error) {
                 try { execute ("ROLLBACK;"); }
@@ -924,6 +1020,12 @@ namespace Xanh {
                 }
                 throw error;
             }
+        }
+
+        void invalidate_sync_migration_rows () throws DatabaseError {
+            execute ("DELETE FROM schema_meta " +
+                "WHERE key = 'places_migration_v1_complete'; " +
+                "DELETE FROM settings WHERE key = 'places_migration_v1_sha256';");
         }
 
         public void clear_sync_migration_backup_metadata () throws DatabaseError {

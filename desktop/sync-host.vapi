@@ -53,6 +53,9 @@ namespace Xanh {
         public async string bookmarks_json_async (
             int root,
             GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async bool update_bookmark_async (
+            string update_json,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
         public async bool delete_bookmark_async (
             string guid,
             bool is_private,

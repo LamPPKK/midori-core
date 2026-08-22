@@ -22,6 +22,18 @@ void test_bookmark_upsert () {
         var bookmarks = database.list_bookmarks ();
         assert (bookmarks.length () == 1);
         assert (bookmarks.data.title == "Updated");
+        database.set_marker ("places_migration_v1_complete");
+        database.set_setting ("places_migration_v1_sha256", "rename-checksum");
+        assert (database.rename_bookmark (bookmarks.data.id, "Renamed"));
+        assert (database.list_bookmarks ().data.title == "Renamed");
+        assert (!database.get_marker ("places_migration_v1_complete"));
+        assert (database.get_setting ("places_migration_v1_sha256") == null);
+        database.set_marker ("places_migration_v1_complete");
+        database.set_setting ("places_migration_v1_sha256", "delete-checksum");
+        assert (database.delete_bookmark (bookmarks.data.id));
+        assert (!database.get_marker ("places_migration_v1_complete"));
+        assert (database.get_setting ("places_migration_v1_sha256") == null);
+        assert (database.list_bookmarks ().length () == 0);
     } catch (Error error) {
         Test.fail_printf ("Database error: %s", error.message);
     }
@@ -329,6 +341,10 @@ void test_schema_v2_sync_identity_upgrade () {
             stored_visit.id, visit.uri, 2123));
         assert (!database.places_history_identity_matches (
             stored_visit.id, visit.uri, 2124));
+        assert (database.finalize_places_bookmark_rename (
+            "AbCdEf123_-x", bookmark.uri, "Synced rename"));
+        assert (database.list_places_bookmarks ().data.title == "Synced rename");
+        assert (database.list_bookmarks ().data.title == "Synced rename");
         database.append_places_history (new Xanh.StoredPage (
             visit.uri, "Pending duplicate", visit.visited_at));
         database.upsert_places_bookmark (new Xanh.StoredPage (
@@ -354,8 +370,24 @@ void test_schema_v2_sync_identity_upgrade () {
             "https://pending.example/", "Pending", 3));
         database.append_places_history (new Xanh.StoredPage (
             "https://pending.example/history", "Pending", 3));
+        database.set_marker ("places_migration_v1_complete");
+        database.set_setting ("places_migration_v1_sha256", "pending-rename");
+        assert (database.rename_pending_bookmark (
+            "https://pending.example/", "Pending rename"));
+        assert (database.list_bookmarks ().data.title == "Pending rename");
+        assert (database.list_places_bookmarks ().data.title == "Pending rename");
+        assert (!database.get_marker ("places_migration_v1_complete"));
+        assert (database.get_setting ("places_migration_v1_sha256") == null);
+        database.set_marker ("places_migration_v1_complete");
+        database.set_setting ("places_migration_v1_sha256", "pending-bookmark-delete");
         assert (database.delete_pending_bookmark ("https://pending.example/"));
+        assert (!database.get_marker ("places_migration_v1_complete"));
+        assert (database.get_setting ("places_migration_v1_sha256") == null);
+        database.set_marker ("places_migration_v1_complete");
+        database.set_setting ("places_migration_v1_sha256", "pending-history-delete");
         assert (database.delete_pending_history ("https://pending.example/history", 3));
+        assert (!database.get_marker ("places_migration_v1_complete"));
+        assert (database.get_setting ("places_migration_v1_sha256") == null);
         assert (database.list_bookmarks ().length () == 0);
         assert (database.list_history ().length () == 0);
         assert (database.list_places_bookmarks ().length () == 0);

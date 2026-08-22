@@ -111,6 +111,16 @@ allowed historical material, never a shipping dependency or application ID.
    errors, media permissions, downloads, private mode, session recovery,
    profile import and every native plugin.
 
+   For TLS, exercise unknown-CA, identity, activation, expiry, revocation,
+   insecure-algorithm and generic validation failures. Every error must remain
+   blocked with no certificate-exception API call or continue action. The
+   warning may show only the validated HTTPS origin and bounded, control-free
+   certificate names. Change the URI, tab, focus, renderer state and browsing-
+   data-clear state while it is open, replace it with another warning and wait
+   30 seconds; every stale prompt must close without loading or trusting the
+   failed destination. **Back to Safety** must use history when available and
+   exact `about:blank` otherwise.
+
 4. Use `webkit_web_view_terminate_web_process()` and a deliberately crashing
    test page to exercise every `WebKitWebProcessTerminationReason`. A selected
    foreground tab may perform exactly one fresh body-free URI load from its

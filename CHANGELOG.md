@@ -37,6 +37,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   document and canceled across navigation, tab/window lifecycle, renderer loss,
   privacy clearing, replacement or timeout; unsupported request types are
   denied without falling through to WebKit defaults.
+- Replaced the Linux TLS exception action with a fail-closed certificate
+  warning. It exposes only a validated origin and bounded, sanitized
+  certificate details, never installs host trust, and cancels on stale
+  tab/document/window, renderer, clear-data, replacement or timeout state.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

@@ -103,6 +103,13 @@ XR and unknown request types remain denied until they have dedicated UI and
 origin/lifecycle handling. Private tabs use the same one-request policy without
 persisting a Xanh decision across navigation.
 
+TLS certificate failures on Linux are also fail-closed. Xanh shows only the
+validated HTTPS origin plus bounded, control-free certificate details and does
+not create a certificate or host exception. The native warning is tied to the
+exact active tab and failing URL, expires after 30 seconds, and is canceled by
+navigation, tab/window lifecycle changes, renderer termination or data
+clearing. Paths, queries and fragments are never copied into the warning.
+
 ### Build and test
 
 ```sh

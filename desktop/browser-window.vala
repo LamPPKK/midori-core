@@ -59,6 +59,11 @@ namespace Xanh {
         Cancellable? pending_permission_cancellable;
         uint pending_permission_timeout_source;
         uint64 permission_generation;
+        TabRecord? pending_tls_tab;
+        string? pending_tls_uri;
+        Cancellable? pending_tls_cancellable;
+        uint pending_tls_timeout_source;
+        uint64 tls_generation;
 
         public BrowserWindow (Gtk.Application application, BrowserDatabase database) {
             Object (application: application, title: Config.APP_NAME, default_width: 1100, default_height: 760);
@@ -92,6 +97,7 @@ namespace Xanh {
                 if (!is_active) {
                     cancel_credential_picker ();
                     cancel_permission_request ();
+                    cancel_tls_error ();
                     (application as BrowserApplication)?.lock_sync_vault ();
                     tabs.foreach ((id, tab) => {
                         if (tab.recovery.cancel_automatic_recovery ()) {
@@ -194,6 +200,7 @@ namespace Xanh {
             notebook.switch_page.connect ((page, index) => {
                 cancel_credential_picker ();
                 cancel_permission_request ();
+                cancel_tls_error ();
                 var selected = page as WebKit.WebView;
                 tabs.foreach ((id, tab) => {
                     if (tab.view != selected &&
@@ -521,6 +528,13 @@ namespace Xanh {
                 schedule_session_save ();
             });
             tab.view.notify["uri"].connect (() => {
+                if (pending_permission_tab == tab &&
+                        pending_permission_document_uri != tab.view.uri) {
+                    cancel_permission_request ();
+                }
+                if (pending_tls_tab == tab && pending_tls_uri != tab.view.uri) {
+                    cancel_tls_error ();
+                }
                 if (!tab.recovery.process_stopped) {
                     tab.state.uri = tab.view.uri ?? "about:blank";
                 }
@@ -540,6 +554,9 @@ namespace Xanh {
                 if (event == WebKit.LoadEvent.STARTED &&
                         pending_permission_tab == tab) {
                     cancel_permission_request ();
+                }
+                if (event == WebKit.LoadEvent.STARTED && pending_tls_tab == tab) {
+                    cancel_tls_error ();
                 }
                 if (event == WebKit.LoadEvent.COMMITTED) {
                     tab.recovery.record_committed_uri (tab.view.uri);
@@ -578,7 +595,7 @@ namespace Xanh {
             tab.view.load_failed_with_tls_errors.connect ((uri, certificate, errors) => {
                 if (tab.recovery.finish_automatic_recovery (false))
                     show_process_stopped (tab);
-                show_tls_error.begin (tab, uri, certificate, errors);
+                handle_tls_error (tab, uri, certificate, errors);
                 return true;
             });
             tab.view.permission_request.connect ((request) => {
@@ -590,6 +607,8 @@ namespace Xanh {
                     cancel_credential_picker ();
                 if (pending_permission_tab == tab)
                     cancel_permission_request ();
+                if (pending_tls_tab == tab)
+                    cancel_tls_error ();
                 tab.recovery.record_termination ();
                 tab.state.recovery_uri = tab.recovery.recovery_uri;
                 show_process_stopped (tab);
@@ -731,32 +750,110 @@ namespace Xanh {
             finish_permission_request (false);
         }
 
-        async void show_tls_error (TabRecord tab, string uri, TlsCertificate tls,
+        void handle_tls_error (TabRecord tab, string uri, TlsCertificate tls,
                 TlsCertificateFlags errors) {
+            cancel_tls_error ();
+            if (!tls_context_is_current (tab, uri)) {
+                if (!tab.recovery.process_stopped) {
+                    tab.state.title = "Unsafe connection blocked";
+                    update_tab_label (tab);
+                }
+                if (active_tab () == tab)
+                    status.label = "Blocked unsafe TLS connection";
+                return;
+            }
+            tls_generation++;
+            uint64 generation = tls_generation;
+            pending_tls_tab = tab;
+            pending_tls_uri = uri;
+            pending_tls_cancellable = new Cancellable ();
+            pending_tls_timeout_source = Timeout.add_seconds (30, () => {
+                if (generation == tls_generation) {
+                    pending_tls_timeout_source = 0;
+                    cancel_tls_error ();
+                    status.label = "TLS warning timed out; connection remained blocked";
+                }
+                return Source.REMOVE;
+            });
+            show_tls_error.begin (tab, uri, tls, errors, generation);
+        }
+
+        async void show_tls_error (TabRecord tab, string uri, TlsCertificate tls,
+                TlsCertificateFlags errors, uint64 generation) {
+            string? origin = TlsErrorPolicy.display_origin (uri);
+            if (origin == null) {
+                cancel_tls_error ();
+                return;
+            }
             var parsed = new Gcr.SimpleCertificate (tls.certificate.data);
-            var dialog = new Gtk.AlertDialog ("TLS certificate error");
-            dialog.detail = "Site: %s\nSubject: %s\nIssuer: %s\nSHA-256: %s\nErrors: %s".printf (
-                uri, parsed.get_subject_name () ?? "Unknown", parsed.get_issuer_name () ?? "Unknown",
-                parsed.get_fingerprint_hex (ChecksumType.SHA256) ?? "Unavailable", errors.to_string ());
-            dialog.buttons = { "Go Back", "Continue for This Session" };
+            string subject = TlsErrorPolicy.sanitize_certificate_name (
+                parsed.get_subject_name ());
+            string issuer = TlsErrorPolicy.sanitize_certificate_name (
+                parsed.get_issuer_name ());
+            string fingerprint = parsed.get_fingerprint_hex (ChecksumType.SHA256) ??
+                "Unavailable";
+            var dialog = new Gtk.AlertDialog ("Unsafe TLS certificate");
+            dialog.detail = (
+                "Xanh blocked the connection. Certificate errors cannot be bypassed.\n\n" +
+                "Site: %s\nSubject: %s\nIssuer: %s\nSHA-256: %s\nErrors: %s").printf (
+                    origin, subject, issuer, fingerprint,
+                    TlsErrorPolicy.describe_errors (errors));
+            dialog.buttons = { "Back to Safety" };
             dialog.cancel_button = 0;
             dialog.default_button = 0;
             try {
-                if ((yield dialog.choose (this, null)) == 1) {
-                    var parsed_uri = Uri.parse (uri, UriFlags.NONE);
-                    if (parsed_uri.get_host () != null) {
-                        tab.view.get_network_session ().allow_tls_certificate_for_host (
-                            tls, parsed_uri.get_host ());
-                        begin_explicit_navigation (tab);
-                        tab.view.load_uri (uri);
-                    }
-                } else if (tab.view.can_go_back ()) {
-                    begin_explicit_navigation (tab);
-                    tab.view.go_back ();
-                }
+                yield dialog.choose (this, pending_tls_cancellable);
             } catch (Error error) {
-                warning ("TLS dialog failed: %s", error.message);
+                if (generation == tls_generation && !(error is IOError.CANCELLED))
+                    warning ("TLS dialog failed: %s", error.message);
             }
+            if (generation != tls_generation || pending_tls_tab != tab ||
+                    pending_tls_uri != uri) return;
+            if (!tls_context_is_current (tab, uri)) {
+                cancel_tls_error ();
+                return;
+            }
+            finish_tls_error ();
+            navigate_tls_safety (tab);
+        }
+
+        bool tls_context_is_current (TabRecord tab, string? uri) {
+            var browser_application = application as BrowserApplication;
+            bool application_clear = browser_application != null &&
+                browser_application.is_browsing_data_clear_in_progress ();
+            return TlsErrorPolicy.is_prompt_context_current (
+                uri, tab.view.uri, is_active, active_tab () == tab,
+                tab.recovery.process_stopped, clearing_data || application_clear);
+        }
+
+        void finish_tls_error () {
+            var cancellable = pending_tls_cancellable;
+            pending_tls_tab = null;
+            pending_tls_uri = null;
+            pending_tls_cancellable = null;
+            tls_generation++;
+            if (pending_tls_timeout_source != 0) {
+                Source.remove (pending_tls_timeout_source);
+                pending_tls_timeout_source = 0;
+            }
+            cancellable?.cancel ();
+        }
+
+        void cancel_tls_error (TabRecord? tab = null) {
+            if (pending_tls_tab == null ||
+                    (tab != null && pending_tls_tab != tab)) return;
+            finish_tls_error ();
+        }
+
+        void navigate_tls_safety (TabRecord tab) {
+            if (active_tab () != tab || tab.recovery.process_stopped) return;
+            begin_explicit_navigation (tab);
+            if (tab.view.can_go_back ()) {
+                tab.view.go_back ();
+            } else {
+                tab.view.load_uri ("about:blank");
+            }
+            status.label = "Unsafe TLS connection blocked";
         }
 
         void handle_download (WebKit.Download download, bool private_mode) {
@@ -810,6 +907,7 @@ namespace Xanh {
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
             cancel_permission_request (tab);
+            cancel_tls_error (tab);
             tab.recovery.reset_for_explicit_navigation ();
             tab.state.recovery_uri = null;
         }
@@ -879,6 +977,7 @@ namespace Xanh {
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
             cancel_permission_request (tab);
+            cancel_tls_error (tab);
             disconnect_tab_bridges (tab);
             int page = notebook.page_num (tab.view);
             if (page >= 0) notebook.remove_page (page);
@@ -939,6 +1038,7 @@ namespace Xanh {
         bool on_close_request () {
             cancel_credential_picker ();
             cancel_permission_request ();
+            cancel_tls_error ();
             tabs.foreach ((id, tab) => disconnect_tab_bridges (tab));
             if (session_save_source != 0) {
                 Source.remove (session_save_source);
@@ -1523,6 +1623,7 @@ namespace Xanh {
             clearing_data = true;
             cancel_credential_picker ();
             cancel_permission_request ();
+            cancel_tls_error ();
             tabs.foreach ((id, tab) => tab.view.stop_loading ());
         }
 

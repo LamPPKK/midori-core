@@ -152,6 +152,30 @@ case "$edition" in
       desktop/browser-window.vala >/dev/null
     grep -F 'cancel_permission_request (tab);' desktop/browser-window.vala >/dev/null
     grep -F 'cancel_permission_request ();' desktop/browser-window.vala >/dev/null
+    test -f desktop/tls-error-policy.vala
+    test -f tests-modern/tls-error-policy-test.vala
+    grep -F 'add_xanh_test(tls-error-policy-test' CMakeLists.txt >/dev/null
+    grep -F 'AddressResolver.is_safe_secure_web_uri' \
+      desktop/tls-error-policy.vala >/dev/null
+    grep -F 'failing_uri == current_uri' desktop/tls-error-policy.vala >/dev/null
+    grep -F 'MAX_CERTIFICATE_NAME_BYTES = 1024' \
+      desktop/tls-error-policy.vala >/dev/null
+    grep -F 'pending_tls_timeout_source = Timeout.add_seconds (30' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'pending_tls_uri != uri' desktop/browser-window.vala >/dev/null
+    grep -F 'pending_tls_uri != tab.view.uri' desktop/browser-window.vala >/dev/null
+    grep -F 'dialog.buttons = { "Back to Safety" };' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_tls_error (tab);' desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_tls_error ();' desktop/browser-window.vala >/dev/null
+    if grep -R -F 'allow_tls_certificate_for_host' desktop >/dev/null; then
+      echo 'Linux TLS failures must not install certificate exceptions' >&2
+      exit 1
+    fi
+    if grep -R -F 'Continue for This Session' desktop >/dev/null; then
+      echo 'Linux TLS failures must not expose a bypass action' >&2
+      exit 1
+    fi
     if grep -E 'NotificationPermissionRequest|MediaKeySystemPermissionRequest|ClipboardPermissionRequest|XRPermissionRequest' \
       desktop/browser-window.vala >/dev/null; then
       echo 'Unsupported Linux permission classes must remain deny-by-default' >&2

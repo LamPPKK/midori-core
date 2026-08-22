@@ -28,6 +28,10 @@ grep -F '_wpewebkit_checksum = "b2bafef2751625b7fdf530f230ff0f542ff0eeba3590c3a9
 grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' "$patch" >/dev/null
 grep -F 'register_script_message_handler_in_world' "$patch" >/dev/null
 grep -F 'webkit_web_view_call_async_javascript_function' "$patch" >/dev/null
+grep -F 'WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION' "$patch" >/dev/null
+grep -F 'webkit_navigation_action_is_user_gesture' "$patch" >/dev/null
+grep -F 'webkit_navigation_action_is_redirect' "$patch" >/dev/null
+grep -F 'shouldOverrideUrlLoading' "$patch" >/dev/null
 grep -F -- '-Wl,-z,max-page-size=16384' "$patch" >/dev/null
 grep -F -- '-Wl,-z,common-page-size=16384' "$patch" >/dev/null
 

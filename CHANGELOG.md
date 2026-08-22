@@ -89,6 +89,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   without reloading or resubmitting the page. Published
   WPEView builds and drifted fork APIs remain
   fail-closed with password filling disabled.
+- Added a source-fork WPE navigation-policy callback that runs before loading.
+  It allows HTTP(S), blocks unsafe WebKit schemes, and hands only `mailto`,
+  `tel`, `geo` and `market` to a resolvable Android intent after a direct,
+  non-redirected user gesture. JNI and host-policy failures block navigation.
 - Renamed the Linux application to Xanh Browser with application ID
   `io.github.lamppkk.xanhbrowser`.
 - Renamed the small Android edition to Xanh Browser Lite with application ID

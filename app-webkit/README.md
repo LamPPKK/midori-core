@@ -64,7 +64,7 @@ is tracked separately through the
 Because no official WPE Android 2.52.6 bootstrap package is published, the
 repository carries a pinned source delta that builds that stable runtime, adds
 16 KiB linker alignment and exposes a main-frame-only isolated script
-world/message bridge. A fork-AAR verification build attaches the on-demand
+world/message bridge plus a pre-load navigation policy callback. A fork-AAR verification build attaches the on-demand
 credential picker only through that API. A host-generated challenge binds each
 document nonce to a monotonic navigation generation. The host rechecks the live
 URL and foreground state; the isolated-world reply rechecks origin, generation,
@@ -75,6 +75,12 @@ leaves password filling disabled. Production remains blocked until the
 resulting binaries and bridge pass the release evidence listed in
 [`../RELEASING.md`](../RELEASING.md).
 
+The fork callback receives the request plus user-gesture and redirect state
+before WebKit starts a navigation. HTTP(S) and `about:blank` are allowed;
+unsupported schemes are blocked. `mailto`, `tel`, `geo` and `market` are handed
+to a resolvable Android browsable intent only after a non-redirected user
+gesture. JNI or host callback failures block the navigation.
+
 Any distributed artifact must also carry the required WebKit/WPEView and
 third-party license notices and satisfy the corresponding source-availability
 obligations.
@@ -83,11 +89,11 @@ The APK contains its own native engine and is therefore much larger than the
 System WebView edition. It is intentionally distributed as a separate
 application so it cannot silently replace the production engine.
 
-The published WPEView navigation client does not yet expose a policy callback
-equivalent to Android WebView's URL override. Non-HTTP(S) page navigations are
-therefore stopped instead of launched; an external `mailto`, `tel`, `geo` or
-`market` URI entered explicitly in the address bar is still handed to a
-validated Android intent.
+The published WPEView navigation client does not expose that callback. In the
+Maven preview, the existing page-start guard remains defense in depth and stops
+non-HTTP(S) loads after start; external schemes entered explicitly in the
+address bar are still handed to a validated Android intent. This fallback is
+not accepted as source-fork navigation-policy evidence.
 
 Encrypted `.xanhbackup` import/export is compatible with Android Lite and the
 Windows WebView2 edition. See [`../docs/PORTABLE_BACKUP.md`](../docs/PORTABLE_BACKUP.md).

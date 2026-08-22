@@ -135,7 +135,9 @@ The repository also carries a reproducible source-fork contract at
 [`app-webkit/wpe-fork/`](app-webkit/wpe-fork/README.md). It locks WPE Android
 and Cerbero revisions, upgrades the source-built engine to WPE WebKit 2.52.6,
 adds 16 KiB ELF alignment flags and supplies a bounded, main-frame-only bridge
-in a named isolated script world. It does not replace the Maven preview by
+in a named isolated script world. The same fork adds a pre-load navigation
+policy callback; Xanh allows web URLs, blocks unsupported schemes, and opens an
+allowlisted external scheme only for a non-redirected user gesture. It does not replace the Maven preview by
 default and does not open the production gate until the built AAR, bridge,
 devices, SBOM and security evidence have all been reviewed.
 
@@ -235,7 +237,7 @@ nonce authenticated by a host challenge, exact-origin/foreground/navigation and
 request-ID validation, native selection, and typed replies acknowledged by the
 same document. Late feature attachment runs the idempotent bootstrap in the
 current isolated world without reloading the page. It remains blocked from
-production until the fork artifact
+production until the fork artifact, its fail-closed pre-load navigation policy,
 and device/security evidence pass the WPE release gate.
 
 ## Repository map

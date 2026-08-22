@@ -17,6 +17,11 @@ source, pins Cerbero and WPE WebKit 2.52.6 with the official tarball checksum,
 adds 16 KiB linker alignment, and exposes a bounded document-start bridge in a
 named WebKit script world. The bridge is main-frame-only, transfers function
 arguments as typed values, and removes its handler and scripts at teardown.
+It also exposes a pre-load navigation policy callback containing the request,
+user-gesture and redirect state. Xanh permits HTTP(S), blocks other WebKit
+loads, and hands the four allowlisted external schemes to Android only for a
+non-redirected user gesture and a resolvable browsable intent. Callback/JNI
+exceptions fail closed.
 The on-demand Sync host in `sync-feature-common/WpeCredentialBridge.kt` loads
 this API reflectively only when `XANH_WPE_SOURCE_FORK` is true. It uses typed
 calls both to authenticate the document nonce with a host challenge and to
@@ -56,6 +61,6 @@ notices and the source archive used to reproduce it.
 
 The source patch alone does not make WPE production-ready. A reviewed artifact
 must still pass all native-library 16 KiB checks, API 31/36 device tests, bridge
-forgery and process-recovery tests, browser-flow tests, signing, source
+forgery, navigation-policy and process-recovery tests, browser-flow tests, signing, source
 availability and independent security review. Until those records exist,
 `bundleWebKitProductionRelease` and the Firefox Sync WPE gate remain closed.

@@ -235,11 +235,14 @@ artifact. Supply the following commit-bound files to
 - `XANH_WPE_16K_EVIDENCE`: every packaged ELF and its LOAD alignment;
 - `XANH_WPE_BRIDGE_REVIEW_EVIDENCE`: isolated-world, top-frame, host-challenge
   nonce binding, exact-origin/request-ID reply acknowledgement, background
-  teardown, idempotent late-attachment bootstrap, navigation-race and
-  forged-message review,
+  teardown, idempotent late-attachment bootstrap, navigation-race,
+  forged-message review, and the pre-load policy callback's fail-closed JNI,
+  user-gesture and redirect behavior,
   including execution of `WpeForkApiContractTest` with
   `XANH_WPE_SOURCE_FORK=true`;
-- `XANH_WPE_DEVICE_TEST_EVIDENCE`: API 31/36 arm64/x86_64 browser and Sync tests;
+- `XANH_WPE_DEVICE_TEST_EVIDENCE`: API 31/36 arm64/x86_64 browser and Sync tests,
+  including HTTP(S), unsupported schemes, subframes, redirects and allowlisted
+  external intents with and without a user gesture;
 - `XANH_WPE_SBOM_EVIDENCE`: SBOM, notices and reproducible source archive.
 
 These evidence paths supplement the existing fail-closed boolean gates; they

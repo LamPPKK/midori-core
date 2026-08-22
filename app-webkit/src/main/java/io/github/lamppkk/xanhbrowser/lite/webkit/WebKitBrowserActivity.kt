@@ -140,7 +140,25 @@ class WebKitBrowserActivity : AppCompatActivity() {
         mobileUserAgent = settings.userAgentString.orEmpty()
         settings.setUserAgentString(appendXanhUserAgent(mobileUserAgent, desktop = false))
 
-        setWPEViewClient(object : WPEViewClient() {
+        setWPEViewClient(object : XanhWPEViewClient({ _, request, isRedirect, hasUserGesture ->
+            when (WebKitNavigationPolicy.decide(request.url.toString(), isRedirect, hasUserGesture)) {
+                WebKitNavigationDecision.ALLOW -> false
+                WebKitNavigationDecision.BLOCK -> {
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@WebKitBrowserActivity,
+                            R.string.blocked_unsafe_navigation,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    true
+                }
+                WebKitNavigationDecision.OPEN_EXTERNAL -> {
+                    runOnUiThread { openExternal(request.url) }
+                    true
+                }
+            }
+        }) {
             override fun onPageStarted(view: WPEView, url: String) {
                 if (url != "about:blank" && !WebKitAddressResolver.isValidWebUrl(url)) {
                     view.stopLoading()

@@ -123,7 +123,11 @@ returns a successful typed acknowledgement. Credentials never use page-world
 evaluation or string interpolation. Installing the dynamic feature over an
 already loaded
 page runs the same idempotent bootstrap in its isolated world without reloading
-or resubmitting that page.
+or resubmitting that page. The source fork also supplies a pre-load navigation
+policy callback. It keeps unsupported schemes out of WPE and permits an
+allowlisted external intent only for a non-redirected user gesture; the
+published Maven preview retains only the later page-start fallback and cannot
+satisfy this release gate.
 
 Linux now has an asynchronous GTK host for account initialization, system-
 browser OAuth, exact callback routing, Secret Service persistence, manual/

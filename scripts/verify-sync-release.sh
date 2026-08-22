@@ -95,6 +95,12 @@ case "$edition" in
       app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
     grep -F 'webkit_web_view_call_async_javascript_function' \
       app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F 'webkit_navigation_action_is_user_gesture' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F 'webkit_navigation_action_is_redirect' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F 'shouldOverrideUrlLoading' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
     grep -F -- '-Wl,-z,max-page-size=16384' \
       app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
     grep -F 'WPE Android, WPEView and WPE WebKit' THIRD_PARTY_NOTICES.md >/dev/null
@@ -124,6 +130,8 @@ case "$edition" in
     grep -F 'BuildConfig.XANH_WPE_SOURCE_FORK' \
       app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/SyncFeatureInstaller.kt >/dev/null
     test -f app-webkit/src/androidTest/java/io/github/lamppkk/xanhbrowser/lite/webkit/WpeForkApiContractTest.kt
+    test -f app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/XanhWPEViewClient.java
+    test -f app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/WebKitNavigationPolicy.kt
     ;;
   linux)
     verify_native_core
@@ -188,6 +196,8 @@ case "$edition" in
       app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/SyncFeatureInstaller.kt >/dev/null
     grep -F 'WpeCredentialBridge' \
       app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/SyncFeatureInstaller.kt >/dev/null
+    grep -F 'WebKitNavigationPolicy.decide' \
+      app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/WebKitBrowserActivity.kt >/dev/null
     require_evidence XANH_WPE_FORK_BUILD_EVIDENCE
     require_evidence XANH_WPE_16K_EVIDENCE
     require_evidence XANH_WPE_BRIDGE_REVIEW_EVIDENCE

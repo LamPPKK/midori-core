@@ -6,6 +6,8 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.wpewebkit.wpeview.WPEView
+import org.wpewebkit.wpeview.WPEViewClient
+import org.wpewebkit.wpeview.WPEResourceRequest
 
 @RunWith(AndroidJUnit4::class)
 class WpeForkApiContractTest {
@@ -40,6 +42,16 @@ class WpeForkApiContractTest {
                 Map::class.java,
                 String::class.java,
                 resultCallback,
+            ).returnType,
+        )
+        assertEquals(
+            Boolean::class.javaPrimitiveType,
+            WPEViewClient::class.java.getMethod(
+                "shouldOverrideUrlLoading",
+                WPEView::class.java,
+                WPEResourceRequest::class.java,
+                Boolean::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
             ).returnType,
         )
     }

@@ -142,7 +142,7 @@ tasks.register('verifyWebKitProductionEngine') {
             throw new GradleException(
                 "The ${engine} is not production-approved. Keep this edition in preview until " +
                     "WPE WebKit ${wpeProductionBaseline}+, full 16 KiB alignment, isolated-bridge " +
-                    'device tests, SBOM and security evidence are verified.'
+                    'and navigation-policy device tests, SBOM and security evidence are verified.'
             )
         }
     }

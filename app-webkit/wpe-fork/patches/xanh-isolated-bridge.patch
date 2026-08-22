@@ -1,4 +1,5 @@
 diff --git a/tools/scripts/bootstrap.py b/tools/scripts/bootstrap.py
+index 90a5d9671..5634870cc 100755
 --- a/tools/scripts/bootstrap.py
 +++ b/tools/scripts/bootstrap.py
 @@ -81,10 +81,12 @@ from urllib.request import urlretrieve
@@ -97,6 +98,7 @@ diff --git a/tools/scripts/bootstrap.py b/tools/scripts/bootstrap.py
          self.install_deps()
  
 diff --git a/wpeview/src/main/cpp/CMakeLists.txt b/wpeview/src/main/cpp/CMakeLists.txt
+index 4c129a546..6e7fa7908 100644
 --- a/wpeview/src/main/cpp/CMakeLists.txt
 +++ b/wpeview/src/main/cpp/CMakeLists.txt
 @@ -25,6 +25,9 @@ endif()
@@ -110,6 +112,7 @@ diff --git a/wpeview/src/main/cpp/CMakeLists.txt b/wpeview/src/main/cpp/CMakeLis
          set_target_properties(${TARGET_NAME} PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
      endif()
 diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/Runtime/WKWebView.cpp
+index e866c3a6b..175f7ca28 100644
 --- a/wpeview/src/main/cpp/Runtime/WKWebView.cpp
 +++ b/wpeview/src/main/cpp/Runtime/WKWebView.cpp
 @@ -29,6 +29,7 @@
@@ -120,7 +123,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
  #include <libsoup/soup.h>
  #include <unistd.h>
  #include <wpe-android/view-backend.h>
-@@ -42,6 +43,57 @@ void handleCommitBuffer(void* context, WPEAndroidBuffer* buffer, int fenceID)
+@@ -42,6 +43,59 @@ void handleCommitBuffer(void* context, WPEAndroidBuffer* buffer, int fenceID)
  }
  
  const int httpErrorsStart = 400;
@@ -129,6 +132,8 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
 +constexpr size_t maxArgumentValueBytes = 16 * 1024;
 +constexpr size_t maxBridgeMessageBytes = 64 * 1024;
 +constexpr size_t maxArguments = 16;
++constexpr size_t maxNavigationURIBytes = 8 * 1024;
++constexpr size_t maxNavigationMethodBytes = 16;
 +
 +bool isBridgeName(const char* value) noexcept
 +{
@@ -178,7 +183,54 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
  
  class SslErrorHandler final {
  public:
-@@ -337,6 +389,22 @@ public:
+@@ -197,6 +251,46 @@ public:
+     static gboolean onDecidePolicy(WKWebView* wkWebView, WebKitPolicyDecision* decision,
+         WebKitPolicyDecisionType decisionType, WebKitWebView* /*webView*/) noexcept
+     {
++        if (decisionType == WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION
++            || decisionType == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
++            auto* navigationDecision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
++            auto* navigationAction = webkit_navigation_policy_decision_get_navigation_action(navigationDecision);
++            auto* request = navigationAction ? webkit_navigation_action_get_request(navigationAction) : nullptr;
++            const char* requestURI = request ? webkit_uri_request_get_uri(request) : nullptr;
++            const void* uriTerminator
++                = requestURI ? memchr(requestURI, '\0', maxNavigationURIBytes + 1) : nullptr;
++            if (!uriTerminator || uriTerminator == requestURI) {
++                webkit_policy_decision_ignore(decision);
++                return TRUE;
++            }
++
++            const char* requestMethod = request ? webkit_uri_request_get_http_method(request) : nullptr;
++            if (!requestMethod || !*requestMethod) {
++                requestMethod = "GET";
++            } else if (!memchr(requestMethod, '\0', maxNavigationMethodBytes + 1)) {
++                webkit_policy_decision_ignore(decision);
++                return TRUE;
++            }
++            auto javaRequestURI = JNI::String(requestURI);
++            auto javaRequestMethod = JNI::String(requestMethod);
++            bool shouldOverride = true;
++            try {
++                shouldOverride = getJNIPageCache().m_onNavigationPolicyDecision.invoke(
++                    wkWebView->m_webViewJavaInstance.get(), static_cast<jstring>(javaRequestURI),
++                    static_cast<jstring>(javaRequestMethod),
++                    static_cast<jboolean>(navigationAction && webkit_navigation_action_is_redirect(navigationAction)),
++                    static_cast<jboolean>(
++                        navigationAction && webkit_navigation_action_is_user_gesture(navigationAction)));
++            } catch (const std::exception& ex) {
++                Logging::logError("Cannot send the navigation policy decision to Java runtime (%s)", ex.what());
++            }
++            if (shouldOverride) {
++                webkit_policy_decision_ignore(decision);
++                return TRUE;
++            }
++            return FALSE;
++        }
++
+         if (decisionType != WEBKIT_POLICY_DECISION_TYPE_RESPONSE)
+             return FALSE;
+         auto* responseDecision = WEBKIT_RESPONSE_POLICY_DECISION(decision);
+@@ -337,6 +431,22 @@ public:
  
      void onInputMethodContextOut(jobject obj) const noexcept { callJavaMethod(m_onInputMethodContextOut, obj); }
  
@@ -201,7 +253,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
      static void onEvaluateJavascriptReady(WebKitWebView* webView, GAsyncResult* result, JNIWKCallback callback) noexcept
      {
          GError* error = nullptr;
-@@ -365,6 +433,33 @@ public:
+@@ -365,6 +475,33 @@ public:
          }
      }
  
@@ -235,15 +287,16 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
  private:
      template <typename T, typename... Args>
      static void callJavaMethod(const JNI::Method<T> method, jobject obj, Args&&... args) noexcept
-@@ -388,6 +483,7 @@ private:
+@@ -388,6 +525,8 @@ private:
      const JNI::Method<jboolean(jstring, jstring, jintArray, jlong)> m_onReceivedSslError;
      const JNI::Method<void()> m_onEnterFullscreenMode;
      const JNI::Method<void()> m_onExitFullscreenMode;
 +    const JNI::Method<void(jstring)> m_onIsolatedScriptMessage;
++    const JNI::Method<jboolean(jstring, jstring, jboolean, jboolean)> m_onNavigationPolicyDecision;
      const JNI::Method<void(jstring, jstring, jstringArray, jstring, jint, jstringArray)> m_onReceivedHttpError;
      // NOLINTEND(cppcoreguidelines-avoid-const-or-ref-data-members)
  
-@@ -415,6 +511,11 @@ private:
+@@ -415,6 +554,11 @@ private:
      static void nativeRequestExitFullscreenMode(JNIEnv* env, jobject obj, jlong wkWebViewPtr) noexcept;
      static void nativeEvaluateJavascript(
          JNIEnv* env, jobject obj, jlong wkWebViewPtr, jstring script, JNIWKCallback callback) noexcept;
@@ -255,15 +308,17 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
      static void nativeScriptDialogClose(JNIEnv* env, jobject obj, jlong dialogPtr) noexcept;
      static void nativeScriptDialogConfirm(
          JNIEnv* env, jobject obj, jlong dialogPtr, jboolean confirm, jstring text) noexcept;
-@@ -443,6 +544,7 @@ JNIWKWebViewCache::JNIWKWebViewCache()
+@@ -443,6 +587,9 @@ JNIWKWebViewCache::JNIWKWebViewCache()
      , m_onReceivedSslError(getMethod<jboolean(jstring, jstring, jintArray, jlong)>("onReceivedSslError"))
      , m_onEnterFullscreenMode(getMethod<void()>("onEnterFullscreenMode"))
      , m_onExitFullscreenMode(getMethod<void()>("onExitFullscreenMode"))
 +    , m_onIsolatedScriptMessage(getMethod<void(jstring)>("onIsolatedScriptMessage"))
++    , m_onNavigationPolicyDecision(
++          getMethod<jboolean(jstring, jstring, jboolean, jboolean)>("onNavigationPolicyDecision"))
      , m_onReceivedHttpError(
            getMethod<void(jstring, jstring, jstringArray, jstring, jint, jstringArray)>("onReceivedHttpError"))
  {
-@@ -474,6 +576,12 @@ JNIWKWebViewCache::JNIWKWebViewCache()
+@@ -474,6 +621,12 @@ JNIWKWebViewCache::JNIWKWebViewCache()
              "nativeRequestExitFullscreenMode", JNIWKWebViewCache::nativeRequestExitFullscreenMode),
          JNI::NativeMethod<void(jlong, jstring, JNIWKCallback)>(
              "nativeEvaluateJavascript", JNIWKWebViewCache::nativeEvaluateJavascript),
@@ -276,7 +331,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
          JNI::NativeMethod<void(jlong)>("nativeScriptDialogClose", JNIWKWebViewCache::nativeScriptDialogClose),
          JNI::NativeMethod<void(jlong, jboolean, jstring)>(
              "nativeScriptDialogConfirm", JNIWKWebViewCache::nativeScriptDialogConfirm),
-@@ -720,6 +828,116 @@ void JNIWKWebViewCache::nativeEvaluateJavascript(
+@@ -720,6 +873,116 @@ void JNIWKWebViewCache::nativeEvaluateJavascript(
      }
  }
  
@@ -393,7 +448,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
  void JNIWKWebViewCache::nativeScriptDialogClose(JNIEnv* /*env*/, jobject /*obj*/, jlong dialogPtr) noexcept
  {
      Logging::logDebug("WKWebView::nativeScriptDialogClose() [tid %d]", gettid());
-@@ -798,8 +1014,10 @@ WKWebView::WKWebView(JNIEnv* env, JNIWKWebView jniWKWebView, WKWebContext* wkWeb
+@@ -798,8 +1061,10 @@ WKWebView::WKWebView(JNIEnv* env, JNIWKWebView jniWKWebView, WKWebContext* wkWeb
  
      gboolean const automationMode = wkWebContext->automationMode() ? TRUE : FALSE;
  
@@ -405,7 +460,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
      webkit_web_view_set_input_method_context(m_webView, m_inputMethodContext.webKitInputMethodContext());
  
      m_signalHandlers.push_back(
-@@ -830,6 +1048,7 @@ WKWebView::WKWebView(JNIEnv* env, JNIWKWebView jniWKWebView, WKWebContext* wkWeb
+@@ -830,6 +1095,7 @@ WKWebView::WKWebView(JNIEnv* env, JNIWKWebView jniWKWebView, WKWebContext* wkWeb
  
  void WKWebView::close() noexcept
  {
@@ -413,7 +468,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
      if (m_webView != nullptr) {
          // Ensure that renderer is destroyed first so that all pending commits will be cleared before page is gone
          m_renderer.reset();
-@@ -846,6 +1065,28 @@ void WKWebView::close() noexcept
+@@ -846,6 +1112,28 @@ void WKWebView::close() noexcept
          g_object_unref(m_webView);
          m_webView = nullptr;
      }
@@ -443,6 +498,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/R
  
  void WKWebView::onInputMethodContextIn() noexcept
 diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.h b/wpeview/src/main/cpp/Runtime/WKWebView.h
+index db1cfbf57..45035db50 100644
 --- a/wpeview/src/main/cpp/Runtime/WKWebView.h
 +++ b/wpeview/src/main/cpp/Runtime/WKWebView.h
 @@ -26,6 +26,7 @@
@@ -474,6 +530,7 @@ diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.h b/wpeview/src/main/cpp/Run
      bool m_isFullscreenRequested = false;
      bool m_isHeadless = false;
 diff --git a/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java b/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java
+index 14ff6830b..c58775a19 100644
 --- a/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java
 +++ b/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java
 @@ -67,6 +67,7 @@ import java.security.cert.CertificateFactory;
@@ -592,7 +649,31 @@ diff --git a/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java b/wpeview/sr
      public void setTLSErrorsPolicy(int policy) {
          if ((policy == WEBKIT_TLS_ERRORS_POLICY_IGNORE) || (policy == WEBKIT_TLS_ERRORS_POLICY_FAIL)) {
              nativeSetTLSErrorsPolicy(nativePtr, policy);
-@@ -740,6 +821,12 @@ public final class WKWebView {
+@@ -468,6 +549,23 @@ public final class WKWebView {
+         }
+     }
+ 
++    @Keep
++    private boolean onNavigationPolicyDecision(@NonNull String requestUri, @NonNull String requestMethod,
++                                               boolean isRedirect, boolean hasUserGesture) {
++        if (wpeViewClient == null)
++            return true;
++
++        try {
++            PageResourceRequest request = new PageResourceRequest(requestUri, requestMethod, new String[0]);
++            return wpeViewClient.shouldOverrideUrlLoading(wpeView, request, isRedirect, hasUserGesture);
++        } catch (Exception e) {
++            Log.e(LOGTAG,
++                  "Exception thrown while calling WPEViewClient.shouldOverrideUrlLoading(), navigation is blocked",
++                  e);
++            return true;
++        }
++    }
++
+     @Keep
+     private void onClose() {
+         if (wpeChromeClient != null)
+@@ -740,6 +838,12 @@ public final class WKWebView {
      private native void nativeDeleteInputMethodContent(long nativePtr, int offset);
      private native void nativeRequestExitFullscreenMode(long nativePtr);
      private native void nativeEvaluateJavascript(long nativePtr, String script, WKCallback<String> callback);
@@ -606,6 +687,7 @@ diff --git a/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java b/wpeview/sr
      private native void nativeScriptDialogConfirm(long nativeDialogPtr, boolean confirm, @Nullable String text);
      private native void nativeSetTLSErrorsPolicy(long nativePtr, int policy);
 diff --git a/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java b/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java
+index 657683acd..761000519 100644
 --- a/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java
 +++ b/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java
 @@ -38,6 +38,8 @@ import org.wpewebkit.wpe.WKCallback;
@@ -655,3 +737,33 @@ diff --git a/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java b/wpeview/
      /**
       * Return the WPESettings object used to control the settings for this
       * WPEView.
+diff --git a/wpeview/src/main/java/org/wpewebkit/wpeview/WPEViewClient.java b/wpeview/src/main/java/org/wpewebkit/wpeview/WPEViewClient.java
+index b09944415..63fe4ede0 100644
+--- a/wpeview/src/main/java/org/wpewebkit/wpeview/WPEViewClient.java
++++ b/wpeview/src/main/java/org/wpewebkit/wpeview/WPEViewClient.java
+@@ -26,6 +26,25 @@ import android.net.http.SslError;
+ import androidx.annotation.NonNull;
+ 
+ public class WPEViewClient {
++    /**
++     * Give the host application a chance to handle or block a navigation before WebKit starts it.
++     * Returning {@code true} cancels the WebKit navigation; returning {@code false} allows it.
++     *
++     * <p>The callback is emitted for main-frame, subframe and new-window navigation policy
++     * decisions. A host that hands non-web schemes to another application should require a user
++     * gesture and reject redirects.</p>
++     *
++     * @param view The WPEView that is initiating the callback.
++     * @param request The navigation request.
++     * @param isRedirect Whether this navigation follows a redirect.
++     * @param hasUserGesture Whether this navigation was triggered by a user gesture.
++     * @return {@code true} when the host handled or blocked the navigation.
++     */
++    public boolean shouldOverrideUrlLoading(@NonNull WPEView view, @NonNull WPEResourceRequest request,
++                                            boolean isRedirect, boolean hasUserGesture) {
++        return false;
++    }
++
+     /**
+      * Notify the host application that a page has started loading. This method
+      * is called once for each main frame load so a page with iframes or

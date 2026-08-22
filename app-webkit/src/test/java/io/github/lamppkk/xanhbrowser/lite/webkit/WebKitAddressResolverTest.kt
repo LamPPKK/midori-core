@@ -12,6 +12,8 @@ class WebKitAddressResolverTest {
         assertEquals("https://webkit.org", WebKitAddressResolver.resolve("webkit.org"))
         assertTrue(WebKitAddressResolver.resolve("xanh browser").startsWith("https://duckduckgo.com/?q="))
         assertEquals(WebKitAddressResolver.HOME_URL, WebKitAddressResolver.resolve(""))
+        assertEquals(WebKitAddressResolver.HOME_URL, WebKitAddressResolver.resolve("a".repeat(8_193)))
+        assertEquals(WebKitAddressResolver.HOME_URL, WebKitAddressResolver.resolve("😀".repeat(1_000)))
     }
 
     @Test
@@ -28,7 +30,13 @@ class WebKitAddressResolverTest {
     fun separatesExternalSchemesFromWebContent() {
         assertTrue(WebKitAddressResolver.isExternal("tel:+84123456789"))
         assertFalse(WebKitAddressResolver.isExternal("https://example.com"))
+        assertFalse(WebKitAddressResolver.isExternal("mailto:\nuser@example.com"))
+        assertFalse(WebKitAddressResolver.isExternal("tel:"))
         assertTrue(WebKitAddressResolver.isValidWebUrl("https://example.com"))
         assertFalse(WebKitAddressResolver.isValidWebUrl("file:///tmp/private"))
+        assertFalse(WebKitAddressResolver.isValidWebUrl("https://user:secret@example.com"))
+        assertFalse(WebKitAddressResolver.isValidWebUrl("https://example.com/\nspoof"))
+        assertFalse(WebKitAddressResolver.isValidWebUrl("https://example.com/${"a".repeat(8_193)}"))
+        assertFalse(WebKitAddressResolver.isValidWebUrl("https://example.com:70000/"))
     }
 }

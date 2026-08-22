@@ -108,6 +108,21 @@ case "$edition" in
       platform/apple/App/BrowserCredentialBridge.swift >/dev/null
     grep -F 'let bridge = isPrivate ? nil : BrowserCredentialBridge()' \
       platform/apple/App/BrowserModel.swift >/dev/null
+    test -f platform/apple/Sources/XanhBrowserCore/ExternalNavigationPolicy.swift
+    grep -F 'maximumWebURLBytes = 8_192' \
+      platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
+    grep -F 'url.user == nil' \
+      platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
+    grep -F '!containsPercentEncodedControl(value)' \
+      platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
+    grep -F 'ExternalNavigationPolicy.allows(' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'sourceIsMainFrame: action.source.isMainFrame' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'hasTrustedButtonActivation: hasTrustedButtonActivation' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'isContentRuleListRedirect: action.isContentRuleListRedirect' \
+      platform/apple/App/BrowserModel.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
@@ -443,6 +458,21 @@ case "$edition" in
     grep -F 'if (!event.isTrusted) return;' \
       platform/apple/App/BrowserCredentialBridge.swift >/dev/null
     grep -F 'let bridge = isPrivate ? nil : BrowserCredentialBridge()' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    test -f platform/apple/Sources/XanhBrowserCore/ExternalNavigationPolicy.swift
+    grep -F 'maximumWebURLBytes = 8_192' \
+      platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
+    grep -F 'url.user == nil' \
+      platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
+    grep -F '!containsPercentEncodedControl(value)' \
+      platform/apple/Sources/XanhBrowserCore/AddressResolver.swift >/dev/null
+    grep -F 'ExternalNavigationPolicy.allows(' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'sourceIsMainFrame: action.source.isMainFrame' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'hasTrustedButtonActivation: hasTrustedButtonActivation' \
+      platform/apple/App/BrowserModel.swift >/dev/null
+    grep -F 'isContentRuleListRedirect: action.isContentRuleListRedirect' \
       platform/apple/App/BrowserModel.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null

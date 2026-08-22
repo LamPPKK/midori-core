@@ -12,7 +12,19 @@ final class BrowserNavigationPolicy: WebPage.NavigationDeciding {
     ) async -> WKNavigationActionPolicy {
         guard let url = action.request.url else { return .cancel }
         preferences.preferredHTTPSNavigationPolicy = .keepAsRequested
-        if AddressResolver.isAllowedExternalURL(url), action.navigationType == .linkActivated {
+        #if os(macOS)
+        let hasTrustedButtonActivation = action.buttonNumber >= 0
+        #else
+        let hasTrustedButtonActivation = !action.buttonNumber.isEmpty
+        #endif
+        if ExternalNavigationPolicy.allows(
+            url: url,
+            isLinkActivated: action.navigationType == .linkActivated,
+            sourceIsMainFrame: action.source.isMainFrame,
+            targetIsMainFrameOrNewWindow: action.target?.isMainFrame ?? true,
+            hasTrustedButtonActivation: hasTrustedButtonActivation,
+            isContentRuleListRedirect: action.isContentRuleListRedirect
+        ) {
             onOpenExternalURL?(url)
             return .cancel
         }

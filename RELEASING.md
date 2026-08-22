@@ -354,6 +354,11 @@ than repackaging it as a monolithic APK.
    Release configuration. Exercise phone and tablet layouts, rotation, process
    restoration, regular/private tabs, navigation, downloads, file input,
    camera/microphone/location prompts and external schemes on physical devices.
+   Reject overlong web/search input, userinfo, invalid DNS/IPv4/IPv6 hosts and
+   ports, raw or percent-encoded controls, unsupported schemes, external
+   redirects, subframe handoffs and synthetic link activation. Confirm a
+   direct trusted main-frame link opens each allowlisted external scheme once
+   on macOS, iPhone and iPad, including pointer and touch input as applicable.
 3. Archive with the dedicated distribution profiles. Validate the macOS App
    Sandbox and hardened runtime, notarize the direct macOS build if one is
    distributed, and submit the signed archives to App Store Connect.

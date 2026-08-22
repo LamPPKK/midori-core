@@ -8,10 +8,13 @@ native layout of each device.
 The application uses the system WebKit engine through `WebPage` and `WebView`.
 It does not bundle a browser engine. Regular tabs use the default website data
 store; private tabs use a nonpersistent store. Navigation entered by the user
-accepts HTTP(S), upgrades bare hosts to HTTPS, turns other text into a
-DuckDuckGo search and hands a small allowlist of user-activated external
-schemes to the OS. Regular tabs are restored after process termination;
-private tabs are deliberately excluded from the saved session.
+accepts bounded HTTP(S) URLs with strict host, port and userinfo validation,
+upgrades bare hosts to HTTPS, and turns other bounded text into a DuckDuckGo
+search. External `mailto`, `tel`, `sms` and `maps` URLs are handed to the OS
+only for a non-redirected, trusted link activation from the main frame; control
+characters, encoded controls and oversized handoffs fail closed. Regular tabs
+are restored after process termination; private tabs are deliberately excluded
+from the saved session.
 
 Generate the Xcode project and run tests with Xcode 26 or newer:
 

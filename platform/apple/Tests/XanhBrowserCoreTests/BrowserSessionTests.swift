@@ -14,7 +14,12 @@ final class BrowserSessionTests: XCTestCase {
 
     func testSessionRejectsUnsafeURLsAndClampsSelection() {
         let session = BrowserSession(
-            urls: [URL(fileURLWithPath: "/tmp/private"), URL(string: "https://example.com/")!],
+            urls: [
+                URL(fileURLWithPath: "/tmp/private"),
+                URL(string: "https://user:secret@example.com/")!,
+                URL(string: "https://foo_bar.example/")!,
+                URL(string: "https://example.com/")!,
+            ],
             selectedIndex: 9
         )
 

@@ -97,9 +97,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   termination.
 - Added a reproducible WPE Android source-fork contract pinned to WPEView 0.3.3,
   WPE WebKit 2.52.6 and an exact Cerbero revision. The delta adds 16 KiB linker
-  alignment and a bounded main-frame-only isolated script/message bridge; CI
-  verifies patch drift while production remains gated on built-artifact,
-  device, SBOM and security evidence.
+  alignment and a bounded main-frame-only isolated script/message bridge. A
+  Linux build orchestrator now produces a dual-ABI AAR with checksum, runtime
+  provenance, 16 KiB evidence, a file-level CycloneDX SBOM and corresponding
+  source archives. The manual lane validates the exact post-patch source trees
+  and archive contents and compiles and checks the SDK 36 host in an
+  unprivileged single-job ephemeral runner. A separate GitHub-hosted job accepts
+  only the fixed checksum manifest and emits a commit-bound GitHub OIDC/Sigstore
+  attestation, while production remains gated on device, signing and security
+  evidence.
 - Wired the on-demand WPE Sync credential picker to the source-fork bridge with
   a host-challenge-authenticated nonce per document, strict message shape,
   exact HTTPS origin, foreground/navigation/request-ID checks, native user

@@ -24,7 +24,7 @@ verify_native_core() {
 require_evidence() {
   name="$1"
   value="${!name:-}"
-  if [[ -z "$value" || ! -f "$value" ]]; then
+  if [[ -z "$value" || ! -f "$value" || -L "$value" ]]; then
     echo "Missing release evidence file: $name" >&2
     exit 1
   fi
@@ -90,8 +90,76 @@ case "$edition" in
     test -f app-webkit/wpe-fork/CERBERO_REVISION
     test -f app-webkit/wpe-fork/WPE_RUNTIME_VERSION
     test -f app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch
+    test -f app-webkit/wpe-fork/patches/cerbero-wpewebkit-2.52.6.patch
+    test -f .github/workflows/wpe-android-source-build.yml
+    test -f .github/actionlint.yaml
+    test -x scripts/build-wpe-android-fork.sh
+    test -x scripts/create_wpe_build_evidence.py
     test -x scripts/verify-wpe-android-fork.sh
     test -x scripts/verify-android-16k.sh
+    test -f scripts/tests/test_create_wpe_build_evidence.py
+    python3 -B -m unittest discover \
+      -s scripts/tests -p 'test_create_wpe_build_evidence.py' >/dev/null
+    grep -F './scripts/build-wpe-android-fork.sh' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F ':app-webkit:assembleAndroidTest' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F './scripts/verify-android-16k.sh' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F -- "--verify-directory \"\$wpe_evidence_directory\"" \
+      scripts/verify-sync-release.sh >/dev/null
+    grep -F 'uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F 'uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F '  attest-source-build:' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F '    needs: build-source-fork' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F 'permissions: {}' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F '    runs-on: ubuntu-24.04' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F '          persist-credentials: false' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F "          name: xanh-wpe-android-source-build-\${{ github.sha }}-\${{ github.run_attempt }}" \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F "          name: xanh-wpe-android-source-build-subjects-\${{ github.sha }}-\${{ github.run_attempt }}" \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F "          name: xanh-wpe-android-source-build-attestation-\${{ github.sha }}-\${{ github.run_attempt }}" \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F "          subject-checksums: \${{ env.XANH_WPE_ATTEST_ROOT }}/claims/subject.checksums.txt" \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    if sed -n '/^  build-source-fork:/,/^  attest-source-build:/p' \
+      .github/workflows/wpe-android-source-build.yml | \
+      grep -E 'id-token: write|attestations: write|artifact-metadata: write' >/dev/null; then
+      echo 'Untrusted WPE source builds must not receive OIDC or attestation permissions' >&2
+      exit 1
+    fi
+    if sed -n '/^  attest-source-build:/,$p' \
+      .github/workflows/wpe-android-source-build.yml | \
+      grep -E 'actions/checkout|subject-path:' >/dev/null; then
+      echo 'The attestation job may consume only the fixed checksum manifest' >&2
+      exit 1
+    fi
+    grep -F 'github-attestation.sigstore.json' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F './scripts/verify-wpe-android-fork.sh _wpe_android _cerbero' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F "export XDG_CACHE_HOME=\"\$temporary_root/cache\"" \
+      scripts/build-wpe-android-fork.sh >/dev/null
+    grep -F "export GRADLE_USER_HOME=\"\$temporary_root/gradle-home\"" \
+      scripts/build-wpe-android-fork.sh >/dev/null
+    grep -F "mv --no-clobber --no-target-directory \"\$staging\" \"\$output\"" \
+      scripts/build-wpe-android-fork.sh >/dev/null
+    grep -F "if [[ -e \"\$staging\" ]]" scripts/build-wpe-android-fork.sh >/dev/null
+    if grep -F 'sudo ' .github/workflows/wpe-android-source-build.yml >/dev/null; then
+      echo 'The ephemeral WPE self-hosted runner must not be mutated with sudo' >&2
+      exit 1
+    fi
+    grep -F 'runs-on: [self-hosted, linux, x64, xanh-wpe-android-ephemeral]' \
+      .github/workflows/wpe-android-source-build.yml >/dev/null
+    grep -F '    - xanh-wpe-android-ephemeral' .github/actionlint.yaml >/dev/null
     test "$(cat app-webkit/wpe-fork/WPE_RUNTIME_VERSION)" = "$(cat WEBKITGTK_MIN_VERSION)"
     grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' \
       app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
@@ -107,7 +175,13 @@ case "$edition" in
       app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
     grep -F -- '-Wl,-z,max-page-size=16384' \
       app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F '["bootstrap", "--system=no"]' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F 'distributionSha256Sum=7a00d51fb93147819aab76024feece20b6b84e420694101f276be952e08bef03' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
     grep -F 'WPE Android, WPEView and WPE WebKit' THIRD_PARTY_NOTICES.md >/dev/null
+    grep -F 'app-webkit/wpe-fork/patches/cerbero-wpewebkit-2.52.6.patch' \
+      THIRD_PARTY_NOTICES.md >/dev/null
     test -f sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt
     grep -F 'window.top !== window' \
       sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
@@ -311,6 +385,55 @@ case "$edition" in
     require_evidence XANH_WPE_BRIDGE_REVIEW_EVIDENCE
     require_evidence XANH_WPE_DEVICE_TEST_EVIDENCE
     require_evidence XANH_WPE_SBOM_EVIDENCE
+    require_evidence XANH_WPE_GITHUB_ATTESTATION_EVIDENCE
+    require_evidence XANH_WPE_HOST_APK_EVIDENCE
+    require_evidence XANH_WPE_HOST_TEST_APK_EVIDENCE
+    require_evidence XANH_WPE_HOST_16K_EVIDENCE
+    require_evidence XANH_WPE_HOST_TOOLCHAIN_EVIDENCE
+    wpe_evidence_directory="$(cd "$(dirname "$XANH_WPE_FORK_BUILD_EVIDENCE")" && pwd -P)"
+    test "$XANH_WPE_FORK_BUILD_EVIDENCE" -ef \
+      "$wpe_evidence_directory/wpe-build-evidence.json"
+    test "$XANH_WPE_16K_EVIDENCE" -ef \
+      "$wpe_evidence_directory/wpe-16k-evidence.txt"
+    test "$XANH_WPE_SBOM_EVIDENCE" -ef \
+      "$wpe_evidence_directory/wpeview-sbom.cdx.json"
+    test "$XANH_WPE_GITHUB_ATTESTATION_EVIDENCE" -ef \
+      "$wpe_evidence_directory/github-attestation.sigstore.json"
+    test "$XANH_WPE_HOST_APK_EVIDENCE" -ef \
+      "$wpe_evidence_directory/xanh-browser-lite-wpe-debug.apk"
+    test "$XANH_WPE_HOST_TEST_APK_EVIDENCE" -ef \
+      "$wpe_evidence_directory/xanh-browser-lite-wpe-debug-androidTest.apk"
+    test "$XANH_WPE_HOST_16K_EVIDENCE" -ef \
+      "$wpe_evidence_directory/xanh-host-16k-evidence.txt"
+    test "$XANH_WPE_HOST_TOOLCHAIN_EVIDENCE" -ef \
+      "$wpe_evidence_directory/xanh-host-build-environment.txt"
+    wpe_artifact="$wpe_evidence_directory/xanh-wpeview-$(cat app-webkit/WPEVIEW_VERSION)-webkit-$(cat app-webkit/wpe-fork/WPE_RUNTIME_VERSION).aar"
+    test -f "$wpe_artifact"
+    command -v gh >/dev/null
+    test "$(wc -c < "$XANH_WPE_GITHUB_ATTESTATION_EVIDENCE")" -le 16777216
+    git diff --quiet
+    git diff --cached --quiet
+    test -z "$(git status --porcelain --untracked-files=all)"
+    wpe_source_digest="$(git rev-parse HEAD)"
+    for attested_subject in \
+      "$XANH_WPE_FORK_BUILD_EVIDENCE" \
+      "$XANH_WPE_SBOM_EVIDENCE" \
+      "$wpe_artifact" \
+      "$XANH_WPE_HOST_APK_EVIDENCE" \
+      "$XANH_WPE_HOST_TEST_APK_EVIDENCE" \
+      "$XANH_WPE_HOST_16K_EVIDENCE" \
+      "$XANH_WPE_HOST_TOOLCHAIN_EVIDENCE"; do
+      gh attestation verify "$attested_subject" \
+        --bundle "$XANH_WPE_GITHUB_ATTESTATION_EVIDENCE" \
+        --repo LamPPKK/midori-core \
+        --signer-workflow \
+          github.com/LamPPKK/midori-core/.github/workflows/wpe-android-source-build.yml \
+        --source-digest "$wpe_source_digest" >/dev/null
+    done
+    python3 scripts/create_wpe_build_evidence.py \
+      --verify-directory "$wpe_evidence_directory"
+    ./scripts/verify-android-16k.sh "$wpe_artifact"
+    ./scripts/verify-android-16k.sh "$XANH_WPE_HOST_APK_EVIDENCE"
     test "${XANH_WPE_ISOLATED_BRIDGE:-0}" = 1
     test "${XANH_ANDROID_16K_NATIVE_OK:-0}" = 1
     ;;

@@ -26,7 +26,59 @@ trap 'rm -rf "$work"' EXIT
 if [[ -d "$input" ]]; then
   search_root="$input"
 elif [[ "$input" == *.aar || "$input" == *.apk || "$input" == *.aab || "$input" == *.zip ]]; then
-  unzip -qq "$input" -d "$work/artifact"
+  python3 - "$input" "$work/artifact" <<'PY'
+import shutil
+import stat
+import sys
+import zipfile
+from pathlib import Path, PurePosixPath
+
+archive_path = Path(sys.argv[1])
+output = Path(sys.argv[2])
+maximum_entries = 100_000
+maximum_expanded_bytes = 16 * 1024 * 1024 * 1024
+names: set[str] = set()
+expanded_bytes = 0
+
+try:
+    archive = zipfile.ZipFile(archive_path)
+except (OSError, zipfile.BadZipFile) as error:
+    raise SystemExit(f"Cannot open Android archive: {error}") from error
+
+with archive:
+    infos = archive.infolist()
+    if not infos or len(infos) > maximum_entries:
+        raise SystemExit("Android archive entry count is empty or exceeds 100,000")
+    for info in infos:
+        name = info.filename
+        normalized = name[:-1] if name.endswith("/") else name
+        if (
+            not normalized
+            or "\x00" in name
+            or "\\" in name
+            or name.startswith("/")
+            or any(part in ("", ".", "..") for part in normalized.split("/"))
+        ):
+            raise SystemExit(f"Unsafe Android archive path: {name!r}")
+        if name in names:
+            raise SystemExit(f"Duplicate Android archive path: {name}")
+        names.add(name)
+        if info.is_dir():
+            continue
+        if stat.S_ISLNK(info.external_attr >> 16):
+            raise SystemExit(f"Symbolic link is forbidden in Android archive: {name}")
+        expanded_bytes += info.file_size
+        if expanded_bytes > maximum_expanded_bytes:
+            raise SystemExit("Android archive expands beyond the 16 GiB safety limit")
+        if not name.endswith(".so"):
+            continue
+        destination = output.joinpath(*PurePosixPath(name).parts)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(info) as source, destination.open("xb") as target:
+            shutil.copyfileobj(source, target, length=1024 * 1024)
+        if destination.stat().st_size != info.file_size:
+            raise SystemExit(f"Truncated native library in Android archive: {name}")
+PY
   search_root="$work/artifact"
 elif [[ "$input" == *.so ]]; then
   mkdir -p "$work/artifact"

@@ -36,19 +36,29 @@ blocks publishing while the pinned WPE artifact is below the repository's
 engine and 16 KiB page-alignment requirements.
 
 The reviewed source-fork contract lives in [`wpe-fork/`](wpe-fork/README.md).
-After building its AAR, use it in a verification build with an exact checksum:
+Build it on Linux with the pinned JDK/SDK/NDK/CMake contract and a fresh output
+directory, then use the generated AAR and checksum in a verification build:
 
 ```sh
-./scripts/verify-android-16k.sh /absolute/path/to/wpeview-release.aar
+./scripts/build-wpe-android-fork.sh \
+  /absolute/path/to/clean/wpe-android \
+  /absolute/path/to/new/xanh-wpe-build-evidence
 ./gradlew --no-daemon :app-webkit:assembleDebug \
-  -PxanhWpeForkAar=/absolute/path/to/wpeview-release.aar \
+  -PxanhWpeForkAar=/absolute/path/to/xanh-wpeview-0.3.3-webkit-2.52.6.aar \
   -PxanhWpeForkSha256=<sha256>
 ```
 
 `XANH_WPE_FORK_AAR` and `XANH_WPE_FORK_SHA256` are the equivalent CI
 environment variables. The checksum is mandatory whenever the local fork AAR
 override is used, and the engine-information menu then reports the locked fork
-runtime rather than the Maven preview runtime.
+runtime rather than the Maven preview runtime. The evidence directory also
+contains a 16 KiB report, CycloneDX SBOM, build environment/log, exact upstream
+WPE Android and Cerbero archives, both reviewed patches and the audited Cerbero
+corresponding-source bundle. The manual workflow adds exact host APKs. Its
+single-job ephemeral self-hosted build job has only read access, does not retain
+checkout credentials and is destroyed after cleanup; a separate GitHub-hosted
+job accepts only the fixed checksum manifest and publishes the commit-bound
+GitHub OIDC/Sigstore attestation.
 
 ## Preview limitations
 

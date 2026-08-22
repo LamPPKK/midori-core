@@ -228,14 +228,34 @@ availability obligations before distribution.
 
 For the source-built candidate, use the exact revisions and patch in
 `app-webkit/wpe-fork/`. CI must first prove that the patch still applies to the
-locked WPE Android source. Build both arm64 and x86_64 AAR contents on Linux,
-then run `scripts/verify-android-16k.sh` on the final AAR and on the application
-artifact. Supply the following commit-bound files to
-`scripts/verify-sync-release.sh wpe`:
+locked WPE Android source. On the dedicated Linux runner, invoke
+`scripts/build-wpe-android-fork.sh` with a clean upstream checkout and a new
+output directory. The script requires the pinned upstream Android 35 library
+toolchain, builds both arm64 and x86_64 from source, generates corresponding
+source plus a file-level CycloneDX SBOM, and runs
+`scripts/verify-android-16k.sh` before publishing its atomic evidence set. The
+consuming Xanh app must then compile with SDK 36 against the exact recorded AAR
+checksum and the packaged APK must pass the same 16 KiB check. The manual
+`.github/workflows/wpe-android-source-build.yml` workflow encodes this lane for
+a pre-provisioned JIT runner labelled `xanh-wpe-android-ephemeral` without
+running `sudo`. The VM/container must accept exactly one job and be destroyed;
+a persistent self-hosted runner is forbidden because upstream build code must
+not influence a later release. The workflow pins every third-party action by
+commit, uses unique job-local Android SDK,
+Gradle, XDG and compiler-cache directories, and gives the source-build job only
+read access without persisted checkout credentials or OIDC. A separate
+GitHub-hosted job accepts only the fixed 16-subject checksum manifest and
+creates the GitHub OIDC/Sigstore attestation for every evidence file and exact
+host APK. Download the source-build artifact and its matching attestation
+artifact for the same commit and `run_attempt`, then place
+`github-attestation.sigstore.json` in the source-build evidence directory.
+Supply the following
+commit-bound files to `scripts/verify-sync-release.sh wpe`:
 
 - `XANH_WPE_FORK_BUILD_EVIDENCE`: source revisions, commands, toolchain and AAR
   SHA-256;
-- `XANH_WPE_16K_EVIDENCE`: every packaged ELF and its LOAD alignment;
+- `XANH_WPE_16K_EVIDENCE`: the generated AAR report; retain alongside it the
+  workflow's second report for every ELF packaged by the consuming application;
 - `XANH_WPE_BRIDGE_REVIEW_EVIDENCE`: isolated-world, top-frame, host-challenge
   nonce binding, exact-origin/request-ID reply acknowledgement, background
   teardown, idempotent late-attachment bootstrap, navigation-race,
@@ -246,10 +266,28 @@ artifact. Supply the following commit-bound files to
 - `XANH_WPE_DEVICE_TEST_EVIDENCE`: API 31/36 arm64/x86_64 browser and Sync tests,
   including HTTP(S), unsupported schemes, subframes, redirects and allowlisted
   external intents with and without a user gesture;
-- `XANH_WPE_SBOM_EVIDENCE`: SBOM, notices and reproducible source archive.
+- `XANH_WPE_SBOM_EVIDENCE`: the generated SBOM, notices, WPE Android source plus
+  Xanh patch, the exact Cerbero source plus its reviewed patch, and Cerbero
+  corresponding-source bundle;
+- `XANH_WPE_GITHUB_ATTESTATION_EVIDENCE`: the downloaded
+  `github-attestation.sigstore.json` from the same workflow run;
+- `XANH_WPE_HOST_APK_EVIDENCE`, `XANH_WPE_HOST_TEST_APK_EVIDENCE`,
+  `XANH_WPE_HOST_16K_EVIDENCE` and `XANH_WPE_HOST_TOOLCHAIN_EVIDENCE`: the exact
+  checksum-bound SDK 36 verification APK, instrumentation APK, packaged-ELF
+  report and host toolchain hashes from that attested evidence directory.
 
 These evidence paths supplement the existing fail-closed boolean gates; they
 do not turn a source patch or unsigned verification artifact into a release.
+The WPE gate rehashes the complete evidence set, reconstructs the AAR inventory
+and CycloneDX document, opens and audits all source archives, binds generated
+paths to one directory, reruns the ELF alignment verifier against the recorded
+AAR and host APK, and verifies the GitHub attestation against the exact release
+commit and `LamPPKK/midori-core` signer workflow. This verification APK remains
+non-production evidence; the signed production artifact and device/security
+gates are still mandatory. Attestation prevents post-build substitution and
+binds provenance; it does not make a compromised self-hosted builder trusted,
+so the hardened dedicated runner and independent release review remain part of
+the security boundary.
 
 ## 5. Validate Apple and Windows
 

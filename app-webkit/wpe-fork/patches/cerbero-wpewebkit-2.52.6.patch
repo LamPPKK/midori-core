@@ -1,0 +1,57 @@
+diff --git a/config/android.config b/config/android.config
+index bbe0437..a44b8bb 100644
+--- a/config/android.config
++++ b/config/android.config
+@@ -142,7 +142,7 @@ if target_arch == Architecture.X86:
+     if v < 24:
+         cflags += ' -mstackrealign'
+ 
+-ldflags = f'-fPIC -no-canonical-prefixes -Wl,-no-undefined -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections -Wl,--warn-shared-textrel,--undefined-version '
++ldflags = f'-fPIC -no-canonical-prefixes -Wl,-no-undefined -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections -Wl,--warn-shared-textrel,--undefined-version -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 '
+ 
+ if target_arch == Architecture.ARMv7:
+     defines += ' -D__ARM_ARCH_7A__ '
+diff --git a/packages/wpewebkit-core.package b/packages/wpewebkit-core.package
+index c7d8bbe..f7cc6c9 100644
+--- a/packages/wpewebkit-core.package
++++ b/packages/wpewebkit-core.package
+@@ -2,7 +2,7 @@
+ 
+ class Package(package.Package):
+     name = 'wpewebkit-core'
+-    version = '2.51.93'
++    version = '2.52.6'
+     shortdesc = 'Web Platform for Embedded'
+     longdesc = 'WPE WebKit allows embedders to create simple and performant \
+         systems based on Web platform technologies. It is a WebKit port designed \
+diff --git a/packages/wpewebkit.package b/packages/wpewebkit.package
+index 8aa32ea..32ed630 100644
+--- a/packages/wpewebkit.package
++++ b/packages/wpewebkit.package
+@@ -2,7 +2,7 @@
+ 
+ class SDKPackage(package.SDKPackage):
+     name = 'wpewebkit'
+-    version = '2.51.93'
++    version = '2.52.6'
+     shortdesc = 'Web Platform for Embedded'
+     longdesc = 'WPE WebKit allows embedders to create simple and performant \
+         systems based on Web platform technologies. It is a WebKit port designed \
+diff --git a/recipes/wpewebkit.recipe b/recipes/wpewebkit.recipe
+index dc02cd7..3491b35 100644
+--- a/recipes/wpewebkit.recipe
++++ b/recipes/wpewebkit.recipe
+@@ -2,11 +2,11 @@
+ 
+ class Recipe(recipe.Recipe):
+     name = 'wpewebkit'
+-    version = '2.51.93'
++    version = '2.52.6'
+     stype = SourceType.TARBALL
+     btype = BuildType.CMAKE
+     url = f'https://wpewebkit.org/releases/wpewebkit-{version}.tar.xz'
+-    tarball_checksum = '1916e4605281faf2b241d8053b06c3678bc1ac234fc0fe543f3a0e729aecfa61'
++    tarball_checksum = 'b2bafef2751625b7fdf530f230ff0f542ff0eeba3590c3a989d931b2a55c858e'
+     deps = [
+         'icu',
+         'cairo',

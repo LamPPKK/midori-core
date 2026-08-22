@@ -16,12 +16,24 @@ jobs:
       - name: Fetch locked WPE Android source
         run: |
           revision="$(cat app-webkit/wpe-fork/WPE_ANDROID_REVISION)"
+          cerbero_revision="$(cat app-webkit/wpe-fork/CERBERO_REVISION)"
           git init _wpe_android
           git -C _wpe_android remote add origin https://github.com/Igalia/wpe-android.git
           git -C _wpe_android fetch --depth=1 origin "${revision}"
           git -C _wpe_android checkout --detach FETCH_HEAD
+          git init _cerbero
+          git -C _cerbero remote add origin https://github.com/Igalia/wpe-android-cerbero.git
+          git -C _cerbero fetch --depth=1 origin "${cerbero_revision}"
+          git -C _cerbero checkout --detach FETCH_HEAD
       - name: Verify Xanh source-fork contract
-        run: ./scripts/verify-wpe-android-fork.sh _wpe_android
+        run: |
+          ./scripts/verify-wpe-android-fork.sh _wpe_android _cerbero
+          python3 -B -m unittest discover \
+            -s scripts/tests -p 'test_create_wpe_build_evidence.py' -v
+          bash -n scripts/build-wpe-android-fork.sh
+          shellcheck \
+            scripts/build-wpe-android-fork.sh \
+            scripts/verify-wpe-android-fork.sh
 
   android-wpe:
     runs-on: ubuntu-latest

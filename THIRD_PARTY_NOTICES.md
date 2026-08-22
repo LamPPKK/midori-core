@@ -38,7 +38,8 @@ native dependency bundle contain LGPL and permissively licensed components.
 - WPE Android license: <https://github.com/Igalia/wpe-android/blob/v0.3.3/LICENSE.md>
 
 Xanh's source changes are recorded in
-`app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch`. Any distributed fork
+`app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch` and
+`app-webkit/wpe-fork/patches/cerbero-wpewebkit-2.52.6.patch`. Any distributed fork
 artifact must provide the corresponding complete source, license texts,
 notices, relinking materials where required and an SBOM for the exact binary.
 

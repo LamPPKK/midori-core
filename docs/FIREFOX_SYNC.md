@@ -275,8 +275,17 @@ isolated document-start/message bridge and not every native library passes
 implements the missing bridge against WPE WebKit 2.52.6, but it remains a
 candidate. Its Android host now consumes that API only when AAR checksum
 verification enables the source-fork build flag, and it fails closed on any
-API drift. The AAR
-must still pass build, ELF, device, SBOM and security evidence gates in
+API drift. The Linux source-build orchestrator now emits the exact dual-ABI AAR,
+checksum, ELF alignment report, file-level CycloneDX SBOM, toolchain record and
+validated WPE Android/Cerbero upstream archives, reviewed patches and Cerbero
+corresponding-source bundle as one atomic evidence set. The manual workflow
+builds that set without repository credentials or OIDC in a single-job
+ephemeral self-hosted runner that is destroyed after completion.
+A separate GitHub-hosted attestation job receives only the fixed checksum
+manifest and cryptographically binds the set and the exact SDK 36 host APKs to
+its repository, workflow and commit through GitHub OIDC/Sigstore. The AAR must
+still pass
+host packaging, device, interoperability and security evidence gates in
 `RELEASING.md`.
 The pinned WinCairo source delta now exposes bounded named-isolated-world C APIs
 for user scripts, request/reply message handlers and deterministic per-world

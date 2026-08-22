@@ -1,0 +1,274 @@
+name: WPE Android source build
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: wpe-android-source-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-source-fork:
+    runs-on: [self-hosted, linux, x64, xanh-wpe-android-ephemeral]
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+      - name: Create isolated job workspace
+        run: |
+          job_root="$(mktemp -d "$RUNNER_TEMP/xanh-wpe-source-build.XXXXXX")"
+          test "$(dirname "$(realpath "$job_root")")" = "$(realpath "$RUNNER_TEMP")"
+          mkdir -m 700 "$job_root/gradle-home" "$job_root/cache" "$job_root/ccache" \
+            "$job_root/android-sdk"
+          {
+            echo "XANH_WPE_JOB_ROOT=$job_root"
+            echo "GRADLE_USER_HOME=$job_root/gradle-home"
+            echo "XDG_CACHE_HOME=$job_root/cache"
+            echo "CCACHE_DIR=$job_root/ccache"
+            echo "ANDROID_SDK_ROOT=$job_root/android-sdk"
+            echo "ANDROID_HOME=$job_root/android-sdk"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '12266719'
+          packages: >-
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
+            ndk;27.0.12077973
+            cmake;3.31.1
+            platforms;android-36
+            build-tools;36.0.0
+      - name: Verify dedicated runner prerequisites
+        run: |
+          for command in git java python3 readelf ruby tar unifdef unzip; do
+            command -v "$command" >/dev/null
+          done
+          python3 -c 'import distro, sys, venv; assert sys.version_info >= (3, 10)'
+      - name: Fetch locked WPE Android source
+        run: |
+          revision="$(cat app-webkit/wpe-fork/WPE_ANDROID_REVISION)"
+          source_root="$XANH_WPE_JOB_ROOT/wpe-android-source"
+          git init "$source_root"
+          git -C "$source_root" remote add origin \
+            https://github.com/Igalia/wpe-android.git
+          git -C "$source_root" fetch --depth=1 origin "$revision"
+          git -C "$source_root" checkout --detach FETCH_HEAD
+      - name: Build both ABIs and create provenance evidence
+        id: source-build
+        run: |
+          export XANH_WPE_BUILD_TMPDIR="$XANH_WPE_JOB_ROOT"
+          ./scripts/build-wpe-android-fork.sh \
+            "$XANH_WPE_JOB_ROOT/wpe-android-source" \
+            "$XANH_WPE_JOB_ROOT/evidence"
+          python3 - "$XANH_WPE_JOB_ROOT/evidence" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          evidence_directory = pathlib.Path(sys.argv[1])
+          evidence = json.loads(
+              (evidence_directory / "wpe-build-evidence.json").read_text(encoding="utf-8")
+          )
+          with pathlib.Path(sys.argv[2]).open("a", encoding="utf-8") as output:
+              output.write(f"aar={evidence_directory / evidence['artifact']['file']}\n")
+              output.write(f"sha256={evidence['artifact']['sha256']}\n")
+              output.write(f"evidence-directory={evidence_directory}\n")
+          PY
+      - name: Compile Xanh host against the exact fork AAR
+        run: >-
+          ./gradlew --no-daemon --no-build-cache
+          -PxanhWpeForkAar=${{ steps.source-build.outputs.aar }}
+          -PxanhWpeForkSha256=${{ steps.source-build.outputs.sha256 }}
+          :app-webkit:lintDebug
+          :app-webkit:testDebugUnitTest
+          :app-webkit:assembleDebug
+          :app-webkit:assembleAndroidTest
+      - name: Verify packaged host native alignment
+        run: |
+          {
+            printf 'schema=io.github.lamppkk.xanhbrowser.wpe-host-build-environment.v1\n'
+            printf 'source_commit=%s\n' "$GITHUB_SHA"
+            java -version 2>&1
+            ./gradlew --version
+            sha256sum \
+              "$ANDROID_SDK_ROOT/platforms/android-36/android.jar" \
+              "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+          } > "$XANH_WPE_JOB_ROOT/evidence/xanh-host-build-environment.txt"
+          cp app-webkit/build/outputs/apk/debug/app-webkit-debug.apk \
+            "$XANH_WPE_JOB_ROOT/evidence/xanh-browser-lite-wpe-debug.apk"
+          cp app-webkit/build/outputs/apk/androidTest/debug/app-webkit-debug-androidTest.apk \
+            "$XANH_WPE_JOB_ROOT/evidence/xanh-browser-lite-wpe-debug-androidTest.apk"
+          ./scripts/verify-android-16k.sh \
+            "$XANH_WPE_JOB_ROOT/evidence/xanh-browser-lite-wpe-debug.apk" | \
+            tee "$XANH_WPE_JOB_ROOT/evidence/xanh-host-16k-evidence.txt"
+      - name: Verify source contracts
+        run: ./scripts/verify-sync-release.sh source
+      - name: Freeze the fixed evidence surface and checksums
+        run: |
+          python3 - "$XANH_WPE_JOB_ROOT/evidence" \
+            "$XANH_WPE_JOB_ROOT/subject.checksums.txt" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          checksum_path = pathlib.Path(sys.argv[2])
+          expected = {
+              "build-environment.txt",
+              "build.log",
+              "cerbero-corresponding-source.tar.gz",
+              "cerbero-upstream.tar.gz",
+              "cerbero-wpewebkit-2.52.6.patch",
+              "wpe-16k-evidence.txt",
+              "wpe-android-upstream.tar.gz",
+              "wpe-build-evidence.json",
+              "wpeview-sbom.cdx.json",
+              "xanh-browser-lite-wpe-debug-androidTest.apk",
+              "xanh-browser-lite-wpe-debug.apk",
+              "xanh-host-16k-evidence.txt",
+              "xanh-host-build-environment.txt",
+              "xanh-isolated-bridge.patch",
+              "xanh-wpeview-0.3.3-webkit-2.52.6.aar",
+              "xanh-wpeview-0.3.3-webkit-2.52.6.aar.sha256",
+          }
+          if not root.is_dir() or root.is_symlink():
+              raise SystemExit("evidence root is not a real directory")
+          entries = list(root.iterdir())
+          actual = {entry.name for entry in entries}
+          if actual != expected:
+              missing = sorted(expected - actual)
+              extra = sorted(actual - expected)
+              raise SystemExit(f"unexpected evidence surface: missing={missing}, extra={extra}")
+          lines = []
+          for name in sorted(expected):
+              entry = root / name
+              if entry.is_symlink() or not entry.is_file():
+                  raise SystemExit(f"evidence subject is not a regular file: {name}")
+              digest = hashlib.sha256()
+              with entry.open("rb") as stream:
+                  while chunk := stream.read(1024 * 1024):
+                      digest.update(chunk)
+              lines.append(f"{digest.hexdigest()}  {name}\n")
+          checksum_path.write_text("".join(lines), encoding="utf-8")
+          PY
+      - name: Upload unprivileged source-build evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: xanh-wpe-android-source-build-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          path: ${{ steps.source-build.outputs.evidence-directory }}
+      - name: Upload checksum claims for the trusted signer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: xanh-wpe-android-source-build-subjects-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 2
+          path: ${{ env.XANH_WPE_JOB_ROOT }}/subject.checksums.txt
+      - name: Remove isolated job workspace
+        if: always()
+        run: |
+          test -n "${XANH_WPE_JOB_ROOT:-}"
+          test "$(dirname "$(realpath "$XANH_WPE_JOB_ROOT")")" = "$(realpath "$RUNNER_TEMP")"
+          rm -rf -- "$XANH_WPE_JOB_ROOT"
+
+  attest-source-build:
+    needs: build-source-fork
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Create trusted attestation workspace
+        run: |
+          attest_root="$(mktemp -d "$RUNNER_TEMP/xanh-wpe-attest.XXXXXX")"
+          test "$(dirname "$(realpath "$attest_root")")" = "$(realpath "$RUNNER_TEMP")"
+          mkdir -m 700 "$attest_root/claims" "$attest_root/output"
+          echo "XANH_WPE_ATTEST_ROOT=$attest_root" >> "$GITHUB_ENV"
+      - name: Download unprivileged checksum claims
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: xanh-wpe-android-source-build-subjects-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ env.XANH_WPE_ATTEST_ROOT }}/claims
+      - name: Accept only the fixed checksum surface
+        run: |
+          python3 - "$XANH_WPE_ATTEST_ROOT/claims" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          expected = {
+              "build-environment.txt",
+              "build.log",
+              "cerbero-corresponding-source.tar.gz",
+              "cerbero-upstream.tar.gz",
+              "cerbero-wpewebkit-2.52.6.patch",
+              "wpe-16k-evidence.txt",
+              "wpe-android-upstream.tar.gz",
+              "wpe-build-evidence.json",
+              "wpeview-sbom.cdx.json",
+              "xanh-browser-lite-wpe-debug-androidTest.apk",
+              "xanh-browser-lite-wpe-debug.apk",
+              "xanh-host-16k-evidence.txt",
+              "xanh-host-build-environment.txt",
+              "xanh-isolated-bridge.patch",
+              "xanh-wpeview-0.3.3-webkit-2.52.6.aar",
+              "xanh-wpeview-0.3.3-webkit-2.52.6.aar.sha256",
+          }
+          if not root.is_dir() or root.is_symlink():
+              raise SystemExit("attestation claims root is not a real directory")
+          entries = list(root.iterdir())
+          if len(entries) != 1 or entries[0].name != "subject.checksums.txt":
+              raise SystemExit("attestation job accepts exactly one checksum manifest")
+          checksum_path = entries[0]
+          if checksum_path.is_symlink() or not checksum_path.is_file():
+              raise SystemExit("checksum manifest is not a regular file")
+          if checksum_path.stat().st_size > 4096:
+              raise SystemExit("checksum manifest exceeds 4 KiB")
+          lines = checksum_path.read_text(encoding="utf-8").splitlines()
+          pattern = re.compile(r"^([0-9a-f]{64})  ([A-Za-z0-9._-]+)$")
+          names = []
+          for line in lines:
+              match = pattern.fullmatch(line)
+              if match is None:
+                  raise SystemExit("checksum manifest has an invalid record")
+              names.append(match.group(2))
+          if names != sorted(expected):
+              raise SystemExit("checksum manifest does not describe the fixed evidence surface")
+          PY
+      - name: Attest source build, evidence and exact host APKs
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-checksums: ${{ env.XANH_WPE_ATTEST_ROOT }}/claims/subject.checksums.txt
+      - name: Stage commit-bound GitHub attestation
+        run: |
+          cp "${{ steps.attest.outputs.bundle-path }}" \
+            "$XANH_WPE_ATTEST_ROOT/output/github-attestation.sigstore.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: xanh-wpe-android-source-build-attestation-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.XANH_WPE_ATTEST_ROOT }}/output/github-attestation.sigstore.json
+      - name: Remove trusted attestation workspace
+        if: always()
+        run: |
+          test -n "${XANH_WPE_ATTEST_ROOT:-}"
+          test "$(dirname "$(realpath "$XANH_WPE_ATTEST_ROOT")")" = "$(realpath "$RUNNER_TEMP")"
+          rm -rf -- "$XANH_WPE_ATTEST_ROOT"

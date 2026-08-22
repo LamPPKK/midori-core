@@ -141,9 +141,19 @@ and Cerbero revisions, upgrades the source-built engine to WPE WebKit 2.52.6,
 adds 16 KiB ELF alignment flags and supplies a bounded, main-frame-only bridge
 in a named isolated script world. The same fork adds a pre-load navigation
 policy callback; Xanh allows web URLs, blocks unsupported schemes, and opens an
-allowlisted external scheme only for a non-redirected user gesture. It does not replace the Maven preview by
-default and does not open the production gate until the built AAR, bridge,
-devices, SBOM and security evidence have all been reviewed.
+allowlisted external scheme only for a non-redirected user gesture. A
+Linux-only build orchestrator now creates a dual-ABI AAR, exact checksum,
+16 KiB report, file-level CycloneDX SBOM, toolchain/build provenance and the
+validated corresponding source archives without modifying the input checkout.
+The manual source-build workflow then compiles the SDK 36 host against that
+exact AAR in an unprivileged, single-job ephemeral runner labelled
+`xanh-wpe-android-ephemeral`. A separate GitHub-hosted job downloads only the
+fixed checksum manifest and emits a commit-bound GitHub
+OIDC/Sigstore attestation for the evidence and host APKs; source-build code
+never receives the repository credential or OIDC permission. It does not
+replace the Maven preview by default and does not open the production
+gate until the bridge, devices, signing and security evidence have all been
+reviewed.
 
 ## Apple platforms
 

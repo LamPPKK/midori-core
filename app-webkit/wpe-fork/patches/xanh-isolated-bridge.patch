@@ -1,5 +1,48 @@
+diff --git a/build.gradle b/build.gradle
+index 9da4e79bb..c25d3c41e 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -36,15 +36,17 @@ def installGitHook = tasks.register("installGitHook") {
+     }
+ }
+ 
+-gradle.afterProject { project ->
+-    project.tasks.all { task ->
+-        def lowerName = task.name.toLowerCase()
+-        if ((task.group != "help") &&
+-            (lowerName.indexOf("clean") < 0) &&
+-            (lowerName != "wrapper") &&
+-            (lowerName != "installqatools") &&
+-            (lowerName != "installgithook")) {
+-            task.dependsOn(installGitHook)
++if (providers.gradleProperty("wpeInstallDeveloperHooks").orNull == "true") {
++    gradle.afterProject { project ->
++        project.tasks.all { task ->
++            def lowerName = task.name.toLowerCase()
++            if ((task.group != "help") &&
++                (lowerName.indexOf("clean") < 0) &&
++                (lowerName != "wrapper") &&
++                (lowerName != "installqatools") &&
++                (lowerName != "installgithook")) {
++                task.dependsOn(installGitHook)
++            }
+         }
+     }
+ }
+diff --git a/gradle/wrapper/gradle-wrapper.properties b/gradle/wrapper/gradle-wrapper.properties
+index cea7a793a..c43ecd675 100644
+--- a/gradle/wrapper/gradle-wrapper.properties
++++ b/gradle/wrapper/gradle-wrapper.properties
+@@ -1,6 +1,7 @@
+ distributionBase=GRADLE_USER_HOME
+ distributionPath=wrapper/dists
+ distributionUrl=https\://services.gradle.org/distributions/gradle-8.12-bin.zip
++distributionSha256Sum=7a00d51fb93147819aab76024feece20b6b84e420694101f276be952e08bef03
+ networkTimeout=10000
+ validateDistributionUrl=true
+ zipStoreBase=GRADLE_USER_HOME
 diff --git a/tools/scripts/bootstrap.py b/tools/scripts/bootstrap.py
-index 90a5d9671..5634870cc 100755
+index 90a5d9671..b12b5dbf6 100755
 --- a/tools/scripts/bootstrap.py
 +++ b/tools/scripts/bootstrap.py
 @@ -81,10 +81,12 @@ from urllib.request import urlretrieve
@@ -17,7 +60,7 @@ index 90a5d9671..5634870cc 100755
  
      _packages_url_template = "https://wpewebkit.org/android/bootstrap/{version}/{filename}"
      _devel_package_name_template = "wpewebkit-android-{arch}-{version}.tar.xz"
-@@ -232,15 +234,20 @@ class Bootstrap:
+@@ -232,23 +234,63 @@ class Bootstrap:
              raise Exception("Illegal configuration: build mode is not specified")
  
          if os.path.isdir(self._cerbero_root_dir):
@@ -44,8 +87,10 @@ index 90a5d9671..5634870cc 100755
 +        self._patch_pinned_cerbero()
  
          try:
-             subprocess.check_call(self._cerbero_command_args + ["bootstrap"])
-@@ -249,6 +256,41 @@ class Bootstrap:
+-            subprocess.check_call(self._cerbero_command_args + ["bootstrap"])
++            subprocess.check_call(self._cerbero_command_args + ["bootstrap", "--system=no"])
+         except subprocess.CalledProcessError as e:
+             sys.exit(e)
          if self._debug:
              self._patch_wpewebkit_recipe_for_debug_build()
  

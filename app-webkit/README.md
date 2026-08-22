@@ -64,9 +64,16 @@ is tracked separately through the
 Because no official WPE Android 2.52.6 bootstrap package is published, the
 repository carries a pinned source delta that builds that stable runtime, adds
 16 KiB linker alignment and exposes a main-frame-only isolated script
-world/message bridge. This closes the source/API design gap, but production
-remains blocked until the resulting binaries and bridge pass the release
-evidence listed in [`../RELEASING.md`](../RELEASING.md).
+world/message bridge. A fork-AAR verification build attaches the on-demand
+credential picker only through that API. A host-generated challenge binds each
+document nonce to a monotonic navigation generation. The host rechecks the live
+URL and foreground state; the isolated-world reply rechecks origin, generation,
+challenge, nonce, request ID and renderer visibility before acknowledging a
+typed fill. Late dynamic-feature attachment bootstraps the current document
+through the same named world without reloading it. API drift or a non-fork build
+leaves password filling disabled. Production remains blocked until the
+resulting binaries and bridge pass the release evidence listed in
+[`../RELEASING.md`](../RELEASING.md).
 
 Any distributed artifact must also carry the required WebKit/WPEView and
 third-party license notices and satisfy the corresponding source-availability

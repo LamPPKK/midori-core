@@ -233,8 +233,12 @@ artifact. Supply the following commit-bound files to
 - `XANH_WPE_FORK_BUILD_EVIDENCE`: source revisions, commands, toolchain and AAR
   SHA-256;
 - `XANH_WPE_16K_EVIDENCE`: every packaged ELF and its LOAD alignment;
-- `XANH_WPE_BRIDGE_REVIEW_EVIDENCE`: isolated-world, top-frame, nonce/origin,
-  teardown and forged-message review;
+- `XANH_WPE_BRIDGE_REVIEW_EVIDENCE`: isolated-world, top-frame, host-challenge
+  nonce binding, exact-origin/request-ID reply acknowledgement, background
+  teardown, idempotent late-attachment bootstrap, navigation-race and
+  forged-message review,
+  including execution of `WpeForkApiContractTest` with
+  `XANH_WPE_SOURCE_FORK=true`;
 - `XANH_WPE_DEVICE_TEST_EVIDENCE`: API 31/36 arm64/x86_64 browser and Sync tests;
 - `XANH_WPE_SBOM_EVIDENCE`: SBOM, notices and reproducible source archive.
 

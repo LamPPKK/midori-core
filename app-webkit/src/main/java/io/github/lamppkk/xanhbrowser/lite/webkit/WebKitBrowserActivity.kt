@@ -76,6 +76,7 @@ class WebKitBrowserActivity : AppCompatActivity() {
 
         desktopSite = savedInstanceState?.getBoolean(STATE_DESKTOP_SITE) ?: false
         if (desktopSite) requestDesktopSite(true, reload = false)
+        syncFeature.attachCredentialBridge(binding.webView)
         val startUrl = savedInstanceState?.getString(STATE_CURRENT_URL)
             ?: WebKitAddressResolver.resolveWebIntent(intent.dataString)
             ?: preferences.getString(LAST_URL, null)
@@ -95,9 +96,21 @@ class WebKitBrowserActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
     }
 
+    override fun onResume() {
+        super.onResume()
+        syncFeature.attachCredentialBridge(binding.webView)
+        syncFeature.foregrounded()
+    }
+
+    override fun onPause() {
+        syncFeature.backgrounded()
+        super.onPause()
+    }
+
     override fun onDestroy() {
         pendingBackupPassword?.fill('\u0000')
         pendingBackupPassword = null
+        syncFeature.destroy()
         binding.webView.apply {
             stopLoading()
             setWPEChromeClient(null)
@@ -139,6 +152,7 @@ class WebKitBrowserActivity : AppCompatActivity() {
                     ).show()
                     return
                 }
+                syncFeature.navigationStarted(url)
                 if (WebKitAddressResolver.isValidWebUrl(url)) currentUrl = url
                 onProgress(0)
             }

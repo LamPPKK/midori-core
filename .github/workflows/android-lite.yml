@@ -76,6 +76,7 @@ jobs:
             -PxanhEnableSyncFeature=true \
             -PxanhSyncSelfHostedOnly=true \
             -PxanhSyncRepository="$GITHUB_WORKSPACE/_sync_android/sync-core/build/maven" \
+            :sync-feature-common:testDebugUnitTest \
             :sync-feature-common:lintDebug \
             :app:lintDebug \
             :app-webkit:lintDebug \

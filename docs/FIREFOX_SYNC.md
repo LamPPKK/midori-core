@@ -109,8 +109,21 @@ libraries until the user enables Sync. The System WebView bridge accepts only
 main-frame messages for the exact committed HTTPS origin, requires a recent
 trusted pointer or keyboard gesture, rejects synthetic DOM events, and asks the
 shared runtime for a bounded exact-origin form-credential set before presenting
-native UI. The WPE feature
-reuses the management UI but never loads a privileged password-fill script.
+native UI. The published WPEView build reuses the management UI without a
+password-fill script. When a checksum-verified source-fork AAR is selected, the
+WPE feature reflectively requires its reviewed API and installs a persistent
+main-frame document-start script in a named isolated world. Each document
+generates a cryptographic nonce, then proves it using a host-generated random
+challenge and monotonic navigation generation before credential requests are
+accepted. Exact source origin, live HTTPS URL, tab and Activity foreground state
+are checked before the picker and again before dispatch. The eventual isolated-
+world fill separately rechecks origin, generation, challenge, nonce, request ID
+and renderer visibility. Login usage is updated only after the document
+returns a successful typed acknowledgement. Credentials never use page-world
+evaluation or string interpolation. Installing the dynamic feature over an
+already loaded
+page runs the same idempotent bootstrap in its isolated world without reloading
+or resubmitting that page.
 
 Linux now has an asynchronous GTK host for account initialization, system-
 browser OAuth, exact callback routing, Secret Service persistence, manual/
@@ -256,8 +269,11 @@ The published WPEView 0.3.3 artifact remains blocked because it lacks an
 isolated document-start/message bridge and not every native library passes
 16 KiB page-size checks. The pinned source delta in `app-webkit/wpe-fork/`
 implements the missing bridge against WPE WebKit 2.52.6, but it remains a
-candidate until the resulting AAR passes the build, ELF, device, SBOM and
-security evidence gates in `RELEASING.md`.
+candidate. Its Android host now consumes that API only when AAR checksum
+verification enables the source-fork build flag, and it fails closed on any
+API drift. The AAR
+must still pass build, ELF, device, SBOM and security evidence gates in
+`RELEASING.md`.
 WinCairo remains blocked until its isolated bridge, vault and packaged native
 core pass security tests. `scripts/verify-sync-release.sh` is a fail-closed
 mechanical prerequisite check, not an audit substitute. Its Linux production

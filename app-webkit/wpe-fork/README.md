@@ -17,6 +17,12 @@ source, pins Cerbero and WPE WebKit 2.52.6 with the official tarball checksum,
 adds 16 KiB linker alignment, and exposes a bounded document-start bridge in a
 named WebKit script world. The bridge is main-frame-only, transfers function
 arguments as typed values, and removes its handler and scripts at teardown.
+The on-demand Sync host in `sync-feature-common/WpeCredentialBridge.kt` loads
+this API reflectively only when `XANH_WPE_SOURCE_FORK` is true. It uses typed
+calls both to authenticate the document nonce with a host challenge and to
+require a boolean acknowledgement from the same document before updating login
+usage. The published
+Maven preview and any API drift keep password filling disabled.
 
 ## Verify and build
 

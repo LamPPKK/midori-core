@@ -33,4 +33,7 @@ dependencies {
     compileOnly 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
     compileOnly 'androidx.webkit:webkit:1.15.0'
     compileOnly 'com.google.android.material:material:1.13.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20260814'
 }

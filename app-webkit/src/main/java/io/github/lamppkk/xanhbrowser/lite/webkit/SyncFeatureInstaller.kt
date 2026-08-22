@@ -8,9 +8,12 @@ import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
 import com.google.android.play.core.splitinstall.SplitInstallRequest
 import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
 import com.google.android.play.core.splitinstall.model.SplitInstallSessionStatus
+import org.wpewebkit.wpeview.WPEView
 
 internal class SyncFeatureInstaller(private val activity: AppCompatActivity) {
     private val manager = SplitInstallManagerFactory.create(activity)
+    private var credentialBridge: Any? = null
+    private var bridgeFailed = false
 
     fun open(currentUrl: String?, currentTitle: String?) {
         if (!BuildConfig.XANH_SYNC_FEATURE_ENABLED) return
@@ -48,11 +51,59 @@ internal class SyncFeatureInstaller(private val activity: AppCompatActivity) {
 
     fun navigationCommitted(url: String?, title: String?) {
         if (!BuildConfig.XANH_SYNC_FEATURE_ENABLED || MODULE !in manager.installedModules) return
+        invokeBridge("navigationCommitted", url)
         runCatching {
             SplitCompat.installActivity(activity)
             Class.forName(HISTORY_CLASS, true, activity.classLoader)
                 .getMethod("record", android.content.Context::class.java, String::class.java, String::class.java)
                 .invoke(null, activity.applicationContext, url, title)
+        }
+    }
+
+    fun attachCredentialBridge(webView: WPEView) {
+        if (!BuildConfig.XANH_SYNC_FEATURE_ENABLED || !BuildConfig.XANH_WPE_SOURCE_FORK ||
+            MODULE !in manager.installedModules || credentialBridge != null || bridgeFailed
+        ) return
+        runCatching {
+            SplitCompat.installActivity(activity)
+            val type = Class.forName(BRIDGE_CLASS, true, activity.classLoader)
+            credentialBridge = type.getMethod(
+                "attach",
+                AppCompatActivity::class.java,
+                Any::class.java,
+            ).invoke(null, activity, webView)
+        }.onFailure {
+            bridgeFailed = true
+            credentialBridge = null
+            unavailable()
+        }
+    }
+
+    fun foregrounded() {
+        runCatching {
+            credentialBridge?.javaClass?.getMethod("foregrounded")?.invoke(credentialBridge)
+        }
+    }
+
+    fun navigationStarted(url: String?) {
+        invokeBridge("navigationStarted", url)
+    }
+
+    fun backgrounded() {
+        runCatching {
+            credentialBridge?.javaClass?.getMethod("backgrounded")?.invoke(credentialBridge)
+        }
+    }
+
+    fun destroy() {
+        runCatching { credentialBridge?.javaClass?.getMethod("destroy")?.invoke(credentialBridge) }
+        credentialBridge = null
+    }
+
+    private fun invokeBridge(name: String, value: String?) {
+        runCatching {
+            credentialBridge?.javaClass?.getMethod(name, String::class.java)
+                ?.invoke(credentialBridge, value)
         }
     }
 
@@ -80,6 +131,7 @@ internal class SyncFeatureInstaller(private val activity: AppCompatActivity) {
     companion object {
         private const val MODULE = "sync_feature_wpe"
         private const val ACTIVITY_CLASS = "io.github.lamppkk.xanhbrowser.lite.sync.SyncFeatureActivity"
+        private const val BRIDGE_CLASS = "io.github.lamppkk.xanhbrowser.lite.sync.WpeCredentialBridge"
         private const val HISTORY_CLASS = "io.github.lamppkk.xanhbrowser.lite.sync.LiteHistoryRecorder"
         private const val REDIRECT_URI = "xanh-browser-wpe://accounts/oauth"
     }

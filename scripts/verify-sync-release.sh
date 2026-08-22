@@ -98,6 +98,32 @@ case "$edition" in
     grep -F -- '-Wl,-z,max-page-size=16384' \
       app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
     grep -F 'WPE Android, WPEView and WPE WebKit' THIRD_PARTY_NOTICES.md >/dev/null
+    test -f sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt
+    grep -F 'window.top !== window' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'event.isTrusted' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'globalThis.crypto.getRandomValues' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'BridgePolicy.validate' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'callIsolatedJavascriptFunction' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'navigationChallenge' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'expectedRequestId !== requestedForId' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'result == "true"' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'fun foregrounded()' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'bootstrapAndBind' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'fun bootstrapFunctionBody(): String = "return' \
+      sync-feature-common/src/main/java/io/github/lamppkk/xanhbrowser/lite/sync/WpeCredentialBridge.kt >/dev/null
+    grep -F 'BuildConfig.XANH_WPE_SOURCE_FORK' \
+      app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/SyncFeatureInstaller.kt >/dev/null
+    test -f app-webkit/src/androidTest/java/io/github/lamppkk/xanhbrowser/lite/webkit/WpeForkApiContractTest.kt
     ;;
   linux)
     verify_native_core
@@ -158,6 +184,10 @@ case "$edition" in
     test "${XANH_ANDROID_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;
   wpe)
+    grep -F 'BuildConfig.XANH_WPE_SOURCE_FORK' \
+      app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/SyncFeatureInstaller.kt >/dev/null
+    grep -F 'WpeCredentialBridge' \
+      app-webkit/src/main/java/io/github/lamppkk/xanhbrowser/lite/webkit/SyncFeatureInstaller.kt >/dev/null
     require_evidence XANH_WPE_FORK_BUILD_EVIDENCE
     require_evidence XANH_WPE_16K_EVIDENCE
     require_evidence XANH_WPE_BRIDGE_REVIEW_EVIDENCE

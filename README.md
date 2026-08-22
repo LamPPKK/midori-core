@@ -229,7 +229,14 @@ runs `scripts/verify-lite-sync-size.sh`, and rejects a base-module increase over
 WebView credential picker requires a recent trusted user gesture and consumes
 only the bounded exact-origin form records returned by the shared Android
 runtime. The WPE split shares the data UI but deliberately has no password-fill
-bridge and remains blocked from production.
+bridge when built with the published Maven preview. A checksum-verified source
+fork build now attaches a separate top-frame isolated bridge with per-document
+nonce authenticated by a host challenge, exact-origin/foreground/navigation and
+request-ID validation, native selection, and typed replies acknowledged by the
+same document. Late feature attachment runs the idempotent bootstrap in the
+current isolated world without reloading the page. It remains blocked from
+production until the fork artifact
+and device/security evidence pass the WPE release gate.
 
 ## Repository map
 
@@ -246,7 +253,7 @@ bridge and remains blocked from production.
 | `backup-core/` | Android implementation of the portable encrypted backup format |
 | `sync-feature-common/` | Shared Lite on-demand Sync UI, vault and scheduler |
 | `sync-feature/` | System WebView dynamic feature with the isolated credential bridge |
-| `sync-feature-wpe/` | WPE dynamic feature; password filling remains disabled |
+| `sync-feature-wpe/` | WPE dynamic feature; source-fork credential bridge is fail-closed |
 | `xanh-sync-core/` | Rust Application Services core, UniFFI and stable C ABI |
 | `platform/apple/` | Shared macOS, iOS and iPadOS application |
 | `platform/windows/` | Windows application powered by WebView2 |

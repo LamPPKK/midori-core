@@ -81,6 +81,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   alignment and a bounded main-frame-only isolated script/message bridge; CI
   verifies patch drift while production remains gated on built-artifact,
   device, SBOM and security evidence.
+- Wired the on-demand WPE Sync credential picker to the source-fork bridge with
+  a host-challenge-authenticated nonce per document, strict message shape,
+  exact HTTPS origin, foreground/navigation/request-ID checks, native user
+  selection and typed isolated-world replies acknowledged by the target
+  document. Late feature attachment bootstraps the existing isolated world
+  without reloading or resubmitting the page. Published
+  WPEView builds and drifted fork APIs remain
+  fail-closed with password filling disabled.
 - Renamed the Linux application to Xanh Browser with application ID
   `io.github.lamppkk.xanhbrowser`.
 - Renamed the small Android edition to Xanh Browser Lite with application ID

@@ -7,12 +7,17 @@ namespace Xanh {
         public Gtk.Label label { get; construct; }
         public WebExtensionBridge bridge { get; construct; }
         public CredentialBridge? credential_bridge { get; construct; }
+        public ExternalNavigationBridge? external_navigation_bridge { get; construct; }
         public WebProcessRecoveryPolicy recovery { get; construct; }
+        public ulong credential_request_signal { get; set; }
+        public ulong external_navigation_signal { get; set; }
 
         public TabRecord (TabState state, WebKit.WebView view, Gtk.Label label,
-                WebExtensionBridge bridge, CredentialBridge? credential_bridge) {
+                WebExtensionBridge bridge, CredentialBridge? credential_bridge,
+                ExternalNavigationBridge? external_navigation_bridge) {
             Object (state: state, view: view, label: label, bridge: bridge,
                 credential_bridge: credential_bridge,
+                external_navigation_bridge: external_navigation_bridge,
                 recovery: new WebProcessRecoveryPolicy ());
         }
     }
@@ -141,6 +146,10 @@ namespace Xanh {
             address.activate.connect (() => {
                 var tab = active_tab ();
                 if (tab != null) {
+                    if (AddressResolver.is_safe_external_uri (address.text)) {
+                        launch_external_uri (address.text);
+                        return;
+                    }
                     begin_explicit_navigation (tab);
                     tab.view.load_uri (resolve_address (address.text));
                 }
@@ -365,6 +374,12 @@ namespace Xanh {
             label.max_width_chars = 24;
             var bridge = new WebExtensionBridge (this, view);
             CredentialBridge? credential_bridge = null;
+            ExternalNavigationBridge? external_navigation_bridge = null;
+            try {
+                external_navigation_bridge = new ExternalNavigationBridge (manager);
+            } catch (Error error) {
+                warning ("Cannot install isolated external-navigation bridge: %s", error.message);
+            }
             if (!private_mode) {
                 bridge.action_available.connect (register_extension_action);
                 bridge.load_default_locations (!extension_services_started);
@@ -375,13 +390,20 @@ namespace Xanh {
                     warning ("Cannot install isolated credential bridge: %s", error.message);
                 }
             }
-            var record = new TabRecord (state, view, label, bridge, credential_bridge);
+            var record = new TabRecord (
+                state, view, label, bridge, credential_bridge, external_navigation_bridge);
+            if (external_navigation_bridge != null) {
+                record.external_navigation_signal =
+                    external_navigation_bridge.request.connect ((external_uri, document_uri) =>
+                        handle_external_navigation (record, external_uri, document_uri));
+            }
             if (credential_bridge != null) {
-                credential_bridge.request.connect ((request_id, navigation_nonce,
-                        document_url, origin) => {
-                    handle_credential_request.begin (record, request_id,
-                        navigation_nonce, document_url, origin);
-                });
+                record.credential_request_signal =
+                    credential_bridge.request.connect ((request_id, navigation_nonce,
+                            document_url, origin) => {
+                        handle_credential_request.begin (record, request_id,
+                            navigation_nonce, document_url, origin);
+                    });
             }
             tabs.insert (state.id, record);
             connect_view (record);
@@ -468,6 +490,20 @@ namespace Xanh {
         }
 
         void connect_view (TabRecord tab) {
+            tab.view.decide_policy.connect ((decision, type) => {
+                if (type != WebKit.PolicyDecisionType.NAVIGATION_ACTION &&
+                        type != WebKit.PolicyDecisionType.NEW_WINDOW_ACTION) {
+                    return false;
+                }
+                var navigation = decision as WebKit.NavigationPolicyDecision;
+                string? uri = navigation?.get_navigation_action ().get_request ().get_uri ();
+                if (AddressResolver.is_safe_navigation_uri (uri)) {
+                    decision.use ();
+                } else {
+                    decision.ignore ();
+                }
+                return true;
+            });
             tab.view.notify["title"].connect (() => {
                 if (!tab.recovery.process_stopped) {
                     tab.state.title = tab.view.title ?? "New Tab";
@@ -649,6 +685,30 @@ namespace Xanh {
             tab.state.recovery_uri = null;
         }
 
+        void handle_external_navigation (TabRecord tab, string external_uri,
+                string document_uri) {
+            var browser_application = application as BrowserApplication;
+            if (!is_active || clearing_data || active_tab () != tab ||
+                    tab.recovery.process_stopped || tab.view.uri != document_uri ||
+                    !AddressResolver.is_safe_web_uri (document_uri) ||
+                    !AddressResolver.is_safe_external_uri (external_uri) ||
+                    (browser_application != null &&
+                        browser_application.is_browsing_data_clear_in_progress ())) {
+                return;
+            }
+            launch_external_uri (external_uri);
+        }
+
+        void launch_external_uri (string uri) {
+            try {
+                AppInfo.launch_default_for_uri (uri, null);
+                status.label = "Opened link in an external application";
+            } catch (Error error) {
+                warning ("Cannot open external URI: %s", error.message);
+                status.label = "No application can open this link";
+            }
+        }
+
         void maybe_recover_active_tab () {
             var tab = active_tab ();
             if (tab != null) maybe_recover_tab (tab);
@@ -689,12 +749,27 @@ namespace Xanh {
             if (tab == null) return;
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
+            disconnect_tab_bridges (tab);
             int page = notebook.page_num (tab.view);
             if (page >= 0) notebook.remove_page (page);
             tabs.remove (id);
             if (notebook.get_n_pages () == 0) add_tab (homepage (), false);
             update_chrome ();
             schedule_session_save ();
+        }
+
+        void disconnect_tab_bridges (TabRecord tab) {
+            if (tab.credential_bridge != null && tab.credential_request_signal != 0) {
+                SignalHandler.disconnect (
+                    tab.credential_bridge, tab.credential_request_signal);
+                tab.credential_request_signal = 0;
+            }
+            if (tab.external_navigation_bridge != null &&
+                    tab.external_navigation_signal != 0) {
+                SignalHandler.disconnect (
+                    tab.external_navigation_bridge, tab.external_navigation_signal);
+                tab.external_navigation_signal = 0;
+            }
         }
 
         void update_chrome () {
@@ -733,6 +808,7 @@ namespace Xanh {
 
         bool on_close_request () {
             cancel_credential_picker ();
+            tabs.foreach ((id, tab) => disconnect_tab_bridges (tab));
             if (session_save_source != 0) {
                 Source.remove (session_save_source);
                 session_save_source = 0;

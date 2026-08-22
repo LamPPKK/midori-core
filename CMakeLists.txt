@@ -116,11 +116,14 @@ DIRECTORY desktop-app
 CUSTOM_VAPIS
     "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
     "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi"
-    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi")
+    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi"
+    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/external-navigation-bridge.vapi")
 
 add_executable(xanh-browser
     ${XANH_APP_C}
     desktop/credential-bridge.c
+    desktop/external-navigation-bridge.c
+    desktop/external-navigation-data.c
     desktop/sync-link-check.c
     desktop/sync-host.c)
 target_include_directories(xanh-browser PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
@@ -179,7 +182,8 @@ function(add_xanh_test target)
     CUSTOM_VAPIS
         "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
         "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi"
-        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi")
+        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi"
+        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/external-navigation-bridge.vapi")
     add_executable(${target} ${${target}_C})
     target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
     target_link_libraries(${target} PRIVATE xanh-browser-core PkgConfig::XANH)
@@ -208,6 +212,13 @@ if(BUILD_TESTING)
     target_include_directories(credential-bridge-policy-test PRIVATE desktop)
     target_link_libraries(credential-bridge-policy-test PRIVATE PkgConfig::XANH)
     add_test(NAME credential-bridge-policy-test COMMAND credential-bridge-policy-test)
+
+    add_executable(external-navigation-bridge-test
+        tests-modern/external-navigation-bridge-test.c
+        desktop/external-navigation-data.c)
+    target_include_directories(external-navigation-bridge-test PRIVATE desktop)
+    target_link_libraries(external-navigation-bridge-test PRIVATE PkgConfig::XANH)
+    add_test(NAME external-navigation-bridge-test COMMAND external-navigation-bridge-test)
 
     add_xanh_test(database-test SOURCE tests-modern/database-test.vala)
     add_xanh_test(address-resolver-test SOURCE tests-modern/address-resolver-test.vala
@@ -241,6 +252,8 @@ if(BUILD_TESTING)
             desktop/application.vala)
     target_sources(application-smoke-test PRIVATE
         desktop/credential-bridge.c
+        desktop/external-navigation-bridge.c
+        desktop/external-navigation-data.c
         desktop/sync-host.c)
     add_dependencies(application-smoke-test
         xanh-adblock xanh-bookmarks xanh-session xanh-colorful-tabs

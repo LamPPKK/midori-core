@@ -122,7 +122,21 @@ allowed historical material, never a shipping dependency or application ID.
    restore, form resubmission or a process-creation loop. Verify renderer
    termination also cancels the native saved-login picker and stale reply.
 
-5. For a Sync-enabled candidate, start with a populated pre-Sync profile and
+5. Verify the Linux navigation policy before release. Directly navigate valid
+   HTTP(S) and exact `about:blank`, then try unsupported schemes, `file:`,
+   `data:`, malformed/userinfo hosts, invalid ports, whitespace, backslashes,
+   raw and percent-decoded controls, and oversized inputs; only the first two
+   classes may load in WebKit. From an active HTTP(S) top frame, activate each
+   allowlisted external scheme with an unmodified real pointer or keyboard
+   event and confirm exactly one operating-system handoff. Repeat using
+   synthetic `.click()`, script-assigned location, redirect, iframe, modified
+   click, inactive tab/window, navigation before message delivery, tab close,
+   renderer termination and Clear Browsing Data; every case must fail closed.
+   Verify handler-registration failure also leaves external navigation blocked.
+   Repeat in a private tab and confirm the handoff occurs only after the same
+   explicit activation, with no browser history/session write.
+
+6. For a Sync-enabled candidate, start with a populated pre-Sync profile and
    verify that the private migration snapshot is mode `0600`, the stored
    checksum matches it, all source rows are processed, every safe/eligible
    record is acknowledged and rejected-row counts are audited before the
@@ -152,7 +166,7 @@ allowed historical material, never a shipping dependency or application ID.
    that a pending marker blocks scheduled, pre-sleep and manual Sync as well as
    reconnect until cleanup acknowledgement succeeds.
 
-6. On a clean regular profile, unlock the Logins vault through the reviewed OS
+7. On a clean regular profile, unlock the Logins vault through the reviewed OS
    user-presence flow, activate a password field with a real pointer/keyboard
    event and choose a username in the native GTK picker. Confirm the selected
    value fills only the exact committed HTTPS top frame. Repeat with HTTP,

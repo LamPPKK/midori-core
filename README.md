@@ -79,6 +79,18 @@ leaving the foreground cancels an in-flight attempt, and a second termination
 stops with an explicit Reload action instead of looping or restoring
 back-forward/form state.
 
+Linux also makes every WebKit navigation decision explicit: only exact
+`about:blank` and validated HTTP(S) URLs are allowed in the web view. External
+`mailto`, `tel`, `sms`, `geo`, `maps` and `market` links are intercepted by a
+document-start script in a named isolated world and handed to the operating
+system only for an unmodified trusted activation in the active top frame. The
+host revalidates the 2 KiB URI and exact 8 KiB document URL, tab, foreground
+state and clearing state; synthetic clicks, redirects, iframe requests, stale
+messages, decoded controls, whitespace and backslashes fail closed. Entering a
+valid allowlisted URI in the address bar is also an explicit handoff. Private
+tabs use the same policy, so an approved handoff intentionally discloses that
+URI to the selected external application.
+
 ### Build and test
 
 ```sh
@@ -323,6 +335,10 @@ and device/security evidence pass the WPE release gate.
   automatic reload or back-forward restoration. Background recovery is
   deferred; focus loss cancels an in-flight attempt, and repeat failure stops
   for explicit user action.
+- Linux WebKit navigation is allowlisted before load. Only validated HTTP(S)
+  and exact `about:blank` stay in WebKit; an allowlisted external scheme needs
+  either explicit address-bar activation or a trusted active-top-frame event
+  from the named isolated bridge, followed by host-side URI/document checks.
 - Apple editions use only the system WebKit data stores, keep their gated
   credential bridge in an isolated content world and use a nonpersistent store
   without that bridge for private tabs; macOS runs in the App Sandbox. Web and

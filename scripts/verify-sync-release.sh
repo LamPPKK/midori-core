@@ -111,6 +111,26 @@ case "$edition" in
       echo 'Linux automatic recovery must use a fresh URI load only' >&2
       exit 1
     fi
+    test -f desktop/external-navigation-bridge.c
+    test -f desktop/external-navigation-data.c
+    test -f tests-modern/external-navigation-bridge-test.c
+    grep -F 'MAX_EXTERNAL_URI_BYTES = 2048' desktop/address-resolver.vala >/dev/null
+    grep -F 'webkit_user_script_new_for_world' \
+      desktop/external-navigation-bridge.c >/dev/null
+    grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' \
+      desktop/external-navigation-bridge.c >/dev/null
+    grep -F 'WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START' \
+      desktop/external-navigation-bridge.c >/dev/null
+    grep -F "if (!event.isTrusted" desktop/external-navigation-bridge.c >/dev/null
+    grep -F 'event.stopImmediatePropagation();' \
+      desktop/external-navigation-bridge.c >/dev/null
+    grep -F 'tab.view.decide_policy.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'decision.use ();' desktop/browser-window.vala >/dev/null
+    grep -F 'decision.ignore ();' desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.uri != document_uri' desktop/browser-window.vala >/dev/null
+    grep -F 'AddressResolver.is_safe_external_uri' desktop/browser-window.vala >/dev/null
+    grep -F 'disconnect_tab_bridges (tab);' desktop/browser-window.vala >/dev/null
+    grep -F 'add_executable(external-navigation-bridge-test' CMakeLists.txt >/dev/null
     grep -F 'webkit_user_script_new_for_world' desktop/credential-bridge.c >/dev/null
     grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' desktop/credential-bridge.c >/dev/null
     grep -F 'webkit_web_view_call_async_javascript_function' desktop/credential-bridge.c >/dev/null

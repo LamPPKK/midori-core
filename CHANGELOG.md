@@ -25,6 +25,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   load; hidden/background attempts are deferred, while an in-flight attempt
   canceled by focus loss and repeat failures stop for explicit user action.
   Recovery never uses automatic reload or back-forward/form restoration.
+- Added an explicit Linux WebKit navigation allowlist and a document-start,
+  top-frame-only external-link bridge in a named isolated world. HTTP(S) and
+  exact `about:blank` remain in WebKit; bounded allowlisted external URIs are
+  handed to the OS only after trusted activation plus active-tab, exact-document
+  and foreground revalidation. Synthetic, redirected, iframe and stale requests
+  fail closed, and bridge signal handlers are detached with their tabs.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

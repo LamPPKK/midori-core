@@ -3,6 +3,7 @@
 namespace Xanh {
     public class AddressResolver : Object {
         public const int MAX_WEB_URI_BYTES = 8192;
+        public const int MAX_EXTERNAL_URI_BYTES = 2048;
         const int MAX_SEARCH_INPUT_BYTES = 2048;
 
         public static bool is_safe_web_uri (string? input) {
@@ -27,6 +28,30 @@ namespace Xanh {
             } catch (UriError error) {
                 return false;
             }
+        }
+
+        public static bool is_safe_navigation_uri (string? input) {
+            return (input != null && input.down () == "about:blank") ||
+                is_safe_web_uri (input);
+        }
+
+        public static bool is_safe_external_uri (string? input) {
+            if (input == null || input.length == 0 ||
+                    input.length > MAX_EXTERNAL_URI_BYTES || !input.validate () ||
+                    contains_control_character (input) || contains_whitespace (input) ||
+                    input.contains ("\\")) {
+                return false;
+            }
+            string? decoded = Uri.unescape_string (input);
+            if (decoded == null || !decoded.validate () ||
+                    contains_control_character (decoded) || contains_whitespace (decoded) ||
+                    decoded.contains ("\\")) {
+                return false;
+            }
+            string? scheme = Uri.parse_scheme (input);
+            int separator = input.index_of_char (':');
+            return scheme != null && separator > 0 && separator < input.length - 1 &&
+                is_external_scheme (scheme.down ());
         }
 
         public static string resolve (string input, string search_template = "https://duckduckgo.com/?q=%s") {
@@ -107,6 +132,20 @@ namespace Xanh {
                 }
             }
             return true;
+        }
+
+        static bool is_external_scheme (string scheme) {
+            switch (scheme) {
+                case "mailto":
+                case "tel":
+                case "sms":
+                case "geo":
+                case "maps":
+                case "market":
+                    return true;
+                default:
+                    return false;
+            }
         }
     }
 }

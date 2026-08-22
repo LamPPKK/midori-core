@@ -35,9 +35,36 @@ void test_safe_web_uri_policy () {
     assert (Xanh.AddressResolver.resolve (string.nfill (2049, 'a')) == "about:blank");
 }
 
+void test_navigation_and_external_uri_policy () {
+    assert (Xanh.AddressResolver.is_safe_navigation_uri ("about:blank"));
+    assert (Xanh.AddressResolver.is_safe_navigation_uri ("HTTPS://example.com/"));
+    assert (!Xanh.AddressResolver.is_safe_navigation_uri ("about:config"));
+    assert (!Xanh.AddressResolver.is_safe_navigation_uri ("file:///etc/passwd"));
+    assert (!Xanh.AddressResolver.is_safe_navigation_uri ("data:text/html,test"));
+
+    assert (Xanh.AddressResolver.is_safe_external_uri ("mailto:user@example.com"));
+    assert (Xanh.AddressResolver.is_safe_external_uri ("tel:+84123456789"));
+    assert (Xanh.AddressResolver.is_safe_external_uri ("sms:+84123456789"));
+    assert (Xanh.AddressResolver.is_safe_external_uri ("geo:10.0,106.0"));
+    assert (Xanh.AddressResolver.is_safe_external_uri ("market://details?id=xanh"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("mailto:"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("intent://example.com"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("javascript:alert(1)"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri (
+        "mailto:user@example.com?subject=x%0d%0aBcc:other@example.com"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("tel:%00+84123456789"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("mailto:user%20name@example.com"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("mailto:user\\name@example.com"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("mailto:user%5cname@example.com"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri ("mailto:user@example.com%ZZ"));
+    assert (!Xanh.AddressResolver.is_safe_external_uri (
+        "mailto:user@example.com?subject=" + string.nfill (2048, 'a')));
+}
+
 int main (string[] args) {
     Test.init (ref args);
     Test.add_func ("/address/resolve", test_addresses);
     Test.add_func ("/address/safe-web-uri", test_safe_web_uri_policy);
+    Test.add_func ("/address/navigation-and-external", test_navigation_and_external_uri_policy);
     return Test.run ();
 }

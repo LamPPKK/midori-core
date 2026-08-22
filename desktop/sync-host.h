@@ -170,6 +170,30 @@ gchar *xanh_sync_host_remote_tabs_json_finish (
     GAsyncResult *result,
     GError **error);
 
+/* Plaintext returned by credentials_json_finish is short-lived secret
+ * material. The caller must never log, cache or persist it. */
+void xanh_sync_host_credentials_json_async (
+    XanhSyncHost *self,
+    const gchar *context_json,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gchar *xanh_sync_host_credentials_json_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_touch_credential_async (
+    XanhSyncHost *self,
+    const gchar *credential_id,
+    const gchar *context_json,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gboolean xanh_sync_host_touch_credential_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+
 void xanh_sync_host_unlock_vault_async (
     XanhSyncHost *self,
     GCancellable *cancellable,

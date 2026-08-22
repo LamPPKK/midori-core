@@ -101,6 +101,7 @@ target_link_libraries(xanh-browser-core PRIVATE PkgConfig::XANH)
 
 vala_precompile(XANH_APP_C xanh-browser
     desktop/address-resolver.vala
+    desktop/credential-data.vala
     desktop/sync-data.vala
     desktop/profile-importer.vala
     desktop/plugin-manager.vala
@@ -113,10 +114,12 @@ OPTIONS ${XANH_VALA_OPTIONS}
 DIRECTORY desktop-app
 CUSTOM_VAPIS
     "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
-    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi")
+    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi"
+    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi")
 
 add_executable(xanh-browser
     ${XANH_APP_C}
+    desktop/credential-bridge.c
     desktop/sync-link-check.c
     desktop/sync-host.c)
 target_include_directories(xanh-browser PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
@@ -174,7 +177,8 @@ function(add_xanh_test target)
     DIRECTORY "tests/${target}"
     CUSTOM_VAPIS
         "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
-        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi")
+        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi"
+        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi")
     add_executable(${target} ${${target}_C})
     target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
     target_link_libraries(${target} PRIVATE xanh-browser-core PkgConfig::XANH)
@@ -197,9 +201,18 @@ if(BUILD_TESTING)
     target_link_libraries(webkit-version-test PRIVATE PkgConfig::XANH)
     add_test(NAME webkit-version-test COMMAND webkit-version-test)
 
+    add_executable(credential-bridge-policy-test
+        tests-modern/credential-bridge-policy-test.c
+        desktop/credential-bridge.c)
+    target_include_directories(credential-bridge-policy-test PRIVATE desktop)
+    target_link_libraries(credential-bridge-policy-test PRIVATE PkgConfig::XANH)
+    add_test(NAME credential-bridge-policy-test COMMAND credential-bridge-policy-test)
+
     add_xanh_test(database-test SOURCE tests-modern/database-test.vala)
     add_xanh_test(address-resolver-test SOURCE tests-modern/address-resolver-test.vala
         SUPPORT desktop/address-resolver.vala)
+    add_xanh_test(credential-data-test SOURCE tests-modern/credential-data-test.vala
+        SUPPORT desktop/credential-data.vala)
     add_xanh_test(importer-test SOURCE tests-modern/importer-test.vala
         SUPPORT desktop/profile-importer.vala)
     add_xanh_test(web-extension-test SOURCE tests-modern/web-extension-test.vala
@@ -214,13 +227,16 @@ if(BUILD_TESTING)
     add_xanh_test(application-smoke-test SOURCE tests-modern/application-smoke-test.vala
         SUPPORT
             desktop/address-resolver.vala
+            desktop/credential-data.vala
             desktop/sync-data.vala
             desktop/profile-importer.vala
             desktop/plugin-manager.vala
             desktop/web-extension-bridge.vala
             desktop/browser-window.vala
             desktop/application.vala)
-    target_sources(application-smoke-test PRIVATE desktop/sync-host.c)
+    target_sources(application-smoke-test PRIVATE
+        desktop/credential-bridge.c
+        desktop/sync-host.c)
     add_dependencies(application-smoke-test
         xanh-adblock xanh-bookmarks xanh-session xanh-colorful-tabs
         xanh-status-clock xanh-status-features)

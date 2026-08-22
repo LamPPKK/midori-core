@@ -44,8 +44,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   from a verified private SQLite snapshot, preserves rollback tables,
   mirrors Places into GTK panels, publishes regular local tabs, presents remote
   tabs by device and clears Places history plus bounded migration snapshots
-  across every open window with browsing data. Linux Logins UI
-  and production packaging remain release-gated.
+  across every open window with browsing data.
+- Added a native Linux Logins picker and a document-start, top-frame-only
+  WebKitGTK bridge in a named isolated world. It requires trusted input,
+  validates request/navigation nonce and exact HTTPS origin, passes secrets as
+  typed JavaScript arguments and is never installed for private tabs. Fresh OS
+  user-presence evidence and production packaging remain release-gated.
 - Hardened the Linux host so network work never holds the GTK state lock,
   focus-loss vault locking is deferred safely across native operations,
   crash-safe disconnect retries persist their original keep/delete intent
@@ -93,6 +97,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   mistaken for Play upload artifacts.
 - Added exact-origin credential policy, five-minute vault expiry, HTTPS-only
   self-hosted configuration and approval-gated Mozilla-hosted release checks.
+- Rejected embedded NUL in credential values at the shared Rust boundary so
+  NUL-terminated C hosts cannot silently truncate a username or password.
 - Hardened the Lite System WebView picker with bounded bridge messages, a
   recent trusted-user-gesture requirement, exact-origin runtime queries and
   navigation-bound filling of the selected form field.

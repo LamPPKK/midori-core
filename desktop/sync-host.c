@@ -117,6 +117,7 @@ static const SecretSchema sync_secret_schema = {
 typedef struct {
     gchar *redirect_uri;
     gchar *payload;
+    gchar *credential_id;
     XanhSyncReason reason;
     gboolean delete_local;
     gint vault_lock_generation;
@@ -133,7 +134,8 @@ typedef enum {
     SYNC_DATA_RECORD_HISTORY,
     SYNC_DATA_LIST_HISTORY,
     SYNC_DATA_UPDATE_LOCAL_TABS,
-    SYNC_DATA_LIST_REMOTE_TABS
+    SYNC_DATA_LIST_REMOTE_TABS,
+    SYNC_DATA_LIST_CREDENTIALS
 } SyncDataOperation;
 
 static void
@@ -143,6 +145,7 @@ sync_task_data_free (SyncTaskData *data)
         return;
     g_clear_pointer (&data->redirect_uri, g_free);
     g_clear_pointer (&data->payload, g_free);
+    g_clear_pointer (&data->credential_id, g_free);
     g_free (data);
 }
 #endif
@@ -1104,6 +1107,16 @@ data_operation_worker (GTask        *task,
             "History mutation was cancelled by Clear Browsing Data");
         return;
     }
+    if ((SyncDataOperation) data->operation == SYNC_DATA_LIST_CREDENTIALS &&
+        (data->vault_lock_generation !=
+            g_atomic_int_get (&self->vault_lock_generation) ||
+         !g_atomic_int_get (&self->vault_unlocked))) {
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_CORE,
+            "Password vault locked before the credential request could run");
+        return;
+    }
     if (data->destructive_generation !=
             g_atomic_int_get (&self->destructive_generation)) {
         finish_operation (self);
@@ -1141,6 +1154,9 @@ data_operation_worker (GTask        *task,
     case SYNC_DATA_LIST_REMOTE_TABS:
         core_result = xanh_sync_runtime_remote_tabs_json (runtime);
         break;
+    case SYNC_DATA_LIST_CREDENTIALS:
+        core_result = xanh_sync_runtime_credentials_json (runtime, data->payload);
+        break;
     default:
         break;
     }
@@ -1154,18 +1170,107 @@ data_operation_worker (GTask        *task,
             g_atomic_int_get (&self->destructive_generation) ||
         ((SyncDataOperation) data->operation == SYNC_DATA_RECORD_HISTORY &&
          data->history_clear_generation !=
-            g_atomic_int_get (&self->history_clear_generation))) {
+            g_atomic_int_get (&self->history_clear_generation)) ||
+        ((SyncDataOperation) data->operation == SYNC_DATA_LIST_CREDENTIALS &&
+         (data->vault_lock_generation !=
+            g_atomic_int_get (&self->vault_lock_generation) ||
+          !g_atomic_int_get (&self->vault_unlocked)))) {
         xanh_sync_string_free (core_result);
         finish_operation (self);
-        g_task_return_new_error (
-            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
-            "Completed Firefox Sync data operation was superseded by device-data removal");
+        if ((SyncDataOperation) data->operation == SYNC_DATA_LIST_CREDENTIALS) {
+            g_task_return_new_error (
+                task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_CORE,
+                "Credential result was superseded by a vault lock");
+        } else {
+            g_task_return_new_error (
+                task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+                "Completed Firefox Sync data operation was superseded by browser-data removal");
+        }
         return;
     }
     gchar *result = g_strdup (core_result);
     xanh_sync_string_free (core_result);
     finish_operation (self);
+    if ((SyncDataOperation) data->operation == SYNC_DATA_LIST_CREDENTIALS &&
+        (data->vault_lock_generation !=
+            g_atomic_int_get (&self->vault_lock_generation) ||
+         !g_atomic_int_get (&self->vault_unlocked))) {
+        g_free (result);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_CORE,
+            "Password vault locked before the credential result was delivered");
+        return;
+    }
     g_task_return_pointer (task, result, g_free);
+}
+
+static void
+touch_credential_worker (GTask        *task,
+                         gpointer      source_object,
+                         gpointer      task_data,
+                         GCancellable *cancellable)
+{
+    XanhSyncHost *self = XANH_SYNC_HOST (source_object);
+    SyncTaskData *data = task_data;
+    g_autoptr (GError) error = NULL;
+    gpointer runtime;
+
+    if (g_task_return_error_if_cancelled (task))
+        return;
+    g_mutex_lock (&self->operation_mutex);
+    if (g_task_return_error_if_cancelled (task)) {
+        finish_operation (self);
+        return;
+    }
+    if (data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation) ||
+        data->vault_lock_generation !=
+            g_atomic_int_get (&self->vault_lock_generation) ||
+        !g_atomic_int_get (&self->vault_unlocked)) {
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_CORE,
+            "Password vault locked before the selected credential could be recorded");
+        return;
+    }
+    g_mutex_lock (&self->mutex);
+    if (!require_runtime_locked (self, &error)) {
+        g_mutex_unlock (&self->mutex);
+        finish_operation (self);
+        g_task_return_error (task, g_steal_pointer (&error));
+        return;
+    }
+    runtime = self->runtime;
+    g_mutex_unlock (&self->mutex);
+
+    if (!xanh_sync_runtime_touch_credential (
+            runtime, data->credential_id, data->payload)) {
+        error = core_error ("Selected Firefox credential could not be updated");
+        finish_operation (self);
+        g_task_return_error (task, g_steal_pointer (&error));
+        return;
+    }
+    if (data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation) ||
+        data->vault_lock_generation !=
+            g_atomic_int_get (&self->vault_lock_generation) ||
+        !g_atomic_int_get (&self->vault_unlocked)) {
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_CORE,
+            "Selected credential was superseded by a vault lock");
+        return;
+    }
+    finish_operation (self);
+    if (data->vault_lock_generation !=
+            g_atomic_int_get (&self->vault_lock_generation) ||
+        !g_atomic_int_get (&self->vault_unlocked)) {
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_CORE,
+            "Password vault locked before credential usage was acknowledged");
+        return;
+    }
+    g_task_return_boolean (task, TRUE);
 }
 
 static void
@@ -1226,6 +1331,9 @@ start_data_operation (XanhSyncHost      *self,
     if (operation == SYNC_DATA_RECORD_HISTORY)
         data->history_clear_generation =
             g_atomic_int_get (&self->history_clear_generation);
+    if (operation == SYNC_DATA_LIST_CREDENTIALS)
+        data->vault_lock_generation =
+            g_atomic_int_get (&self->vault_lock_generation);
     g_task_set_task_data (task, data, (GDestroyNotify) sync_task_data_free);
     g_task_run_in_thread (task, data_operation_worker);
     g_object_unref (task);
@@ -1943,6 +2051,84 @@ xanh_sync_host_remote_tabs_json_finish (XanhSyncHost *self,
 {
     g_return_val_if_fail (g_task_is_valid (result, self), NULL);
     return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_credentials_json_async (XanhSyncHost      *self,
+                                       const gchar       *context_json,
+                                       GCancellable      *cancellable,
+                                       GAsyncReadyCallback callback,
+                                       gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+    g_return_if_fail (context_json != NULL);
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_data_operation (self, SYNC_DATA_LIST_CREDENTIALS,
+                          context_json, 0, 0, cancellable, callback, user_data);
+#else
+    (void) context_json;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gchar *
+xanh_sync_host_credentials_json_finish (XanhSyncHost *self,
+                                        GAsyncResult *result,
+                                        GError      **error)
+{
+    gchar *credentials;
+    g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+    credentials = g_task_propagate_pointer (G_TASK (result), error);
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    if (credentials != NULL)
+        xanh_sync_host_touch_vault (self);
+#endif
+    return credentials;
+}
+
+void
+xanh_sync_host_touch_credential_async (XanhSyncHost      *self,
+                                       const gchar       *credential_id,
+                                       const gchar       *context_json,
+                                       GCancellable      *cancellable,
+                                       GAsyncReadyCallback callback,
+                                       gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+    g_return_if_fail (credential_id != NULL);
+    g_return_if_fail (context_json != NULL);
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    GTask *task = g_task_new (self, cancellable, callback, user_data);
+    SyncTaskData *data = g_new0 (SyncTaskData, 1);
+    data->credential_id = g_strdup (credential_id);
+    data->payload = g_strdup (context_json);
+    data->vault_lock_generation =
+        g_atomic_int_get (&self->vault_lock_generation);
+    data->destructive_generation =
+        g_atomic_int_get (&self->destructive_generation);
+    g_task_set_task_data (task, data, (GDestroyNotify) sync_task_data_free);
+    g_task_run_in_thread (task, touch_credential_worker);
+    g_object_unref (task);
+#else
+    (void) credential_id;
+    (void) context_json;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gboolean
+xanh_sync_host_touch_credential_finish (XanhSyncHost *self,
+                                        GAsyncResult *result,
+                                        GError      **error)
+{
+    gboolean touched;
+    g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+    touched = g_task_propagate_boolean (G_TASK (result), error);
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    if (touched)
+        xanh_sync_host_touch_vault (self);
+#endif
+    return touched;
 }
 
 void

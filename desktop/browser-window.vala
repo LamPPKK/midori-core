@@ -6,10 +6,12 @@ namespace Xanh {
         public WebKit.WebView view { get; construct; }
         public Gtk.Label label { get; construct; }
         public WebExtensionBridge bridge { get; construct; }
+        public CredentialBridge? credential_bridge { get; construct; }
 
         public TabRecord (TabState state, WebKit.WebView view, Gtk.Label label,
-                WebExtensionBridge bridge) {
-            Object (state: state, view: view, label: label, bridge: bridge);
+                WebExtensionBridge bridge, CredentialBridge? credential_bridge) {
+            Object (state: state, view: view, label: label, bridge: bridge,
+                credential_bridge: credential_bridge);
         }
     }
 
@@ -39,6 +41,11 @@ namespace Xanh {
         bool clearing_data;
         uint64 next_tab_id = 1;
         uint session_save_source;
+        Gtk.Popover? credential_picker;
+        CredentialBridge? credential_picker_bridge;
+        string? credential_picker_request_id;
+        Cancellable? credential_request_cancellable;
+        uint credential_picker_timeout_source;
 
         public BrowserWindow (Gtk.Application application, BrowserDatabase database) {
             Object (application: application, title: Config.APP_NAME, default_width: 1100, default_height: 760);
@@ -69,7 +76,10 @@ namespace Xanh {
                 if (tab != null) update_tab_label (tab);
             });
             notify["is-active"].connect (() => {
-                if (!is_active) (application as BrowserApplication)?.lock_sync_vault ();
+                if (!is_active) {
+                    cancel_credential_picker ();
+                    (application as BrowserApplication)?.lock_sync_vault ();
+                }
             });
             close_request.connect (on_close_request);
         }
@@ -155,6 +165,7 @@ namespace Xanh {
             notebook.scrollable = true;
             notebook.enable_popup = true;
             notebook.switch_page.connect ((page, index) => {
+                cancel_credential_picker ();
                 update_chrome ();
                 schedule_session_save ();
             });
@@ -331,12 +342,25 @@ namespace Xanh {
             label.ellipsize = Pango.EllipsizeMode.END;
             label.max_width_chars = 24;
             var bridge = new WebExtensionBridge (this, view);
+            CredentialBridge? credential_bridge = null;
             if (!private_mode) {
                 bridge.action_available.connect (register_extension_action);
                 bridge.load_default_locations (!extension_services_started);
                 extension_services_started = true;
+                try {
+                    credential_bridge = new CredentialBridge (manager, view);
+                } catch (Error error) {
+                    warning ("Cannot install isolated credential bridge: %s", error.message);
+                }
             }
-            var record = new TabRecord (state, view, label, bridge);
+            var record = new TabRecord (state, view, label, bridge, credential_bridge);
+            if (credential_bridge != null) {
+                credential_bridge.request.connect ((request_id, navigation_nonce,
+                        document_url, origin) => {
+                    handle_credential_request.begin (record, request_id,
+                        navigation_nonce, document_url, origin);
+                });
+            }
             tabs.insert (state.id, record);
             connect_view (record);
             var tab_header = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 4);
@@ -443,6 +467,10 @@ namespace Xanh {
                 update_chrome ();
             });
             tab.view.load_changed.connect ((event) => {
+                if (event == WebKit.LoadEvent.STARTED &&
+                        credential_picker_bridge == tab.credential_bridge) {
+                    cancel_credential_picker ();
+                }
                 if (event == WebKit.LoadEvent.STARTED && tab.state.recovery_uri != null &&
                         tab.view.uri != "xanh:error") {
                     tab.state.recovery_uri = null;
@@ -477,6 +505,8 @@ namespace Xanh {
                 return true;
             });
             tab.view.web_process_terminated.connect ((reason) => {
+                if (credential_picker_bridge == tab.credential_bridge)
+                    cancel_credential_picker ();
                 string? failed_uri = tab.view.uri;
                 if (BrowserDatabase.is_web_uri (failed_uri)) tab.state.recovery_uri = failed_uri;
                 tab.view.load_alternate_html (
@@ -585,6 +615,8 @@ namespace Xanh {
         void close_tab (uint64 id) {
             var tab = tabs.lookup (id);
             if (tab == null) return;
+            if (credential_picker_bridge == tab.credential_bridge)
+                cancel_credential_picker ();
             int page = notebook.page_num (tab.view);
             if (page >= 0) notebook.remove_page (page);
             tabs.remove (id);
@@ -628,6 +660,7 @@ namespace Xanh {
         }
 
         bool on_close_request () {
+            cancel_credential_picker ();
             if (session_save_source != 0) {
                 Source.remove (session_save_source);
                 session_save_source = 0;
@@ -666,6 +699,180 @@ namespace Xanh {
             }
             try { database.save_session (stored, selected); }
             catch (Error error) { warning ("Cannot save session: %s", error.message); }
+        }
+
+        async void handle_credential_request (TabRecord tab, string request_id,
+                string navigation_nonce, string document_url, string origin) {
+            var bridge = tab.credential_bridge;
+            var browser_application = application as BrowserApplication;
+            if (bridge == null || browser_application == null || tab.state.private_mode ||
+                    active_tab () != tab || !is_active || clearing_data ||
+                    browser_application.is_browsing_data_clear_in_progress ()) {
+                bridge?.cancel_request (request_id);
+                return;
+            }
+            if (credential_picker_bridge != null) {
+                bridge.cancel_request (request_id);
+                return;
+            }
+            var cancellable = new Cancellable ();
+            credential_picker_bridge = bridge;
+            credential_picker_request_id = request_id;
+            credential_request_cancellable = cancellable;
+            credential_picker_timeout_source = Timeout.add_seconds (5 * 60, () => {
+                credential_picker_timeout_source = 0;
+                cancel_credential_picker ();
+                return Source.REMOVE;
+            });
+            try {
+                string json = yield browser_application.get_sync_credentials (
+                    document_url, origin, cancellable);
+                if (!bridge.request_is_current (
+                        request_id, navigation_nonce, document_url, origin) ||
+                        active_tab () != tab || !is_active) {
+                    bridge.cancel_request (request_id);
+                    return;
+                }
+                var records = CredentialDataPolicy.parse (json, origin);
+                if (records.length () == 0) {
+                    bridge.cancel_request (request_id);
+                    return;
+                }
+                var selected = yield choose_sync_credential (records, origin);
+                if (selected == null ||
+                        !bridge.request_is_current (
+                            request_id, navigation_nonce, document_url, origin) ||
+                        active_tab () != tab || !is_active) {
+                    bridge.cancel_request (request_id);
+                    return;
+                }
+                yield browser_application.touch_sync_credential (
+                    selected.id, document_url, origin, cancellable);
+                if (!bridge.request_is_current (
+                        request_id, navigation_nonce, document_url, origin) ||
+                        active_tab () != tab || !is_active) {
+                    bridge.cancel_request (request_id);
+                    return;
+                }
+                yield bridge.fill_async (
+                    request_id, navigation_nonce, document_url, origin,
+                    selected.username, selected.password, cancellable);
+            } catch (Error error) {
+                bridge.cancel_request (request_id);
+                warning ("Saved-login request failed closed");
+                status.label = "Saved login unavailable";
+            } finally {
+                if (credential_picker_bridge == bridge &&
+                        credential_picker_request_id == request_id) {
+                    var picker = credential_picker;
+                    credential_picker = null;
+                    credential_picker_bridge = null;
+                    credential_picker_request_id = null;
+                    credential_request_cancellable = null;
+                    if (credential_picker_timeout_source != 0) {
+                        Source.remove (credential_picker_timeout_source);
+                        credential_picker_timeout_source = 0;
+                    }
+                    picker?.popdown ();
+                }
+            }
+        }
+
+        async SyncCredentialRecord? choose_sync_credential (
+                List<SyncCredentialRecord> records, string origin) {
+            var picker = new Gtk.Popover ();
+            picker.autohide = false;
+            picker.has_arrow = false;
+            picker.set_size_request (440, 320);
+            var root = new Gtk.Box (Gtk.Orientation.VERTICAL, 10);
+            root.margin_start = 16;
+            root.margin_end = 16;
+            root.margin_top = 16;
+            root.margin_bottom = 16;
+            var heading = new Gtk.Label ("Saved logins for %s".printf (origin));
+            heading.halign = Gtk.Align.START;
+            heading.ellipsize = Pango.EllipsizeMode.MIDDLE;
+            root.append (heading);
+            var explanation = new Gtk.Label (
+                "Choose a username to fill this page. Passwords are never shown.");
+            explanation.halign = Gtk.Align.START;
+            explanation.wrap = true;
+            explanation.add_css_class ("dim-label");
+            root.append (explanation);
+            var list = new Gtk.ListBox ();
+            list.selection_mode = Gtk.SelectionMode.SINGLE;
+            foreach (var record in records) {
+                var row = new Gtk.ListBoxRow ();
+                var label = new Gtk.Label (
+                    record.username == "" ? "(No username)" : record.username);
+                label.halign = Gtk.Align.START;
+                label.ellipsize = Pango.EllipsizeMode.END;
+                label.margin_start = 10;
+                label.margin_end = 10;
+                label.margin_top = 10;
+                label.margin_bottom = 10;
+                row.set_child (label);
+                row.set_data<SyncCredentialRecord> ("xanh-credential", record);
+                list.append (row);
+            }
+            var scroll = new Gtk.ScrolledWindow ();
+            scroll.vexpand = true;
+            scroll.set_child (list);
+            root.append (scroll);
+            var cancel = new Gtk.Button.with_label ("Cancel");
+            cancel.halign = Gtk.Align.END;
+            root.append (cancel);
+            picker.set_child (root);
+
+            SyncCredentialRecord? selected = null;
+            bool completed = false;
+            SourceFunc resume = choose_sync_credential.callback;
+            list.row_activated.connect ((row) => {
+                if (completed) return;
+                selected = row.get_data<SyncCredentialRecord> ("xanh-credential");
+                completed = true;
+                picker.popdown ();
+                Idle.add (() => {
+                    resume ();
+                    return Source.REMOVE;
+                });
+            });
+            cancel.clicked.connect (() => picker.popdown ());
+            picker.closed.connect (() => {
+                if (!completed) {
+                    completed = true;
+                    Idle.add (() => {
+                        resume ();
+                        return Source.REMOVE;
+                    });
+                }
+            });
+            picker.set_parent (address);
+            credential_picker = picker;
+            picker.popup ();
+            yield;
+            if (credential_picker == picker) credential_picker = null;
+            picker.unparent ();
+            return selected;
+        }
+
+        void cancel_credential_picker () {
+            var picker = credential_picker;
+            var bridge = credential_picker_bridge;
+            string? request_id = credential_picker_request_id;
+            var cancellable = credential_request_cancellable;
+            credential_picker = null;
+            credential_picker_bridge = null;
+            credential_picker_request_id = null;
+            credential_request_cancellable = null;
+            if (credential_picker_timeout_source != 0) {
+                Source.remove (credential_picker_timeout_source);
+                credential_picker_timeout_source = 0;
+            }
+            cancellable?.cancel ();
+            if (bridge != null && request_id != null)
+                bridge.cancel_request (request_id);
+            picker?.popdown ();
         }
 
         TabRecord? find_tab (WebKit.WebView view) {
@@ -1035,6 +1242,7 @@ namespace Xanh {
 
         void prepare_for_data_clear () {
             clearing_data = true;
+            cancel_credential_picker ();
             tabs.foreach ((id, tab) => tab.view.stop_loading ());
         }
 

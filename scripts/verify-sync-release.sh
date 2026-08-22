@@ -58,6 +58,16 @@ case "$edition" in
     test -f desktop/sync-host.c
     test -f desktop/sync-host.vapi
     test -f desktop/sync-data.vala
+    test -f desktop/credential-bridge.c
+    test -f desktop/credential-bridge.vapi
+    test -f desktop/credential-data.vala
+    grep -F 'webkit_user_script_new_for_world' desktop/credential-bridge.c >/dev/null
+    grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' desktop/credential-bridge.c >/dev/null
+    grep -F 'webkit_web_view_call_async_javascript_function' desktop/credential-bridge.c >/dev/null
+    grep -F "if (!event.isTrusted) return;" desktop/credential-bridge.c >/dev/null
+    grep -F 'CredentialBridge? credential_bridge = null;' desktop/browser-window.vala >/dev/null
+    grep -F 'credential_bridge = new CredentialBridge (manager, view);' desktop/browser-window.vala >/dev/null
+    grep -F 'if (!private_mode) {' desktop/browser-window.vala >/dev/null
     grep -F 'x-scheme-handler/xanh-browser' data-xanh/io.github.lamppkk.xanhbrowser.desktop >/dev/null
     test -f platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift
     test -f platform/apple/App/BrowserCredentialBridge.swift
@@ -77,6 +87,11 @@ case "$edition" in
     verify_native_core
     test -f desktop/sync-host.c
     test -f desktop/sync-host.vapi
+    test -f desktop/credential-bridge.c
+    grep -F 'webkit_user_script_new_for_world' desktop/credential-bridge.c >/dev/null
+    grep -F 'webkit_web_view_call_async_javascript_function' desktop/credential-bridge.c >/dev/null
+    grep -F 'if (!event.isTrusted) return;' desktop/credential-bridge.c >/dev/null
+    grep -F 'credential_bridge = new CredentialBridge (manager, view);' desktop/browser-window.vala >/dev/null
     grep -F 'XANH_ENABLE_FIREFOX_SYNC' CMakeLists.txt >/dev/null
     grep -F 'x-scheme-handler/xanh-browser' data-xanh/io.github.lamppkk.xanhbrowser.desktop >/dev/null
     require_evidence XANH_LINUX_SYNC_BUILD_EVIDENCE

@@ -66,6 +66,13 @@ namespace Xanh {
             GLib.Cancellable? cancellable = null) throws GLib.Error;
         public async string remote_tabs_json_async (
             GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async string credentials_json_async (
+            string context_json,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async bool touch_credential_async (
+            string credential_id,
+            string context_json,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
         public async bool unlock_vault_async (GLib.Cancellable? cancellable = null) throws GLib.Error;
         public bool lock_vault () throws GLib.Error;
         public bool vault_unlocked ();

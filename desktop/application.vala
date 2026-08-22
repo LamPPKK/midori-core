@@ -573,6 +573,68 @@ namespace Xanh {
             return yield sync_data.remote_tabs ();
         }
 
+        public async string get_sync_credentials (
+                string document_url, string origin,
+                Cancellable? cancellable = null) throws Error {
+            require_sync_allowed ();
+            if (!sync_connected ()) {
+                throw new IOError.NOT_CONNECTED ("Firefox Sync is not connected");
+            }
+            if (!sync_host.vault_unlocked ()) {
+                if (!(yield sync_host.unlock_vault_async (cancellable))) {
+                    throw new IOError.PERMISSION_DENIED (
+                        "The Firefox Sync password vault remains locked");
+                }
+            }
+            require_sync_allowed ();
+            string context = credential_context_json (document_url, origin);
+            string result = yield sync_host.credentials_json_async (context, cancellable);
+            require_sync_allowed ();
+            if (!sync_host.vault_unlocked ()) {
+                throw new IOError.PERMISSION_DENIED (
+                    "The Firefox Sync password vault locked during the request");
+            }
+            return result;
+        }
+
+        public async void touch_sync_credential (
+                string credential_id, string document_url, string origin,
+                Cancellable? cancellable = null) throws Error {
+            require_sync_allowed ();
+            if (!sync_connected () || !sync_host.vault_unlocked ()) {
+                throw new IOError.PERMISSION_DENIED (
+                    "The Firefox Sync password vault is unavailable");
+            }
+            if (credential_id.length == 0 || credential_id.length > 128) {
+                throw new IOError.INVALID_ARGUMENT ("The selected credential ID is invalid");
+            }
+            string context = credential_context_json (document_url, origin);
+            if (!(yield sync_host.touch_credential_async (
+                    credential_id, context, cancellable))) {
+                throw new IOError.FAILED ("The selected credential could not be updated");
+            }
+            require_sync_allowed ();
+        }
+
+        string credential_context_json (string document_url, string origin) {
+            var builder = new Json.Builder ();
+            builder.begin_object ();
+            builder.set_member_name ("document_url");
+            builder.add_string_value (document_url);
+            builder.set_member_name ("top_frame_origin");
+            builder.add_string_value (origin);
+            builder.set_member_name ("frame_origin");
+            builder.add_string_value (origin);
+            builder.set_member_name ("is_private");
+            builder.add_boolean_value (false);
+            builder.set_member_name ("user_selected");
+            builder.add_boolean_value (true);
+            builder.end_object ();
+            var generator = new Json.Generator ();
+            generator.root = builder.get_root ();
+            return generator.to_data (null);
+        }
+
         public async void clear_synced_history () throws Error {
             ensure_database ();
             bool has_places_history = places_mirror_ready ||

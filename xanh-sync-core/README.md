@@ -145,6 +145,8 @@ upstream add-or-update path so retrying the same origin/form/username does not
 create a duplicate. IDs are opaque safe ASCII. Inputs are capped at 64 KiB;
 queries return at most 100 validated records and 4 MiB. Usernames are capped at
 1,024 UTF-8 bytes, passwords at 4,096, field names at 256 and origins at 8,192.
+Embedded NUL is rejected at the shared boundary so NUL-terminated C hosts
+cannot observe a silently truncated username or password.
 
 Every returned JSON string and generated-binding record contains plaintext
 secret material. Hosts must keep it inside the lifetime of an authenticated

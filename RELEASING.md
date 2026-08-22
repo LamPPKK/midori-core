@@ -132,10 +132,23 @@ allowed historical material, never a shipping dependency or application ID.
    that a pending marker blocks scheduled, pre-sleep and manual Sync as well as
    reconnect until cleanup acknowledgement succeeds.
 
+5. On a clean regular profile, unlock the Logins vault through the reviewed OS
+   user-presence flow, activate a password field with a real pointer/keyboard
+   event and choose a username in the native GTK picker. Confirm the selected
+   value fills only the exact committed HTTPS top frame. Repeat with HTTP,
+   userinfo, cross-origin iframe, synthetic events, navigation during the
+   picker, tab switch/close, renderer termination and a stale request ID/nonce;
+   every case must fail closed. Confirm private tabs have no
+   `xanhCredentialBridge` handler or script, the page world cannot reach the
+   isolated-world function, focus loss locks/cancels the vault/picker, and
+   logs, crash output and `.xanhbackup` contain no plaintext credential.
+
 Verification: tests must pass without warnings, WebKitGTK must be 2.52.6 or
 newer, and `ldd` must contain no GTK3, WebKitGTK 4.0 or libsoup 2 library. Sync
 evidence must belong to the exact candidate commit and must not contain account
-state, tokens, scoped keys or the Logins key.
+state, tokens, scoped keys or the Logins key. Password Sync remains blocked
+unless `XANH_LINUX_USER_PRESENCE_EVIDENCE` proves fresh OS authentication and
+`XANH_LINUX_SECURITY_REVIEW_EVIDENCE` covers the isolated bridge above.
 
 ## 3. Build and inspect Flatpak
 

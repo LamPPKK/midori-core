@@ -117,7 +117,14 @@ browser OAuth, exact callback routing, Secret Service persistence, manual/
 startup/scheduled/pre-sleep Sync, server backoff, vault lock and keep/delete
 disconnect. Its bounded data coordinator migrates legacy bookmarks/history,
 publishes regular tabs, refreshes bookmark/history compatibility panels from
-Places, and groups remote tabs by device behind explicit user activation.
+Places, and groups remote tabs by device behind explicit user activation. A
+regular tab installs a document-start, top-frame-only credential script and
+message handler in the named
+`io.github.lamppkk.xanhbrowser.credentials` isolated WebKit world. A trusted
+pointer/keyboard event opens a native GTK username picker; request ID,
+navigation nonce, exact committed HTTPS URL and origin are rechecked before
+the selected secret is passed as `GVariant` arguments into that same world.
+Private tabs install neither the script nor the handler.
 Clearing browsing data deletes local Places visits through the upstream API so
 the history engine can propagate removals, including while the account is
 disconnected but its local runtime remains available. If that runtime cannot be
@@ -169,10 +176,10 @@ It derives both stored origins from a strict HTTPS same-origin context, requires
 an explicit native user action and an unlocked vault, rejects private browsing,
 and filters HTTP-auth, userinfo, cross-origin and oversized upstream records.
 Plaintext output is explicitly short-lived secret material. Android standard,
-Android Lite, Apple and the gated Windows host now consume this boundary
-through native pickers; Linux presentation remains incomplete. No edition may
-ship filling until its picker, OS user-presence policy and tab-ID/navigation-
-nonce bridge pass that platform's security gate.
+Android Lite, Apple, Linux and the gated Windows host now consume this boundary
+through native pickers. No edition may ship filling until its picker, OS user-
+presence policy and tab-ID/navigation-nonce bridge pass that platform's
+security gate.
 
 The Linux GTK host runs native C ABI/network calls and SQLite snapshot/hash
 preparation away from the UI thread; size-bounded JSON assembly and panel updates
@@ -191,9 +198,13 @@ compatibility mirrors so the rollback tables remain intact; local tabs are
 published with a global, regular-only 200-record/4-MiB-safe host bound across
 all open windows. Malformed
 legacy rows are skipped per record without blocking later Sync, and remote tabs
-are only opened after row activation. Linux still has no reviewed native Logins
-picker or isolated credential fill bridge, so this is not yet Linux production
-enablement.
+are only opened after row activation. The Linux Logins UI is a bounded native
+GTK picker, and its WebKitGTK bridge uses `webkit_user_script_new_for_world()`
+plus `webkit_web_view_call_async_javascript_function()` rather than the default
+page world or deprecated JavaScript APIs. Payload parsing rejects unknown
+message shapes, stale request IDs/nonces, non-HTTPS or mismatched origins and
+navigation changes. This is still not Linux production enablement until the
+user-presence and independent security evidence below are complete.
 
 The current Linux preview asks Secret Service for the Logins key. A locked
 collection can show the desktop keyring prompt, but an already-unlocked
@@ -231,9 +242,9 @@ evidence is still required:
   exact release commit;
 - message/FFI fuzzing, secret-redaction review and an independent security
   review;
-- complete the Linux Logins credential UI and Sync-enabled Flatpak packaging,
-  plus Apple/Windows native packaging and reviewed platform credential-bridge
-  evidence;
+- complete audited Linux OS user-presence and the Sync-enabled Flatpak
+  packaging, plus Apple/Windows native packaging and reviewed platform
+  credential-bridge evidence;
 - an isolated credential bridge plus 16 KiB-clean native libraries for WPE,
   and the equivalent bridge/vault/package evidence for WinCairo.
 

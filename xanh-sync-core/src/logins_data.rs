@@ -225,7 +225,9 @@ fn validate_field_name(value: &str) -> Result<(), SyncError> {
 }
 
 fn validate_secret(value: &str, maximum: usize, required: bool) -> Result<(), SyncError> {
-    if (required && value.is_empty()) || value.len() > maximum {
+    // C ABI consumers use NUL-terminated UTF-8. Reject embedded NUL instead of
+    // letting one platform observe a silently truncated username/password.
+    if (required && value.is_empty()) || value.len() > maximum || value.contains('\0') {
         return Err(SyncError::InvalidBridgeMessage(
             "credential value exceeds the shared policy".into(),
         ));
@@ -263,6 +265,17 @@ mod tests {
             is_private: false,
             user_selected: true,
         }
+    }
+
+    #[test]
+    fn rejects_embedded_nul_across_the_c_abi_boundary() {
+        let mut value = credential();
+        value.username = "user\0suffix".into();
+        assert!(validate_new_credential(value, true).is_err());
+
+        let mut value = credential();
+        value.password = "secret\0suffix".into();
+        assert!(validate_new_credential(value, true).is_err());
     }
 
     fn credential() -> NewCredential {

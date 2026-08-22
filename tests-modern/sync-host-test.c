@@ -93,6 +93,37 @@ unavailable_clear_history_finished (GObject      *source,
 }
 
 static void
+unavailable_credentials_finished (GObject      *source,
+                                  GAsyncResult *result,
+                                  gpointer      user_data)
+{
+    GMainLoop *loop = user_data;
+    g_autoptr (GError) error = NULL;
+    g_autofree gchar *value = xanh_sync_host_credentials_json_finish (
+        XANH_SYNC_HOST (source), result, &error);
+
+    g_assert_null (value);
+    g_assert_error (error, XANH_SYNC_HOST_ERROR,
+                    XANH_SYNC_HOST_ERROR_UNAVAILABLE);
+    g_main_loop_quit (loop);
+}
+
+static void
+unavailable_touch_credential_finished (GObject      *source,
+                                       GAsyncResult *result,
+                                       gpointer      user_data)
+{
+    GMainLoop *loop = user_data;
+    g_autoptr (GError) error = NULL;
+
+    g_assert_false (xanh_sync_host_touch_credential_finish (
+        XANH_SYNC_HOST (source), result, &error));
+    g_assert_error (error, XANH_SYNC_HOST_ERROR,
+                    XANH_SYNC_HOST_ERROR_UNAVAILABLE);
+    g_main_loop_quit (loop);
+}
+
+static void
 test_disabled_data_bridge_fails_closed (void)
 {
     g_autoptr (XanhSyncHost) host = xanh_sync_host_new ("/tmp/xanh-sync-host-test");
@@ -103,6 +134,13 @@ test_disabled_data_bridge_fails_closed (void)
     g_main_loop_run (loop);
     xanh_sync_host_clear_history_async (
         host, NULL, unavailable_clear_history_finished, loop);
+    g_main_loop_run (loop);
+    xanh_sync_host_credentials_json_async (
+        host, "{}", NULL, unavailable_credentials_finished, loop);
+    g_main_loop_run (loop);
+    xanh_sync_host_touch_credential_async (
+        host, "credential", "{}", NULL,
+        unavailable_touch_credential_finished, loop);
     g_main_loop_run (loop);
 }
 

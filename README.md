@@ -195,9 +195,12 @@ private SQLite snapshot, mirrors Places into the existing GTK panels, publishes
 regular local tabs and presents remote tabs by device for explicit opening.
 Clearing browsing data quiesces every open window, clears upstream Places
 history locally for the next Sync and removes migration snapshots. Linux
-production remains gated until the Logins credential UI,
-Sync-enabled Flatpak packaging, audited OS user-presence for password unlock,
-and the interoperability/security evidence are complete.
+regular tabs now use a native GTK username picker and a document-start,
+top-frame-only credential bridge in a named isolated WebKitGTK world. Request
+ID, navigation nonce and the exact committed HTTPS origin are revalidated, and
+private tabs install no credential bridge. Linux production remains gated until
+Sync-enabled Flatpak packaging, audited fresh OS user-presence for password
+unlock, and the interoperability/security evidence are complete.
 
 Apple and Windows include native settings/coordinator hosts for system-browser
 OAuth, engine selection, backoff-aware Sync, remote tabs, device-bound secure

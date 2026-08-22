@@ -106,7 +106,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   navigation records bounded history, current regular tabs are published before
   Sync, and WinUI exposes explicit-open bookmark/history libraries whose rename
   and delete actions retain the exact GUID or URL/timestamp identity. InPrivate
-  tabs remain outside all local Places mutations.
+  tabs remain outside all local Places mutations. Remote tabs are now parsed as
+  bounded typed records, grouped per device and opened only from the selected
+  native button.
 - Added a bounded Logins CRUD contract across UniFFI and the stable C ABI. It
   requires an unlocked vault and explicit native action, derives exact HTTPS
   origins from same-origin frame context, excludes private/HTTP-auth/unsafe

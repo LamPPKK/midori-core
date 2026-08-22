@@ -426,6 +426,8 @@ case "$edition" in
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
     grep -F 'public async Task UpdateLocalTabsAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<IReadOnlyList<FirefoxRemoteTabsDevice>> RemoteTabsAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'public async Task<IReadOnlyList<FirefoxBookmarkRecord>> BookmarksAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'public async Task RecordHistoryAsync(' \
@@ -440,6 +442,14 @@ case "$edition" in
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'clearGeneration != Interlocked.Read(ref _historyClearGeneration)' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    sed -n '/ShowRemoteTabsLibraryAsync/,/private static string RemoteDeviceKindLabel/p' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs \
+      | grep -F 'AddTab(isPrivate: false, initialUri: uri);' >/dev/null
+    if grep -F 'RemoteTabsSummary(' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null; then
+      echo 'Windows remote tabs must expose explicit typed rows, not a count-only summary' >&2
+      exit 1
+    fi
     grep -F 'xanh-browser-windows://accounts/oauth' \
       platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs >/dev/null
     test -f app-webkit/wpe-fork/WPE_ANDROID_REVISION
@@ -759,6 +769,8 @@ case "$edition" in
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'public async Task UpdateLocalTabsAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<IReadOnlyList<FirefoxRemoteTabsDevice>> RemoteTabsAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'public async Task<IReadOnlyList<FirefoxBookmarkRecord>> BookmarksAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'browser.PageVisited += Browser_PageVisited;' \
@@ -769,6 +781,9 @@ case "$edition" in
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'clearGeneration != Interlocked.Read(ref _historyClearGeneration)' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    sed -n '/ShowRemoteTabsLibraryAsync/,/private static string RemoteDeviceKindLabel/p' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs \
+      | grep -F 'AddTab(isPrivate: false, initialUri: uri);' >/dev/null
     test "${XANH_WINDOWS_HELLO_TESTED:-0}" = 1
     test "${XANH_WEBVIEW2_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;

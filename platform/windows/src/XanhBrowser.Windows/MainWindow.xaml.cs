@@ -226,6 +226,7 @@ public sealed partial class MainWindow : Window
         var disconnect = new Button { Content = "Disconnect" };
         var detail = new TextBlock { Text = snapshot.Detail, TextWrapping = TextWrapping.Wrap };
         var disconnectRequested = false;
+        var remoteTabsRequested = false;
         var content = new StackPanel { Spacing = 8, MinWidth = 360 };
         content.Children.Add(detail);
         foreach (var control in new Control[] { bookmarks, history, tabs, passwords, vault, remoteTabs, disconnect })
@@ -259,17 +260,10 @@ public sealed partial class MainWindow : Window
                 detail.Text = error.Message;
             }
         };
-        remoteTabs.Click += async (_, _) =>
+        remoteTabs.Click += (_, _) =>
         {
-            try
-            {
-                var json = await coordinator.RemoteTabsJsonAsync();
-                detail.Text = RemoteTabsSummary(json);
-            }
-            catch (Exception error)
-            {
-                detail.Text = error.Message;
-            }
+            remoteTabsRequested = true;
+            dialog.Hide();
         };
         disconnect.Click += (_, _) =>
         {
@@ -277,6 +271,11 @@ public sealed partial class MainWindow : Window
             dialog.Hide();
         };
         await dialog.ShowAsync();
+        if (remoteTabsRequested)
+        {
+            await ShowRemoteTabsLibraryAsync(coordinator);
+            return;
+        }
         if (disconnectRequested)
         {
             var deleteLocal = await ConfirmDeleteLocalSyncDataAsync();
@@ -328,21 +327,98 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    private static string RemoteTabsSummary(string json)
+    private async Task ShowRemoteTabsLibraryAsync(FirefoxSyncCoordinator coordinator)
     {
-        using var document = System.Text.Json.JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
-            return "No remote devices are available.";
-        var devices = document.RootElement.GetArrayLength();
-        var tabs = 0;
-        foreach (var device in document.RootElement.EnumerateArray())
-            if (device.TryGetProperty("tabs", out var values)
-                && values.ValueKind == System.Text.Json.JsonValueKind.Array)
-                tabs += values.GetArrayLength();
-        return devices == 0
-            ? "No remote devices are available."
-            : $"{tabs} tab(s) from {devices} device(s). Remote tabs are never opened automatically.";
+        var devices = await coordinator.RemoteTabsAsync();
+        var groups = new StackPanel { Spacing = 14, MinWidth = 560 };
+        var tabOpened = false;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = BrowserTabs.XamlRoot,
+            Title = "Tabs from other devices",
+            Content = new ScrollViewer
+            {
+                Content = groups,
+                MaxHeight = 480,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            },
+            CloseButtonText = "Done",
+        };
+
+        if (devices.Count == 0)
+        {
+            groups.Children.Add(new TextBlock
+            {
+                Text = "No remote devices are available. Receiving Sync data never opens a tab automatically.",
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
+        foreach (var device in devices)
+        {
+            var modified = device.LastModifiedEpochMillis == 0
+                ? "last update unavailable"
+                : $"updated {DateTimeOffset.FromUnixTimeMilliseconds(
+                    device.LastModifiedEpochMillis).ToLocalTime():g}";
+            groups.Children.Add(new TextBlock
+            {
+                Text = $"{device.DisplayName} · {RemoteDeviceKindLabel(device.Kind)} · {modified}",
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 16,
+            });
+            foreach (var remoteTab in device.Tabs)
+            {
+                var uri = remoteTab.PrimaryUri!;
+                var lastUsed = remoteTab.LastUsedEpochMillis == 0
+                    ? "last used time unavailable"
+                    : DateTimeOffset.FromUnixTimeMilliseconds(remoteTab.LastUsedEpochMillis)
+                        .ToLocalTime().ToString("g");
+                var text = new StackPanel { Spacing = 2 };
+                text.Children.Add(new TextBlock
+                {
+                    Text = remoteTab.IsPinned
+                        ? $"Pinned · {remoteTab.DisplayTitle}"
+                        : remoteTab.DisplayTitle,
+                    TextWrapping = TextWrapping.Wrap,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxLines = 2,
+                });
+                text.Children.Add(new TextBlock
+                {
+                    Text = $"{uri.AbsoluteUri}\n{lastUsed}",
+                    TextWrapping = TextWrapping.Wrap,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxLines = 3,
+                    Opacity = 0.72,
+                });
+                var open = new Button
+                {
+                    Content = text,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                };
+                open.Click += (_, _) =>
+                {
+                    if (tabOpened) return;
+                    tabOpened = true;
+                    groups.IsHitTestVisible = false;
+                    AddTab(isPrivate: false, initialUri: uri);
+                    dialog.Hide();
+                };
+                groups.Children.Add(open);
+            }
+        }
+        await dialog.ShowAsync();
     }
+
+    private static string RemoteDeviceKindLabel(FirefoxRemoteDeviceKind kind) => kind switch
+    {
+        FirefoxRemoteDeviceKind.Desktop => "Desktop",
+        FirefoxRemoteDeviceKind.Mobile => "Mobile",
+        FirefoxRemoteDeviceKind.Tablet => "Tablet",
+        FirefoxRemoteDeviceKind.Tv => "TV",
+        FirefoxRemoteDeviceKind.Vr => "VR",
+        _ => "Unknown device type",
+    };
 
     private void Sync_SnapshotChanged(object? sender, FirefoxSyncHostSnapshot snapshot) =>
         DispatcherQueue.TryEnqueue(() => UpdateFirefoxSyncUi(snapshot));
@@ -615,7 +691,7 @@ public sealed partial class MainWindow : Window
             var selected = SelectedRecord();
             if (operationRunning || selected is null) return;
             operationRunning = true;
-            actions.IsEnabled = false;
+            actions.IsHitTestVisible = false;
             try
             {
                 await coordinator.RenameBookmarkAsync(selected.Guid, title.Text, isPrivate: false);
@@ -625,7 +701,7 @@ public sealed partial class MainWindow : Window
             finally
             {
                 operationRunning = false;
-                actions.IsEnabled = true;
+                actions.IsHitTestVisible = true;
             }
         };
         delete.Click += async (_, _) =>
@@ -633,7 +709,7 @@ public sealed partial class MainWindow : Window
             var selected = SelectedRecord();
             if (operationRunning || selected is null) return;
             operationRunning = true;
-            actions.IsEnabled = false;
+            actions.IsHitTestVisible = false;
             try
             {
                 var deleted = await coordinator.DeleteBookmarkAsync(selected.Guid, isPrivate: false);
@@ -643,7 +719,7 @@ public sealed partial class MainWindow : Window
             finally
             {
                 operationRunning = false;
-                actions.IsEnabled = true;
+                actions.IsHitTestVisible = true;
             }
         };
 
@@ -732,7 +808,7 @@ public sealed partial class MainWindow : Window
             var selected = SelectedRecord();
             if (operationRunning || selected?.OpenableUri is not { } uri) return;
             operationRunning = true;
-            actions.IsEnabled = false;
+            actions.IsHitTestVisible = false;
             try
             {
                 await coordinator.DeleteHistoryVisitAsync(uri, selected.VisitedAtEpochMillis);
@@ -742,7 +818,7 @@ public sealed partial class MainWindow : Window
             finally
             {
                 operationRunning = false;
-                actions.IsEnabled = true;
+                actions.IsHitTestVisible = true;
             }
         };
         clear.Click += (_, _) =>

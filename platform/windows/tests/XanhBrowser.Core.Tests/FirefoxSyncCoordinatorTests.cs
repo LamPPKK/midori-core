@@ -272,6 +272,80 @@ public sealed class FirefoxSyncCoordinatorTests
             coordinator.BookmarksAsync());
     }
 
+    [TestMethod]
+    public async Task RemoteTabsAreTypedBoundedAndRequireAnExplicitHostOpen()
+    {
+        var runtime = new FakeRuntime
+        {
+            State = FirefoxAccountState.Connected,
+            RemoteTabsResult = """
+                [{"device_id":"device-id","device_name":"Work Desktop","device_kind":"desktop","last_modified_epoch_millis":1700000000001,"tabs":[{"title":"Example","url_history":["https://example.org/current","https://example.org/previous"],"icon_url":null,"last_used_epoch_millis":1700000000000,"is_pinned":false}]}]
+                """,
+        };
+        using var coordinator = Create(runtime, new FakeSecretStore());
+        await coordinator.InitializeAsync();
+
+        var devices = await coordinator.RemoteTabsAsync();
+
+        Assert.AreEqual(1, devices.Count);
+        Assert.AreEqual("device-id", devices[0].DeviceId);
+        Assert.AreEqual("https://example.org/current", devices[0].Tabs[0].PrimaryUri?.AbsoluteUri);
+
+        runtime.RemoteTabsResult = runtime.RemoteTabsResult.Replace(
+            "https://example.org/current",
+            "javascript:alert(1)",
+            StringComparison.Ordinal);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            coordinator.RemoteTabsAsync());
+
+        runtime.RemoteTabsResult = JsonSerializer.Serialize(
+            Enumerable.Range(0, 2).Select(device => new
+            {
+                device_id = $"device-{device}",
+                device_name = $"Device {device}",
+                device_kind = "desktop",
+                last_modified_epoch_millis = 1,
+                tabs = Enumerable.Range(0, FirefoxRemoteTabsPolicy.MaximumTabsTotal / 2 + 1)
+                    .Select(index => new
+                    {
+                        title = $"Tab {index}",
+                        url_history = new[] { $"https://example.org/{device}/{index}" },
+                        icon_url = (string?)null,
+                        last_used_epoch_millis = 1,
+                        is_pinned = false,
+                    }).ToArray(),
+            }).ToArray());
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            coordinator.RemoteTabsAsync());
+
+        runtime.RemoteTabsResult = JsonSerializer.Serialize(
+            Enumerable.Range(0, FirefoxRemoteTabsPolicy.MaximumDevices + 1).Select(device => new
+            {
+                device_id = $"device-{device}",
+                device_name = $"Device {device}",
+                device_kind = "desktop",
+                last_modified_epoch_millis = 1,
+                tabs = new[]
+                {
+                    new
+                    {
+                        title = "Tab",
+                        url_history = new[] { $"https://example.org/{device}" },
+                        icon_url = (string?)null,
+                        last_used_epoch_millis = 1,
+                        is_pinned = false,
+                    },
+                },
+            }).ToArray());
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            coordinator.RemoteTabsAsync());
+
+        runtime.RemoteTabsResult = "[\"" + new string(
+            'x', FirefoxRemoteTabsPolicy.MaximumJsonBytes) + "\"]";
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            coordinator.RemoteTabsAsync());
+    }
+
     private static FirefoxSyncCoordinator Create(
         FakeRuntime runtime,
         FakeSecretStore store,
@@ -312,6 +386,7 @@ public sealed class FirefoxSyncCoordinatorTests
         public bool LastDisconnectDeletedLocal { get; private set; }
         public string BookmarksResult { get; set; } = "[]";
         public string HistoryResult { get; set; } = "[]";
+        public string RemoteTabsResult { get; set; } = "[]";
         public string LastTabsPayload { get; private set; } = "";
         public string LastBookmarkUpdate { get; private set; } = "";
         public string LastHistoryPayload { get; private set; } = "";
@@ -358,7 +433,7 @@ public sealed class FirefoxSyncCoordinatorTests
             return "{\"accepted_count\":1,\"skipped_private_count\":1}";
         }
 
-        public string RemoteTabsJson() => "[]";
+        public string RemoteTabsJson() => RemoteTabsResult;
         public string BookmarkRootGuid(int root) => "mobile______";
         public string CreateBookmark(string bookmarkJson) => "created_1234";
         public string BookmarksJson(int root) => BookmarksResult;

@@ -572,7 +572,11 @@ channels are rejected before a controller or page is created, while Runtime
    require the second native confirmation and must not claim to clear WebView2
    cookies/cache. Race a successful navigation completion against clear-all and
    confirm the visit is suppressed or deleted again by its exact URL/timestamp
-   before the clear operation reports success.
+   before the clear operation reports success. Receive tabs from multiple
+   devices and verify they are grouped by device and remain inert until one
+   native row is clicked. Reject more than 100 devices/500 total tabs, unsafe
+   current/history/icon URLs, invalid device kinds and out-of-range timestamps
+   without opening any fallback URL.
 3. Sign every executable and package with the dedicated certificate, verify the
    timestamp and signature on a separate clean system, then run Microsoft
    Defender and SmartScreen submission checks.

@@ -265,13 +265,15 @@ Sync-enabled host also records regular navigation, publishes bounded regular
 tabs and exposes typed bookmark/history controls over the existing C ABI.
 Bookmark mutations retain the selected GUID and history deletion retains the
 selected URL/millisecond timestamp; InPrivate tabs never enter these mutations.
+Remote-tab results are decoded into bounded typed device/tab records and can
+only create a regular tab after an explicit native row selection.
 Both hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
 The platform boundary tests currently pass locally: 34 Apple tests cover the
 contract, coordinator, navigation/recovery policy and device-only
 Keychain/LocalAuthentication policy,
-while 68 Windows cases cover the contract, coordinator, typed Places/tabs
+while 70 Windows cases cover the contract, coordinator, typed Places/tabs
 boundary, P/Invoke surface and DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application

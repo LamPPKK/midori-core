@@ -9,6 +9,7 @@ public enum FirefoxSyncEngine { Bookmarks, History, Tabs, Passwords }
 public enum FirefoxSyncReason { Startup, Manual, Scheduled, LocalChange, PreSleep }
 public enum FirefoxSyncStatus { Idle, Running, Success, Partial, NetworkError, AuthError, BackedOff }
 public enum FirefoxBookmarkRoot { Menu, Toolbar, Unfiled, Mobile }
+public enum FirefoxRemoteDeviceKind { Desktop, Mobile, Tablet, Tv, Vr, Unknown }
 public enum FirefoxHistoryTransition
 {
     Link,
@@ -72,6 +73,106 @@ public sealed record FirefoxLocalTab(
     DateTimeOffset LastUsed,
     bool IsPrivate,
     bool IsPinned = false);
+
+public sealed record FirefoxRemoteTab(
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("url_history")] string[] UrlHistory,
+    [property: JsonPropertyName("icon_url")] string? IconUrl,
+    [property: JsonPropertyName("last_used_epoch_millis")] long LastUsedEpochMillis,
+    [property: JsonPropertyName("is_pinned")] bool IsPinned)
+{
+    public bool IsSafe => FirefoxRemoteTabsPolicy.IsBoundedText(
+            Title, FirefoxRemoteTabsPolicy.MaximumTitleCharacters)
+        && UrlHistory is { Length: > 0 and <= FirefoxRemoteTabsPolicy.MaximumUrlHistory }
+        && UrlHistory.All(FirefoxRemoteTabsPolicy.IsAllowedWebUrl)
+        && (IconUrl is null || FirefoxRemoteTabsPolicy.IsAllowedWebUrl(IconUrl))
+        && FirefoxPlacesPolicy.IsSafeTimestamp(LastUsedEpochMillis, allowZero: true);
+
+    public Uri? PrimaryUri => IsSafe
+        && Uri.TryCreate(UrlHistory[0], UriKind.Absolute, out var uri)
+            ? uri
+            : null;
+
+    public string DisplayTitle => FirefoxRemoteTabsPolicy.SanitizeDisplayLabel(
+        Title,
+        PrimaryUri?.Host ?? "Remote tab");
+}
+
+public sealed record FirefoxRemoteTabsDevice(
+    [property: JsonPropertyName("device_id")] string DeviceId,
+    [property: JsonPropertyName("device_name")] string DeviceName,
+    [property: JsonPropertyName("device_kind")] string DeviceKind,
+    [property: JsonPropertyName("last_modified_epoch_millis")] long LastModifiedEpochMillis,
+    [property: JsonPropertyName("tabs")] FirefoxRemoteTab[] Tabs)
+{
+    public bool IsSafe => FirefoxRemoteTabsPolicy.IsDeviceId(DeviceId)
+        && FirefoxRemoteTabsPolicy.IsBoundedText(
+            DeviceName, FirefoxRemoteTabsPolicy.MaximumDeviceNameCharacters)
+        && FirefoxRemoteTabsPolicy.TryDeviceKind(DeviceKind, out _)
+        && FirefoxPlacesPolicy.IsSafeTimestamp(LastModifiedEpochMillis, allowZero: true)
+        && Tabs is { Length: > 0 and <= FirefoxRemoteTabsPolicy.MaximumTabsPerDevice }
+        && Tabs.All(tab => tab is not null && tab.IsSafe);
+
+    public FirefoxRemoteDeviceKind Kind =>
+        FirefoxRemoteTabsPolicy.TryDeviceKind(DeviceKind, out var kind)
+            ? kind
+            : FirefoxRemoteDeviceKind.Unknown;
+
+    public string DisplayName => FirefoxRemoteTabsPolicy.SanitizeDisplayLabel(
+        DeviceName,
+        "Unknown device");
+}
+
+public static class FirefoxRemoteTabsPolicy
+{
+    public const int MaximumDevices = 100;
+    public const int MaximumTabsPerDevice = 500;
+    public const int MaximumTabsTotal = 500;
+    public const int MaximumUrlHistory = 10;
+    public const int MaximumTitleCharacters = 4_096;
+    public const int MaximumDeviceIdBytes = 512;
+    public const int MaximumDeviceNameCharacters = 512;
+    public const int MaximumJsonBytes = 8 * 1_024 * 1_024;
+
+    public static bool IsDeviceId(string? value) => !string.IsNullOrEmpty(value)
+        && Encoding.UTF8.GetByteCount(value) <= MaximumDeviceIdBytes
+        && !value.Any(char.IsControl);
+
+    public static bool IsBoundedText(string? value, int maximumCharacters) =>
+        value is not null && value.EnumerateRunes().Take(maximumCharacters + 1).Count() <= maximumCharacters;
+
+    public static bool IsAllowedWebUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && FirefoxPlacesPolicy.IsAllowedWebUri(uri);
+
+    public static bool TryDeviceKind(string? value, out FirefoxRemoteDeviceKind kind)
+    {
+        kind = value switch
+        {
+            "desktop" => FirefoxRemoteDeviceKind.Desktop,
+            "mobile" => FirefoxRemoteDeviceKind.Mobile,
+            "tablet" => FirefoxRemoteDeviceKind.Tablet,
+            "tv" => FirefoxRemoteDeviceKind.Tv,
+            "vr" => FirefoxRemoteDeviceKind.Vr,
+            "unknown" => FirefoxRemoteDeviceKind.Unknown,
+            _ => FirefoxRemoteDeviceKind.Unknown,
+        };
+        return value is "desktop" or "mobile" or "tablet" or "tv" or "vr" or "unknown";
+    }
+
+    public static string SanitizeDisplayLabel(string? value, string fallback)
+    {
+        var bounded = FirefoxPlacesPolicy.SanitizeTitle(value, fallback);
+        var output = new StringBuilder(bounded.Length);
+        foreach (var rune in bounded.EnumerateRunes())
+        {
+            if (Rune.GetUnicodeCategory(rune) == System.Globalization.UnicodeCategory.Format)
+                continue;
+            output.Append(rune);
+        }
+        return string.IsNullOrWhiteSpace(output.ToString()) ? fallback : output.ToString();
+    }
+}
 
 public static class FirefoxPlacesPolicy
 {

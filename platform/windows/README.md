@@ -69,8 +69,10 @@ shows all four Firefox bookmark roots plus the 500 most recent visits. Opening
 a row always requires an explicit click. Rename/delete operations preserve the
 exact bookmark GUID; history deletion uses the exact URL/timestamp visit.
 InPrivate navigation is never recorded and cannot create, rename or delete a
-bookmark. The ordinary verification build intentionally lacks the native DLL,
-so it does not claim an independent local Places library yet.
+bookmark. Remote tabs are validated as at most 100 devices/500 total tabs,
+grouped by sanitized device name and never navigate until the user clicks the
+specific HTTP(S) row. The ordinary verification build intentionally lacks the
+native DLL, so it does not claim an independent local Places library yet.
 
 Regular tabs install a document-start WebView2 credential bridge. A page can
 only request the native chooser after a trusted pointer or keyboard event. The

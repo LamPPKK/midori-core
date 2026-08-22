@@ -332,13 +332,28 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         }
     }
 
-    public async Task<string> RemoteTabsJsonAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<FirefoxRemoteTabsDevice>> RemoteTabsAsync(
+        CancellationToken cancellationToken = default)
     {
         await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
-            return await Task.Run(runtime.RemoteTabsJson, cancellationToken).ConfigureAwait(false);
+            var value = await Task.Run(
+                runtime.RemoteTabsJson, cancellationToken).ConfigureAwait(false);
+            var devices = ParseBoundedArray<FirefoxRemoteTabsDevice>(
+                value,
+                FirefoxRemoteTabsPolicy.MaximumJsonBytes,
+                FirefoxRemoteTabsPolicy.MaximumDevices,
+                device => device is not null && device.IsSafe,
+                "remote-tabs");
+            var totalTabs = 0;
+            foreach (var device in devices)
+                totalTabs = checked(totalTabs + device.Tabs.Length);
+            if (totalTabs > FirefoxRemoteTabsPolicy.MaximumTabsTotal)
+                throw new InvalidOperationException(
+                    "Firefox Sync returned too many remote tabs.");
+            return devices;
         }
         finally
         {

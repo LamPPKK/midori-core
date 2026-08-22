@@ -376,6 +376,8 @@ records only successful regular navigation in Places and exposes a native
 bookmark/history library. Bookmark rename/delete uses the selected 12-character
 Places GUID, history deletion uses the selected canonical URL plus millisecond
 visit timestamp, and remote history is display-only until explicitly opened.
+Remote tabs are parsed through the same bounded native contract, grouped by
+device and remain inert until the user clicks one specific HTTP(S) row.
 InPrivate tabs are rejected before any Places mutation. The ordinary artifact
 still has no local Places runtime, so these library controls remain unavailable
 until an approved or self-hosted Sync configuration and native DLL are present.

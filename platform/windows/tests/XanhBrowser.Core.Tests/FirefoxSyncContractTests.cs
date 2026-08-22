@@ -192,6 +192,43 @@ public sealed class FirefoxSyncContractTests
     }
 
     [TestMethod]
+    public void RemoteTabsPolicyBoundsRecordsAndSanitizesDisplayLabels()
+    {
+        var tab = new FirefoxRemoteTab(
+            "Visible\u202e\nTitle",
+            ["https://example.org/current", "https://example.org/previous"],
+            "https://example.org/icon.png",
+            1_700_000_000_000,
+            true);
+        var device = new FirefoxRemoteTabsDevice(
+            "device-id",
+            "Work\u202d\nDesktop",
+            "desktop",
+            1_700_000_000_001,
+            [tab]);
+
+        Assert.IsTrue(tab.IsSafe);
+        Assert.AreEqual("https://example.org/current", tab.PrimaryUri?.AbsoluteUri);
+        Assert.AreEqual("Visible Title", tab.DisplayTitle);
+        Assert.IsTrue(device.IsSafe);
+        Assert.AreEqual(FirefoxRemoteDeviceKind.Desktop, device.Kind);
+        Assert.AreEqual("Work Desktop", device.DisplayName);
+        Assert.IsFalse((tab with { UrlHistory = ["javascript:alert(1)"] }).IsSafe);
+        Assert.IsFalse((tab with
+        {
+            UrlHistory = Enumerable.Repeat(
+                "https://example.org/", FirefoxRemoteTabsPolicy.MaximumUrlHistory + 1).ToArray(),
+        }).IsSafe);
+        Assert.IsFalse((tab with { IconUrl = "data:image/png;base64,AAAA" }).IsSafe);
+        Assert.IsFalse((tab with { LastUsedEpochMillis = long.MaxValue }).IsSafe);
+        Assert.IsFalse((device with { DeviceKind = "watch" }).IsSafe);
+        Assert.IsFalse((device with
+        {
+            DeviceId = new string('x', FirefoxRemoteTabsPolicy.MaximumDeviceIdBytes + 1),
+        }).IsSafe);
+    }
+
+    [TestMethod]
     public void NativeLoginsBridgeUsesTheReviewedCAbiSymbols()
     {
         string? EntryPoint(string method) => typeof(NativeMethods)

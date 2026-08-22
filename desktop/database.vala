@@ -12,11 +12,18 @@ namespace Xanh {
         public string uri { get; set; }
         public string title { get; set; }
         public int64 visited_at { get; set; }
+        public string sync_id { get; set; }
+        public int64 sync_timestamp_millis { get; set; }
+        public bool sync_is_remote { get; set; }
 
-        public StoredPage (string uri, string title, int64 visited_at = 0) {
+        public StoredPage (string uri, string title, int64 visited_at = 0,
+                string sync_id = "", int64 sync_timestamp_millis = 0,
+                bool sync_is_remote = false) {
             string fallback = PageDataPolicy.is_safe_web_uri (uri) ? uri : "Untitled";
             Object (uri: uri, title: PageDataPolicy.sanitized_title (title, fallback),
-                visited_at: visited_at);
+                visited_at: visited_at, sync_id: sync_id,
+                sync_timestamp_millis: sync_timestamp_millis,
+                sync_is_remote: sync_is_remote);
         }
     }
 
@@ -96,14 +103,17 @@ namespace Xanh {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     uri TEXT NOT NULL,
                     title TEXT NOT NULL DEFAULT '',
-                    visited_at INTEGER NOT NULL
+                    visited_at INTEGER NOT NULL,
+                    sync_millis INTEGER NOT NULL DEFAULT 0,
+                    sync_is_remote INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE INDEX IF NOT EXISTS places_history_mirror_date
                     ON places_history_mirror(visited_at DESC);
                 CREATE TABLE IF NOT EXISTS places_bookmarks_mirror (
                     uri TEXT PRIMARY KEY NOT NULL,
                     title TEXT NOT NULL DEFAULT '',
-                    created_at INTEGER NOT NULL
+                    created_at INTEGER NOT NULL,
+                    sync_guid TEXT NOT NULL DEFAULT ''
                 );
                 CREATE TABLE IF NOT EXISTS downloads (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,8 +132,55 @@ namespace Xanh {
                     key TEXT PRIMARY KEY NOT NULL,
                     value TEXT NOT NULL
                 );
-                INSERT OR REPLACE INTO schema_meta(key, value) VALUES('schema_version', '1');
             """);
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                bool mirror_identity_upgraded = false;
+                mirror_identity_upgraded |= ensure_column (
+                    "places_bookmarks_mirror", "sync_guid",
+                    "ALTER TABLE places_bookmarks_mirror " +
+                    "ADD COLUMN sync_guid TEXT NOT NULL DEFAULT '';");
+                mirror_identity_upgraded |= ensure_column (
+                    "places_history_mirror", "sync_millis",
+                    "ALTER TABLE places_history_mirror " +
+                    "ADD COLUMN sync_millis INTEGER NOT NULL DEFAULT 0;");
+                mirror_identity_upgraded |= ensure_column (
+                    "places_history_mirror", "sync_is_remote",
+                    "ALTER TABLE places_history_mirror " +
+                    "ADD COLUMN sync_is_remote INTEGER NOT NULL DEFAULT 0;");
+                if (mirror_identity_upgraded) {
+                    // Schema v1 did not preserve the Places bookmark GUID or
+                    // exact visit timestamp. Never guess those identities:
+                    // force the next native refresh to repopulate both mirrors.
+                    execute ("DELETE FROM places_bookmarks_mirror; " +
+                        "DELETE FROM places_history_mirror; " +
+                        "DELETE FROM schema_meta " +
+                        "WHERE key = 'places_mirror_v1_ready';");
+                }
+                execute ("INSERT OR REPLACE INTO schema_meta(key, value) " +
+                    "VALUES('schema_version', '2'); COMMIT;");
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Schema migration rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
+        bool ensure_column (string table, string column, string alter_sql)
+                throws DatabaseError {
+            Sqlite.Statement statement;
+            prepare ("PRAGMA table_info(%s)".printf (table), out statement);
+            int result;
+            while ((result = statement.step ()) == Sqlite.ROW) {
+                if (statement.column_text (1) == column) return false;
+            }
+            if (result != Sqlite.DONE)
+                throw new DatabaseError.MIGRATION ("%s", handle.errmsg ());
+            execute (alter_sql);
+            return true;
         }
 
         public void execute (string sql) throws DatabaseError {
@@ -234,15 +291,18 @@ namespace Xanh {
         }
 
         public List<StoredPage> list_places_bookmarks (int limit = 100) throws DatabaseError {
-            return query_pages (
-                "SELECT rowid, uri, title, created_at FROM places_bookmarks_mirror " +
-                "ORDER BY created_at DESC LIMIT ?", limit);
+            return query_pages_with_sync_identity (
+                "SELECT rowid, uri, title, created_at, sync_guid " +
+                "FROM places_bookmarks_mirror ORDER BY created_at DESC LIMIT ?",
+                limit, true);
         }
 
         public List<StoredPage> list_places_history (int limit = 100) throws DatabaseError {
-            return query_pages (
-                "SELECT id, uri, title, visited_at FROM places_history_mirror " +
-                "ORDER BY visited_at DESC LIMIT ?", limit);
+            return query_pages_with_sync_identity (
+                "SELECT id, uri, title, visited_at, sync_millis, sync_is_remote " +
+                "FROM places_history_mirror " +
+                "ORDER BY visited_at DESC LIMIT ?",
+                limit, false);
         }
 
         public void upsert_places_bookmark (StoredPage page) throws DatabaseError {
@@ -251,12 +311,17 @@ namespace Xanh {
                     "Only safe HTTP(S) pages can enter the Places bookmark mirror");
             }
             Sqlite.Statement statement;
-            prepare ("INSERT OR REPLACE INTO places_bookmarks_mirror" +
-                "(uri, title, created_at) VALUES(?, ?, ?)", out statement);
+            prepare ("INSERT INTO places_bookmarks_mirror" +
+                "(uri, title, created_at, sync_guid) VALUES(?, ?, ?, ?) " +
+                "ON CONFLICT(uri) DO UPDATE SET title = excluded.title, " +
+                "created_at = excluded.created_at, sync_guid = CASE " +
+                "WHEN excluded.sync_guid <> '' THEN excluded.sync_guid " +
+                "ELSE places_bookmarks_mirror.sync_guid END", out statement);
             statement.bind_text (1, page.uri);
             statement.bind_text (2,
                 PageDataPolicy.sanitized_title (page.title, page.uri));
             statement.bind_int64 (3, page.visited_at);
+            statement.bind_text (4, page.sync_id);
             step_done (statement);
         }
 
@@ -266,15 +331,190 @@ namespace Xanh {
                     "Only safe HTTP(S) pages can enter the Places history mirror");
             }
             Sqlite.Statement statement;
-            prepare ("INSERT INTO places_history_mirror(uri, title, visited_at) VALUES(?, ?, ?)",
-                out statement);
+            prepare ("INSERT INTO places_history_mirror" +
+                "(uri, title, visited_at, sync_millis, sync_is_remote) " +
+                "VALUES(?, ?, ?, ?, ?)", out statement);
             statement.bind_text (1, page.uri);
             statement.bind_text (2,
                 PageDataPolicy.sanitized_title (page.title, page.uri));
             statement.bind_int64 (3, page.visited_at);
+            statement.bind_int64 (4, page.sync_timestamp_millis);
+            statement.bind_int (5, page.sync_is_remote ? 1 : 0);
             step_done (statement);
             execute ("DELETE FROM places_history_mirror WHERE id NOT IN " +
                 "(SELECT id FROM places_history_mirror ORDER BY visited_at DESC, id DESC LIMIT 500)");
+        }
+
+        public bool delete_bookmark (int64 id) throws DatabaseError {
+            return delete_by_id ("bookmarks", id);
+        }
+
+        public bool delete_history (int64 id) throws DatabaseError {
+            return delete_by_id ("history", id);
+        }
+
+        public bool delete_pending_bookmark (string uri) throws DatabaseError {
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("DELETE FROM bookmarks WHERE uri = ?", out statement);
+                statement.bind_text (1, uri);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                prepare ("DELETE FROM places_bookmarks_mirror " +
+                    "WHERE uri = ? AND sync_guid = ''", out statement);
+                statement.bind_text (1, uri);
+                step_done (statement);
+                changed = changed || handle.changes () > 0;
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Pending bookmark deletion rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
+        public bool delete_pending_history (string uri, int64 visited_at)
+                throws DatabaseError {
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("DELETE FROM history WHERE uri = ? AND visited_at = ? " +
+                    "AND private = 0", out statement);
+                statement.bind_text (1, uri);
+                statement.bind_int64 (2, visited_at);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                prepare ("DELETE FROM places_history_mirror " +
+                    "WHERE uri = ? AND visited_at = ? AND sync_millis = 0", out statement);
+                statement.bind_text (1, uri);
+                statement.bind_int64 (2, visited_at);
+                step_done (statement);
+                changed = changed || handle.changes () > 0;
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Pending history deletion rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
+        public bool delete_places_bookmark (string sync_guid) throws DatabaseError {
+            Sqlite.Statement statement;
+            prepare ("DELETE FROM places_bookmarks_mirror WHERE sync_guid = ?", out statement);
+            statement.bind_text (1, sync_guid);
+            step_done (statement);
+            return handle.changes () > 0;
+        }
+
+        public bool delete_places_history (string uri, int64 sync_millis)
+                throws DatabaseError {
+            Sqlite.Statement statement;
+            prepare ("DELETE FROM places_history_mirror " +
+                "WHERE uri = ? AND sync_millis = ?", out statement);
+            statement.bind_text (1, uri);
+            statement.bind_int64 (2, sync_millis);
+            step_done (statement);
+            return handle.changes () > 0;
+        }
+
+        public bool places_bookmark_identity_matches (string uri, string sync_guid)
+                throws DatabaseError {
+            Sqlite.Statement statement;
+            prepare ("SELECT 1 FROM places_bookmarks_mirror " +
+                "WHERE uri = ? AND sync_guid = ? LIMIT 1", out statement);
+            statement.bind_text (1, uri);
+            statement.bind_text (2, sync_guid);
+            return statement.step () == Sqlite.ROW;
+        }
+
+        public bool places_history_identity_matches (int64 id, string uri,
+                int64 sync_millis) throws DatabaseError {
+            Sqlite.Statement statement;
+            prepare ("SELECT 1 FROM places_history_mirror " +
+                "WHERE id = ? AND uri = ? AND sync_millis = ? LIMIT 1", out statement);
+            statement.bind_int64 (1, id);
+            statement.bind_text (2, uri);
+            statement.bind_int64 (3, sync_millis);
+            return statement.step () == Sqlite.ROW;
+        }
+
+        public bool finalize_places_bookmark_deletion (string sync_guid, string uri)
+                throws DatabaseError {
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("DELETE FROM places_bookmarks_mirror WHERE sync_guid = ?",
+                    out statement);
+                statement.bind_text (1, sync_guid);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                prepare ("DELETE FROM bookmarks WHERE uri = ?", out statement);
+                statement.bind_text (1, uri);
+                step_done (statement);
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("Bookmark tombstone mirror rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
+        public bool finalize_places_history_deletion (string uri, int64 sync_millis,
+                int64 legacy_seconds, bool remove_legacy) throws DatabaseError {
+            execute ("BEGIN IMMEDIATE;");
+            try {
+                Sqlite.Statement statement;
+                prepare ("DELETE FROM places_history_mirror " +
+                    "WHERE uri = ? AND sync_millis = ?", out statement);
+                statement.bind_text (1, uri);
+                statement.bind_int64 (2, sync_millis);
+                step_done (statement);
+                bool changed = handle.changes () > 0;
+                if (remove_legacy) {
+                    prepare ("DELETE FROM history WHERE uri = ? AND visited_at = ? " +
+                        "AND private = 0", out statement);
+                    statement.bind_text (1, uri);
+                    statement.bind_int64 (2, legacy_seconds);
+                    step_done (statement);
+                    prepare ("DELETE FROM places_history_mirror " +
+                        "WHERE uri = ? AND visited_at = ? AND sync_millis = 0",
+                        out statement);
+                    statement.bind_text (1, uri);
+                    statement.bind_int64 (2, legacy_seconds);
+                    step_done (statement);
+                }
+                execute ("COMMIT;");
+                return changed;
+            } catch (DatabaseError error) {
+                try { execute ("ROLLBACK;"); }
+                catch (DatabaseError rollback_error) {
+                    warning ("History tombstone mirror rollback failed: %s",
+                        rollback_error.message);
+                }
+                throw error;
+            }
+        }
+
+        bool delete_by_id (string table, int64 id) throws DatabaseError {
+            if (id <= 0) return false;
+            Sqlite.Statement statement;
+            prepare ("DELETE FROM %s WHERE id = ?".printf (table), out statement);
+            statement.bind_int64 (1, id);
+            step_done (statement);
+            return handle.changes () > 0;
         }
 
         public List<StoredPage> list_history_page (int limit, int offset) throws DatabaseError {
@@ -335,6 +575,31 @@ namespace Xanh {
             if (result != Sqlite.DONE) {
                 throw new DatabaseError.QUERY ("%s", handle.errmsg ());
             }
+            return pages;
+        }
+
+        List<StoredPage> query_pages_with_sync_identity (string sql, int limit,
+                bool bookmark) throws DatabaseError {
+            var pages = new List<StoredPage> ();
+            Sqlite.Statement statement;
+            prepare (sql, out statement);
+            statement.bind_int (1, limit);
+            int result;
+            while ((result = statement.step ()) == Sqlite.ROW) {
+                string uri = statement.column_text (1);
+                if (!is_web_uri (uri)) continue;
+                var page = new StoredPage (uri, statement.column_text (2),
+                    statement.column_int64 (3));
+                page.id = statement.column_int64 (0);
+                if (bookmark) page.sync_id = statement.column_text (4);
+                else {
+                    page.sync_timestamp_millis = statement.column_int64 (4);
+                    page.sync_is_remote = statement.column_int (5) != 0;
+                }
+                pages.append (page);
+            }
+            if (result != Sqlite.DONE)
+                throw new DatabaseError.QUERY ("%s", handle.errmsg ());
             return pages;
         }
 
@@ -589,23 +854,29 @@ namespace Xanh {
                 foreach (var page in bookmarks) {
                     if (!is_web_uri (page.uri)) continue;
                     Sqlite.Statement statement;
-                    prepare ("INSERT INTO places_bookmarks_mirror(uri, title, created_at) VALUES(?, ?, ?)",
+                    prepare ("INSERT INTO places_bookmarks_mirror" +
+                        "(uri, title, created_at, sync_guid) VALUES(?, ?, ?, ?)",
                         out statement);
                     statement.bind_text (1, page.uri);
                     statement.bind_text (2,
                         PageDataPolicy.sanitized_title (page.title, page.uri));
                     statement.bind_int64 (3, page.visited_at);
+                    statement.bind_text (4, page.sync_id);
                     step_done (statement);
                 }
                 foreach (var page in history) {
                     if (!is_web_uri (page.uri)) continue;
                     Sqlite.Statement statement;
-                    prepare ("INSERT INTO places_history_mirror(uri, title, visited_at) VALUES(?, ?, ?)",
+                    prepare ("INSERT INTO places_history_mirror" +
+                        "(uri, title, visited_at, sync_millis, sync_is_remote) " +
+                        "VALUES(?, ?, ?, ?, ?)",
                         out statement);
                     statement.bind_text (1, page.uri);
                     statement.bind_text (2,
                         PageDataPolicy.sanitized_title (page.title, page.uri));
                     statement.bind_int64 (3, page.visited_at);
+                    statement.bind_int64 (4, page.sync_timestamp_millis);
+                    statement.bind_int (5, page.sync_is_remote ? 1 : 0);
                     step_done (statement);
                 }
                 execute ("INSERT OR REPLACE INTO schema_meta(key, value) " +

@@ -429,6 +429,92 @@ namespace Xanh {
             return places_mirror_ready;
         }
 
+        public bool places_deletion_waiting_for_identity () {
+            if (places_mirror_ready) return false;
+            try {
+                ensure_database ();
+                bool imported_places = database.get_marker (
+                    "places_migration_v1_complete");
+                if (!sync_host.is_ready ())
+                    return sync_host.is_configured () || imported_places;
+                return sync_host.account_state () != 0 || imported_places;
+            } catch (Error error) {
+                return true;
+            }
+        }
+
+        public async void delete_stored_page (StoredPage page, bool bookmark,
+                bool from_places, bool private_context) throws Error {
+            if (private_context)
+                throw new IOError.PERMISSION_DENIED (
+                    "Bookmark and history mutations are disabled in private tabs");
+            if (sync_workflow_running)
+                throw new IOError.BUSY ("A Firefox Sync workflow is already running");
+            sync_workflow_running = true;
+            try {
+                ensure_database ();
+                require_sync_allowed ();
+                if (from_places != places_mirror_ready)
+                    throw new IOError.BUSY (
+                        "Browser data changed; reopen this panel before deleting");
+                bool deleted = false;
+                if (from_places) {
+                    bool identity_current = bookmark
+                        ? database.places_bookmark_identity_matches (
+                            page.uri, page.sync_id)
+                        : database.places_history_identity_matches (
+                            page.id, page.uri, page.sync_timestamp_millis);
+                    if (!identity_current)
+                        throw new IOError.BUSY (
+                            "Browser data changed; reopen this panel before deleting");
+                    if (bookmark) {
+                        if (SyncDataCoordinator.is_sync_guid (page.sync_id)) {
+                            if (sync_data == null)
+                                throw new IOError.NOT_INITIALIZED (
+                                    "Firefox Sync data is unavailable");
+                            yield sync_data.delete_bookmark (page);
+                            deleted = true;
+                        } else if (page.sync_id == "") {
+                            deleted = database.delete_pending_bookmark (page.uri);
+                            if (deleted) database.invalidate_sync_migration ();
+                        } else {
+                            throw new IOError.INVALID_DATA (
+                                "The bookmark Sync identity is malformed");
+                        }
+                    } else {
+                        if (page.sync_timestamp_millis > 0) {
+                            if (sync_data == null)
+                                throw new IOError.NOT_INITIALIZED (
+                                    "Firefox Sync data is unavailable");
+                            yield sync_data.delete_history (page);
+                            deleted = true;
+                        } else if (page.sync_timestamp_millis == 0) {
+                            deleted = database.delete_pending_history (
+                                page.uri, page.visited_at);
+                            if (deleted) database.invalidate_sync_migration ();
+                        } else {
+                            throw new IOError.INVALID_DATA (
+                                "The history Sync identity is malformed");
+                        }
+                    }
+                } else {
+                    if (places_deletion_waiting_for_identity ())
+                        throw new IOError.BUSY (
+                            "Firefox Sync is rebuilding exact deletion identities");
+                    deleted = bookmark
+                        ? database.delete_bookmark (page.id)
+                        : database.delete_history (page.id);
+                    if (deleted) database.invalidate_sync_migration ();
+                }
+                if (!deleted)
+                    throw new IOError.NOT_FOUND (
+                        "The selected browser-data row no longer exists");
+            } finally {
+                sync_workflow_running = false;
+            }
+            maybe_sync (SyncReason.LOCAL_CHANGE);
+        }
+
         public bool begin_browsing_data_clear () {
             if (browsing_data_clear_in_progress) return false;
             browsing_data_clear_in_progress = true;

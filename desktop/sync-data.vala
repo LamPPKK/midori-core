@@ -264,10 +264,13 @@ namespace Xanh {
                         !item.get_boolean_member_with_default ("is_openable", false)) return;
                     string? uri = nullable_string (item, "url");
                     if (uri == null || !BrowserDatabase.is_web_uri (uri)) return;
+                    string? guid = nullable_string (item, "guid");
+                    if (!is_sync_guid (guid)) return;
                     string title = nullable_string (item, "title") ?? uri;
                     int64 millis = item.get_int_member_with_default (
                         "date_added_epoch_millis", 0);
-                    var page = new StoredPage (uri, title, millis / 1000);
+                    if (millis <= 0) return;
+                    var page = new StoredPage (uri, title, millis / 1000, guid);
                     StoredPage? previous = by_uri.lookup (uri);
                     if (previous == null || page.visited_at >= previous.visited_at)
                         by_uri.replace (uri, page);
@@ -289,7 +292,11 @@ namespace Xanh {
                 string title = nullable_string (item, "title") ?? uri;
                 int64 millis = item.get_int_member_with_default (
                     "visited_at_epoch_millis", 0);
-                history.append (new StoredPage (uri, title, millis / 1000));
+                if (millis <= 0) return;
+                bool is_remote = item.get_boolean_member_with_default (
+                    "is_remote", false);
+                history.append (new StoredPage (
+                    uri, title, millis / 1000, "", millis, is_remote));
             });
             require_current_migration (generation);
             database.replace_places_mirror (bookmarks, history);
@@ -309,17 +316,15 @@ namespace Xanh {
             }
             int created = result_count (result, "created_count");
             int existing = result_count (result, "existing_count");
-            if (created == 1 && existing == 0) {
-                database.upsert_places_bookmark (page);
-            } else if (created == 0 && existing == 1) {
-                // The importer is intentionally non-destructive. Preserve the
-                // durable Places title instead of inventing an update in the
-                // compatibility mirror.
-                yield refresh_compatibility_mirror ();
-            } else {
+            if (!((created == 1 && existing == 0) ||
+                    (created == 0 && existing == 1))) {
                 throw new SyncDataError.INVALID_DATA (
                     "Places returned inconsistent bookmark import counts");
             }
+            // The importer returns counts, not the durable Places GUID. Always
+            // refresh before presenting the row so later deletion can create
+            // the exact Sync tombstone instead of guessing from its URL.
+            yield refresh_compatibility_mirror ();
             host.mark_local_change ();
         }
 
@@ -335,7 +340,33 @@ namespace Xanh {
             if (encoded_count != 1 || result_count (result, "accepted_count") != 1) {
                 throw new SyncDataError.INVALID_DATA ("Places did not save the history visit");
             }
+            page.sync_timestamp_millis = checked_millis (page.visited_at);
             database.append_places_history (page);
+            host.mark_local_change ();
+        }
+
+        public async void delete_bookmark (StoredPage page) throws Error {
+            if (!is_sync_guid (page.sync_id))
+                throw new SyncDataError.INVALID_DATA (
+                    "The bookmark mirror has no durable Places identity");
+            if (!(yield host.delete_bookmark_async (page.sync_id, false)))
+                throw new SyncDataError.INVALID_DATA (
+                    "Places did not acknowledge the bookmark deletion");
+            database.finalize_places_bookmark_deletion (page.sync_id, page.uri);
+            host.mark_local_change ();
+        }
+
+        public async void delete_history (StoredPage page) throws Error {
+            if (!is_sync_web_uri (page.uri) || page.sync_timestamp_millis <= 0)
+                throw new SyncDataError.INVALID_DATA (
+                    "The history mirror has no exact Places visit identity");
+            if (!(yield host.delete_history_visit_async (
+                    page.uri, page.sync_timestamp_millis)))
+                throw new SyncDataError.INVALID_DATA (
+                    "Places did not acknowledge the history deletion");
+            database.finalize_places_history_deletion (
+                page.uri, page.sync_timestamp_millis, page.visited_at,
+                !page.sync_is_remote);
             host.mark_local_change ();
         }
 
@@ -439,6 +470,18 @@ namespace Xanh {
 
         public static bool is_sync_web_uri (string? uri) {
             return PageDataPolicy.is_safe_web_uri (uri);
+        }
+
+        public static bool is_sync_guid (string? guid) {
+            if (guid == null || guid.length != 12) return false;
+            for (int index = 0; index < guid.length; index++) {
+                char value = guid[index];
+                if (!((value >= 'a' && value <= 'z') ||
+                      (value >= 'A' && value <= 'Z') ||
+                      (value >= '0' && value <= '9') ||
+                      value == '_' || value == '-')) return false;
+            }
+            return true;
         }
 
         public static string sanitized_sync_title (string? value) {

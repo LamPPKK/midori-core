@@ -114,6 +114,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   mirrors Places into GTK panels, publishes regular local tabs, presents remote
   tabs by device and clears Places history plus bounded migration snapshots
   across every open window with browsing data.
+- Added confirmed bookmark and exact-visit deletion to the Linux GTK Places
+  panels. A schema-v2 mirror preserves bookmark GUIDs and millisecond visit
+  identities, creates upstream Sync tombstones, handles offline-only rows
+  without guessed identifiers, rejects private-tab mutations and rebuilds
+  metadata-less schema-v1 mirrors.
 - Added a native Linux Logins picker and a document-start, top-frame-only
   WebKitGTK bridge in a named isolated world. It requires trusted input,
   validates request/navigation nonce and exact HTTPS origin, passes secrets as

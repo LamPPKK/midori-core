@@ -25,9 +25,17 @@ void test_sync_title_policy () {
     assert (unicode.length <= 4096);
 }
 
+void test_sync_guid_policy () {
+    assert (Xanh.SyncDataCoordinator.is_sync_guid ("AbCdEf123_-x"));
+    assert (!Xanh.SyncDataCoordinator.is_sync_guid ("short"));
+    assert (!Xanh.SyncDataCoordinator.is_sync_guid ("AbCdEf123+/x"));
+    assert (!Xanh.SyncDataCoordinator.is_sync_guid ("AbCdEf123_\nx"));
+}
+
 int main (string[] args) {
     Test.init (ref args);
     Test.add_func ("/sync-data/uri-policy", test_sync_uri_policy);
     Test.add_func ("/sync-data/title-policy", test_sync_title_policy);
+    Test.add_func ("/sync-data/guid-policy", test_sync_guid_policy);
     return Test.run ();
 }

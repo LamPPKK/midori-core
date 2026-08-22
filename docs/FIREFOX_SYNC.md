@@ -135,6 +135,17 @@ startup/scheduled/pre-sleep Sync, server backoff, vault lock and keep/delete
 disconnect. Its bounded data coordinator migrates legacy bookmarks/history,
 publishes regular tabs, refreshes bookmark/history compatibility panels from
 Places, and groups remote tabs by device behind explicit user activation. A
+schema-v2 compatibility mirror retains each 12-character Places bookmark GUID
+and each history visit's exact millisecond timestamp. The GTK panels require a
+native confirmation before deleting a row, then call the upstream Places
+delete operation and mark the mutation for Sync. Offline-only rows have no
+invented identity and are removed from the pending legacy import instead.
+Deletion is rejected while the owning browser window is in a private tab.
+Local tombstones also remove the corresponding rollback row; a remote visit is
+marked explicitly so a same-second local legacy visit is never removed by
+mistake.
+Schema-v1 mirrors are cleared and rebuilt so an old URL or rounded timestamp is
+never used as a deletion key. A
 regular tab installs a document-start, top-frame-only credential script and
 message handler in the named
 `io.github.lamppkk.xanhbrowser.credentials` isolated WebKit world. A trusted

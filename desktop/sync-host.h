@@ -121,6 +121,17 @@ gchar *xanh_sync_host_bookmarks_json_finish (
     XanhSyncHost *self,
     GAsyncResult *result,
     GError **error);
+void xanh_sync_host_delete_bookmark_async (
+    XanhSyncHost *self,
+    const gchar *guid,
+    gboolean is_private,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gboolean xanh_sync_host_delete_bookmark_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
 void xanh_sync_host_record_history_async (
     XanhSyncHost *self,
     const gchar *visits_json,
@@ -138,6 +149,17 @@ void xanh_sync_host_recent_history_json_async (
     GAsyncReadyCallback callback,
     gpointer user_data);
 gchar *xanh_sync_host_recent_history_json_finish (
+    XanhSyncHost *self,
+    GAsyncResult *result,
+    GError **error);
+void xanh_sync_host_delete_history_visit_async (
+    XanhSyncHost *self,
+    const gchar *url,
+    gint64 visited_at_epoch_millis,
+    GCancellable *cancellable,
+    GAsyncReadyCallback callback,
+    gpointer user_data);
+gboolean xanh_sync_host_delete_history_visit_finish (
     XanhSyncHost *self,
     GAsyncResult *result,
     GError **error);

@@ -53,11 +53,19 @@ namespace Xanh {
         public async string bookmarks_json_async (
             int root,
             GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async bool delete_bookmark_async (
+            string guid,
+            bool is_private,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
         public async string record_history_async (
             string visits_json,
             GLib.Cancellable? cancellable = null) throws GLib.Error;
         public async string recent_history_json_async (
             uint limit,
+            GLib.Cancellable? cancellable = null) throws GLib.Error;
+        public async bool delete_history_visit_async (
+            string url,
+            int64 visited_at_epoch_millis,
             GLib.Cancellable? cancellable = null) throws GLib.Error;
         public async bool clear_history_async (
             GLib.Cancellable? cancellable = null) throws GLib.Error;

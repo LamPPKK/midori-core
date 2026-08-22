@@ -120,9 +120,11 @@ typedef struct {
     gchar *credential_id;
     XanhSyncReason reason;
     gboolean delete_local;
+    gboolean is_private;
     gint vault_lock_generation;
     gint history_clear_generation;
     gint destructive_generation;
+    gint64 timestamp_millis;
     gint root;
     guint limit;
     gint operation;
@@ -135,7 +137,9 @@ typedef enum {
     SYNC_DATA_LIST_HISTORY,
     SYNC_DATA_UPDATE_LOCAL_TABS,
     SYNC_DATA_LIST_REMOTE_TABS,
-    SYNC_DATA_LIST_CREDENTIALS
+    SYNC_DATA_LIST_CREDENTIALS,
+    SYNC_DATA_DELETE_BOOKMARK,
+    SYNC_DATA_DELETE_HISTORY_VISIT
 } SyncDataOperation;
 
 static void
@@ -1274,6 +1278,109 @@ touch_credential_worker (GTask        *task,
 }
 
 static void
+places_delete_worker (GTask        *task,
+                      gpointer      source_object,
+                      gpointer      task_data,
+                      GCancellable *cancellable)
+{
+    XanhSyncHost *self = XANH_SYNC_HOST (source_object);
+    SyncTaskData *data = task_data;
+    g_autoptr (GError) error = NULL;
+    gpointer runtime;
+    gboolean deleted = FALSE;
+
+    if (g_task_return_error_if_cancelled (task))
+        return;
+    g_mutex_lock (&self->operation_mutex);
+    if (g_task_return_error_if_cancelled (task)) {
+        finish_operation (self);
+        return;
+    }
+    if (data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation) ||
+        ((SyncDataOperation) data->operation == SYNC_DATA_DELETE_HISTORY_VISIT &&
+         data->history_clear_generation !=
+            g_atomic_int_get (&self->history_clear_generation))) {
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "Places deletion was cancelled by browser-data removal");
+        return;
+    }
+    g_mutex_lock (&self->mutex);
+    if (!require_runtime_locked (self, &error)) {
+        g_mutex_unlock (&self->mutex);
+        finish_operation (self);
+        g_task_return_error (task, g_steal_pointer (&error));
+        return;
+    }
+    runtime = self->runtime;
+    g_mutex_unlock (&self->mutex);
+
+    if ((SyncDataOperation) data->operation == SYNC_DATA_DELETE_BOOKMARK) {
+        gint result = xanh_sync_runtime_delete_bookmark (
+            runtime, data->payload, data->is_private);
+        if (result < 0) {
+            error = core_error ("Firefox Sync bookmark could not be deleted");
+            finish_operation (self);
+            g_task_return_error (task, g_steal_pointer (&error));
+            return;
+        }
+        // An already-absent bookmark is an idempotent successful deletion.
+        deleted = TRUE;
+    } else if ((SyncDataOperation) data->operation ==
+            SYNC_DATA_DELETE_HISTORY_VISIT) {
+        if (!xanh_sync_runtime_delete_history_visit (
+                runtime, data->payload, data->timestamp_millis)) {
+            error = core_error ("Firefox Sync history visit could not be deleted");
+            finish_operation (self);
+            g_task_return_error (task, g_steal_pointer (&error));
+            return;
+        }
+        deleted = TRUE;
+    }
+    if (!deleted || data->destructive_generation !=
+            g_atomic_int_get (&self->destructive_generation) ||
+        ((SyncDataOperation) data->operation == SYNC_DATA_DELETE_HISTORY_VISIT &&
+         data->history_clear_generation !=
+            g_atomic_int_get (&self->history_clear_generation))) {
+        finish_operation (self);
+        g_task_return_new_error (
+            task, XANH_SYNC_HOST_ERROR, XANH_SYNC_HOST_ERROR_HISTORY_CLEARED,
+            "Completed Places deletion was superseded by browser-data removal");
+        return;
+    }
+    finish_operation (self);
+    g_task_return_boolean (task, TRUE);
+}
+
+static void
+start_places_delete (XanhSyncHost      *self,
+                     SyncDataOperation  operation,
+                     const gchar       *identity,
+                     gint64             timestamp_millis,
+                     gboolean           is_private,
+                     GCancellable      *cancellable,
+                     GAsyncReadyCallback callback,
+                     gpointer           user_data)
+{
+    GTask *task = g_task_new (self, cancellable, callback, user_data);
+    SyncTaskData *data = g_new0 (SyncTaskData, 1);
+    data->payload = g_strdup (identity);
+    data->timestamp_millis = timestamp_millis;
+    data->is_private = is_private;
+    data->operation = operation;
+    data->destructive_generation =
+        g_atomic_int_get (&self->destructive_generation);
+    if (operation == SYNC_DATA_DELETE_HISTORY_VISIT)
+        data->history_clear_generation =
+            g_atomic_int_get (&self->history_clear_generation);
+    g_task_set_task_data (task, data, (GDestroyNotify) sync_task_data_free);
+    g_task_run_in_thread (task, places_delete_worker);
+    g_object_unref (task);
+}
+
+static void
 clear_history_worker (GTask        *task,
                       gpointer      source_object,
                       gpointer      task_data,
@@ -1926,6 +2033,35 @@ xanh_sync_host_bookmarks_json_finish (XanhSyncHost *self,
 }
 
 void
+xanh_sync_host_delete_bookmark_async (XanhSyncHost      *self,
+                                      const gchar       *guid,
+                                      gboolean           is_private,
+                                      GCancellable      *cancellable,
+                                      GAsyncReadyCallback callback,
+                                      gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+    g_return_if_fail (guid != NULL);
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_places_delete (self, SYNC_DATA_DELETE_BOOKMARK, guid, 0,
+                         is_private, cancellable, callback, user_data);
+#else
+    (void) guid;
+    (void) is_private;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gboolean
+xanh_sync_host_delete_bookmark_finish (XanhSyncHost *self,
+                                       GAsyncResult *result,
+                                       GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+    return g_task_propagate_boolean (G_TASK (result), error);
+}
+
+void
 xanh_sync_host_record_history_async (XanhSyncHost      *self,
                                      const gchar       *visits_json,
                                      GCancellable      *cancellable,
@@ -1975,6 +2111,36 @@ xanh_sync_host_recent_history_json_finish (XanhSyncHost *self,
 {
     g_return_val_if_fail (g_task_is_valid (result, self), NULL);
     return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+void
+xanh_sync_host_delete_history_visit_async (XanhSyncHost      *self,
+                                            const gchar       *url,
+                                            gint64             visited_at_epoch_millis,
+                                            GCancellable      *cancellable,
+                                            GAsyncReadyCallback callback,
+                                            gpointer           user_data)
+{
+    g_return_if_fail (XANH_IS_SYNC_HOST (self));
+    g_return_if_fail (url != NULL);
+#ifdef XANH_ENABLE_FIREFOX_SYNC
+    start_places_delete (self, SYNC_DATA_DELETE_HISTORY_VISIT, url,
+                         visited_at_epoch_millis, FALSE,
+                         cancellable, callback, user_data);
+#else
+    (void) url;
+    (void) visited_at_epoch_millis;
+    return_unavailable (self, cancellable, callback, user_data);
+#endif
+}
+
+gboolean
+xanh_sync_host_delete_history_visit_finish (XanhSyncHost *self,
+                                             GAsyncResult *result,
+                                             GError      **error)
+{
+    g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+    return g_task_propagate_boolean (G_TASK (result), error);
 }
 
 void

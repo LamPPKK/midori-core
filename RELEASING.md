@@ -250,6 +250,13 @@ allowed historical material, never a shipping dependency or application ID.
    Places-backed bookmark/history panels, local-tab publication, remote-tab
    grouping with explicit opening, and that Clear Browsing Data empties local
    Places history.
+   From both GTK panels, confirm and delete a native Places bookmark and one
+   exact history visit. Verify Firefox receives the corresponding tombstone,
+   an absent bookmark retry is idempotent, private-mode deletion is rejected,
+   and deleting a queued offline-only row removes it from the later import.
+   Open a schema-v1 profile and verify both metadata-less mirrors are cleared
+   and rebuilt with a valid bookmark GUID/exact millisecond visit timestamp
+   before their Delete actions become available.
    Repeat the clear while disconnected and verify local Places is cleared
    immediately. Also force runtime initialization to fail, verify the UI reports
    a partial clear, and confirm the pending deletion runs before later

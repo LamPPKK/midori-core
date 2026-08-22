@@ -1998,6 +1998,8 @@ namespace Xanh {
             try {
                 var app = application as BrowserApplication;
                 bool use_places = app != null && app.synced_places_available ();
+                bool deletion_waiting_for_identity = app != null &&
+                    app.places_deletion_waiting_for_identity ();
                 var pages = bookmarks
                     ? (use_places ? database.list_places_bookmarks () : database.list_bookmarks ())
                     : (use_places ? database.list_places_history () : database.list_history ());
@@ -2009,15 +2011,36 @@ namespace Xanh {
                 var list = new Gtk.ListBox ();
                 foreach (var page in pages) {
                     var row = new Gtk.ListBoxRow ();
+                    var outer = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 8);
+                    outer.margin_start = 10;
+                    outer.margin_end = 10;
+                    outer.margin_top = 8;
+                    outer.margin_bottom = 8;
                     var box = new Gtk.Box (Gtk.Orientation.VERTICAL, 2);
+                    box.hexpand = true;
                     var title_label = new Gtk.Label (page.title);
                     title_label.halign = Gtk.Align.START;
+                    title_label.ellipsize = Pango.EllipsizeMode.END;
                     var uri_label = new Gtk.Label (page.uri);
                     uri_label.halign = Gtk.Align.START;
+                    uri_label.ellipsize = Pango.EllipsizeMode.MIDDLE;
                     uri_label.add_css_class ("dim-label");
                     box.append (title_label);
                     box.append (uri_label);
-                    row.set_child (box);
+                    outer.append (box);
+                    var delete_button = new Gtk.Button.with_label ("Delete");
+                    delete_button.valign = Gtk.Align.CENTER;
+                    delete_button.add_css_class ("destructive-action");
+                    delete_button.sensitive = !deletion_waiting_for_identity;
+                    delete_button.tooltip_text = deletion_waiting_for_identity
+                        ? "Firefox Sync is rebuilding exact deletion identities"
+                        : (bookmarks ? "Delete bookmark" : "Delete history visit");
+                    delete_button.clicked.connect (() => {
+                        confirm_page_deletion.begin (window, list, row,
+                            delete_button, page, bookmarks, use_places);
+                    });
+                    outer.append (delete_button);
+                    row.set_child (outer);
                     row.set_data<string> ("uri", page.uri);
                     list.append (row);
                 }
@@ -2032,6 +2055,43 @@ namespace Xanh {
                 window.present ();
             } catch (Error error) {
                 show_message (heading, error.message);
+            }
+        }
+
+        async void confirm_page_deletion (Gtk.Window window, Gtk.ListBox list,
+                Gtk.ListBoxRow row, Gtk.Button button, StoredPage page,
+                bool bookmark, bool from_places) {
+            var dialog = new Gtk.AlertDialog (
+                bookmark ? "Delete bookmark?" : "Delete history visit?");
+            if (from_places) {
+                dialog.detail = bookmark
+                    ? "This bookmark will be removed from this profile and Firefox Sync."
+                    : "This exact history visit will be removed from this profile and Firefox Sync.";
+            } else {
+                dialog.detail = bookmark
+                    ? "This bookmark will be removed from this local profile."
+                    : "This history visit will be removed from this local profile.";
+            }
+            dialog.buttons = { "Cancel", "Delete" };
+            dialog.cancel_button = 0;
+            dialog.default_button = 0;
+            button.sensitive = false;
+            try {
+                if ((yield dialog.choose (window, null)) != 1) return;
+                var app = application as BrowserApplication;
+                if (app == null)
+                    throw new IOError.NOT_INITIALIZED ("Browser application is unavailable");
+                var current_tab = active_tab ();
+                bool private_context = current_tab == null ||
+                    current_tab.state.private_mode;
+                yield app.delete_stored_page (
+                    page, bookmark, from_places, private_context);
+                if (row.get_parent () == list) list.remove (row);
+            } catch (Error error) {
+                show_message (bookmark ? "Unable to Delete Bookmark" :
+                    "Unable to Delete History", error.message);
+            } finally {
+                if (row.get_parent () == list) button.sensitive = true;
             }
         }
 

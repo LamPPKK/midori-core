@@ -344,6 +344,12 @@ fails closed when the native core or approved/self-hosted configuration is not
 present. A connected build imports legacy bookmarks/history from a verified
 private SQLite snapshot, mirrors Places into the existing GTK panels, publishes
 regular local tabs and presents remote tabs by device for explicit opening.
+The GTK bookmark/history panels preserve the native bookmark GUID and exact
+visit timestamp in a schema-v2 compatibility mirror. Confirmed row deletion
+therefore calls the upstream Places API and creates the precise tombstone for
+the next Firefox Sync; rows created offline remain removable without guessing
+a native identity. Delete mutations are rejected from private tabs. Existing
+schema-v1 mirrors are discarded and safely rebuilt.
 Clearing browsing data quiesces every open window, clears upstream Places
 history locally for the next Sync and removes migration snapshots. Linux
 regular tabs now use a native GTK username picker and a document-start,

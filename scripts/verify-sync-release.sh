@@ -243,6 +243,17 @@ case "$edition" in
       desktop/database.vala >/dev/null
     grep -F 'SELECT id, uri, title, visited_at FROM history WHERE private = 0' \
       desktop/database.vala >/dev/null
+    grep -F "sync_guid TEXT NOT NULL DEFAULT ''" desktop/database.vala >/dev/null
+    grep -F 'sync_millis INTEGER NOT NULL DEFAULT 0' desktop/database.vala >/dev/null
+    grep -F 'sync_is_remote INTEGER NOT NULL DEFAULT 0' desktop/database.vala >/dev/null
+    grep -F 'xanh_sync_host_delete_bookmark_async' desktop/sync-host.h >/dev/null
+    grep -F 'xanh_sync_host_delete_history_visit_async' desktop/sync-host.h >/dev/null
+    grep -F 'public async bool delete_bookmark_async (' desktop/sync-host.vapi >/dev/null
+    grep -F 'public async bool delete_history_visit_async (' desktop/sync-host.vapi >/dev/null
+    grep -F 'delete_stored_page (StoredPage page' desktop/application.vala >/dev/null
+    grep -F 'bool from_places, bool private_context' desktop/application.vala >/dev/null
+    grep -F '!page.sync_is_remote' desktop/sync-data.vala >/dev/null
+    grep -F 'schema-v2-sync-identity-upgrade' tests-modern/database-test.vala >/dev/null
     if grep -F 'tab.state.title = tab.view.title' desktop/browser-window.vala >/dev/null; then
       echo 'Linux page titles must pass the shared bounded data policy' >&2
       exit 1

@@ -41,6 +41,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   warning. It exposes only a validated origin and bounded, sanitized
   certificate details, never installs host trust, and cancels on stale
   tab/document/window, renderer, clear-data, replacement or timeout state.
+- Replaced WebKit's default Linux HTTP-auth dialog and credential storage with
+  an exact-HTTPS-origin, one-shot Basic/Digest prompt. It disables persistence,
+  rejects proxy/retry/cross-origin and unsupported schemes, and cancels across
+  tab/document/window, renderer, clear-data, replacement or timeout state.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

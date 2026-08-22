@@ -121,6 +121,17 @@ allowed historical material, never a shipping dependency or application ID.
    failed destination. **Back to Safety** must use history when available and
    exact `about:blank` otherwise.
 
+   Serve HTTP Basic and Digest challenges from the exact top-level HTTPS host
+   and port. Confirm the native prompt sends a bounded username/password once,
+   uses no proposed credential and creates no WebKit/keyring, Sync, database,
+   log or backup record. Cancel, time out and enter a rejected credential; the
+   request must stop and require an explicit reload rather than loop. Repeat
+   with HTTP, userinfo, another host/port/security origin, a cross-origin
+   subresource, proxy auth, NTLM, Negotiate, client-certificate schemes, a
+   hidden tab, inactive window, changed URI, renderer termination, a second
+   challenge and Clear Browsing Data; all must fail closed. Repeat Basic/Digest
+   in a private tab and confirm closing the tab leaves no credential state.
+
 4. Use `webkit_web_view_terminate_web_process()` and a deliberately crashing
    test page to exercise every `WebKitWebProcessTerminationReason`. A selected
    foreground tab may perform exactly one fresh body-free URI load from its

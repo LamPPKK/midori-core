@@ -223,6 +223,12 @@ message shapes, stale request IDs/nonces, non-HTTPS or mismatched origins and
 navigation changes. This is still not Linux production enablement until the
 user-presence and independent security evidence below are complete.
 
+HTTP Basic/Digest authentication is deliberately outside the Logins engine and
+credential bridge. Linux handles a matching HTTPS challenge with a separate
+bounded native prompt and `NONE` WebKit persistence; HTTP, proxy, cross-origin,
+retry and unsupported authentication schemes are canceled rather than queried
+from or written to Firefox Sync.
+
 The current Linux preview asks Secret Service for the Logins key. A locked
 collection can show the desktop keyring prompt, but an already-unlocked
 collection does not prove fresh user presence. Linux password Sync therefore

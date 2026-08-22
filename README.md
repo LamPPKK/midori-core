@@ -110,6 +110,17 @@ exact active tab and failing URL, expires after 30 seconds, and is canceled by
 navigation, tab/window lifecycle changes, renderer termination or data
 clearing. Paths, queries and fragments are never copied into the warning.
 
+Linux HTTP authentication no longer falls through to WebKit's default
+credential dialog or persistent credential store. Basic and Digest challenges
+may show a native **Sign In Once** prompt only when the challenge host, port and
+security origin match the exact selected HTTPS document in the active window.
+Cross-origin, HTTP, proxy, retry, NTLM/Negotiate, certificate and unknown
+challenges are canceled. Credentials are bounded, sent with `NONE` persistence,
+never proposed from WebKit storage and never routed through Firefox Sync; the
+prompt is canceled on the same tab/document/window, renderer, clear-data,
+replacement and 30-second timeout boundaries. Private tabs use the same manual,
+non-persistent path.
+
 ### Build and test
 
 ```sh

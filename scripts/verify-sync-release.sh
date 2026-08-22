@@ -176,6 +176,48 @@ case "$edition" in
       echo 'Linux TLS failures must not expose a bypass action' >&2
       exit 1
     fi
+    test -f desktop/http-auth-policy.vala
+    test -f tests-modern/http-auth-policy-test.vala
+    grep -F 'add_xanh_test(http-auth-policy-test' CMakeLists.txt >/dev/null
+    grep -F 'requested_document_uri != current_document_uri' \
+      desktop/http-auth-policy.vala >/dev/null
+    grep -F 'document_host != challenge_host' \
+      desktop/http-auth-policy.vala >/dev/null
+    grep -F 'security_origin_port == document_port' \
+      desktop/http-auth-policy.vala >/dev/null
+    grep -F 'network_session.set_persistent_credential_storage_enabled (false);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'session.set_persistent_credential_storage_enabled (false);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'tab.view.authenticate.connect' desktop/browser-window.vala >/dev/null
+    grep -F 'request.set_can_save_credentials (false);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'WebKit.AuthenticationScheme.HTTP_BASIC' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'WebKit.AuthenticationScheme.HTTP_DIGEST' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'if (!supported_scheme || request.is_for_proxy () || request.is_retry ())' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'WebKit.CredentialPersistence.NONE' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'pending_auth_timeout_source = Timeout.add_seconds (30' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'pending_auth_document_uri != tab.view.uri' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'pending_auth_document_uri != document_uri' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'Gtk.InputHints.PRIVATE' desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_http_auth (tab);' desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_http_auth ();' desktop/browser-window.vala >/dev/null
+    if grep -R -F 'set_persistent_credential_storage_enabled (true)' desktop >/dev/null; then
+      echo 'Linux must not enable WebKit persistent credential storage' >&2
+      exit 1
+    fi
+    if grep -R -E 'CredentialPersistence\.(FOR_SESSION|PERMANENT)|get_proposed_credential' \
+      desktop >/dev/null; then
+      echo 'Linux HTTP authentication must not propose or persist credentials' >&2
+      exit 1
+    fi
     if grep -E 'NotificationPermissionRequest|MediaKeySystemPermissionRequest|ClipboardPermissionRequest|XRPermissionRequest' \
       desktop/browser-window.vala >/dev/null; then
       echo 'Unsupported Linux permission classes must remain deny-by-default' >&2

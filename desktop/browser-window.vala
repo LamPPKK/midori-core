@@ -1,6 +1,16 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
 namespace Xanh {
+    class HttpAuthInput : Object {
+        public string username;
+        public string password;
+
+        public HttpAuthInput (string username, string password) {
+            this.username = username;
+            this.password = password;
+        }
+    }
+
     class TabRecord : Object {
         public TabState state { get; construct; }
         public WebKit.WebView view { get; construct; }
@@ -64,6 +74,14 @@ namespace Xanh {
         Cancellable? pending_tls_cancellable;
         uint pending_tls_timeout_source;
         uint64 tls_generation;
+        WebKit.AuthenticationRequest? pending_auth_request;
+        TabRecord? pending_auth_tab;
+        string? pending_auth_document_uri;
+        Cancellable? pending_auth_cancellable;
+        Gtk.Popover? pending_auth_popover;
+        ulong pending_auth_cancelled_signal;
+        uint pending_auth_timeout_source;
+        uint64 auth_generation;
 
         public BrowserWindow (Gtk.Application application, BrowserDatabase database) {
             Object (application: application, title: Config.APP_NAME, default_width: 1100, default_height: 760);
@@ -74,7 +92,7 @@ namespace Xanh {
             string cache_dir = Path.build_filename (Environment.get_user_cache_dir (), "xanh-browser", "webkit");
             network_session = new WebKit.NetworkSession (data_dir, cache_dir);
             network_session.set_itp_enabled (true);
-            network_session.set_persistent_credential_storage_enabled (true);
+            network_session.set_persistent_credential_storage_enabled (false);
             network_session.get_cookie_manager ().set_accept_policy (
                 setting_enabled ("first-party-cookies-only", true) ?
                     WebKit.CookieAcceptPolicy.NO_THIRD_PARTY : WebKit.CookieAcceptPolicy.ALWAYS);
@@ -98,6 +116,7 @@ namespace Xanh {
                     cancel_credential_picker ();
                     cancel_permission_request ();
                     cancel_tls_error ();
+                    cancel_http_auth ();
                     (application as BrowserApplication)?.lock_sync_vault ();
                     tabs.foreach ((id, tab) => {
                         if (tab.recovery.cancel_automatic_recovery ()) {
@@ -201,6 +220,7 @@ namespace Xanh {
                 cancel_credential_picker ();
                 cancel_permission_request ();
                 cancel_tls_error ();
+                cancel_http_auth ();
                 var selected = page as WebKit.WebView;
                 tabs.foreach ((id, tab) => {
                     if (tab.view != selected &&
@@ -371,6 +391,7 @@ namespace Xanh {
             settings.user_agent = "%s %s".printf (settings.user_agent, Config.USER_AGENT_TOKEN);
             WebKit.NetworkSession session = private_mode ? new WebKit.NetworkSession.ephemeral () : network_session;
             session.set_itp_enabled (true);
+            session.set_persistent_credential_storage_enabled (false);
             if (private_mode) {
                 session.download_started.connect ((download) => handle_download (download, true));
             }
@@ -535,6 +556,10 @@ namespace Xanh {
                 if (pending_tls_tab == tab && pending_tls_uri != tab.view.uri) {
                     cancel_tls_error ();
                 }
+                if (pending_auth_tab == tab &&
+                        pending_auth_document_uri != tab.view.uri) {
+                    cancel_http_auth ();
+                }
                 if (!tab.recovery.process_stopped) {
                     tab.state.uri = tab.view.uri ?? "about:blank";
                 }
@@ -557,6 +582,9 @@ namespace Xanh {
                 }
                 if (event == WebKit.LoadEvent.STARTED && pending_tls_tab == tab) {
                     cancel_tls_error ();
+                }
+                if (event == WebKit.LoadEvent.STARTED && pending_auth_tab == tab) {
+                    cancel_http_auth ();
                 }
                 if (event == WebKit.LoadEvent.COMMITTED) {
                     tab.recovery.record_committed_uri (tab.view.uri);
@@ -602,6 +630,10 @@ namespace Xanh {
                 handle_permission_request (tab, request);
                 return true;
             });
+            tab.view.authenticate.connect ((request) => {
+                handle_http_auth (tab, request);
+                return true;
+            });
             tab.view.web_process_terminated.connect ((reason) => {
                 if (credential_picker_bridge == tab.credential_bridge)
                     cancel_credential_picker ();
@@ -609,6 +641,8 @@ namespace Xanh {
                     cancel_permission_request ();
                 if (pending_tls_tab == tab)
                     cancel_tls_error ();
+                if (pending_auth_tab == tab)
+                    cancel_http_auth ();
                 tab.recovery.record_termination ();
                 tab.state.recovery_uri = tab.recovery.recovery_uri;
                 show_process_stopped (tab);
@@ -856,6 +890,212 @@ namespace Xanh {
             status.label = "Unsafe TLS connection blocked";
         }
 
+        void handle_http_auth (TabRecord tab, WebKit.AuthenticationRequest request) {
+            cancel_http_auth ();
+            request.set_can_save_credentials (false);
+            string? document_uri = tab.view.uri;
+            if (!http_auth_context_is_current (tab, request, document_uri)) {
+                request.cancel ();
+                if (active_tab () == tab) {
+                    status.label = request.is_retry () ?
+                        "Authentication failed; reload to try again" :
+                        "Unsupported or unsafe authentication request blocked";
+                }
+                return;
+            }
+
+            auth_generation++;
+            uint64 generation = auth_generation;
+            pending_auth_request = request;
+            pending_auth_tab = tab;
+            pending_auth_document_uri = document_uri;
+            pending_auth_cancellable = new Cancellable ();
+            pending_auth_cancelled_signal = request.cancelled.connect (() => {
+                if (pending_auth_request == request) finish_http_auth (false);
+            });
+            pending_auth_timeout_source = Timeout.add_seconds (30, () => {
+                if (generation == auth_generation) {
+                    pending_auth_timeout_source = 0;
+                    finish_http_auth (true);
+                    status.label = "Authentication request timed out";
+                }
+                return Source.REMOVE;
+            });
+            prompt_http_auth.begin (tab, request, document_uri, generation);
+        }
+
+        async void prompt_http_auth (TabRecord tab,
+                WebKit.AuthenticationRequest request,
+                string document_uri,
+                uint64 generation) {
+            string? origin = HttpAuthPolicy.display_origin (document_uri);
+            if (origin == null) {
+                cancel_http_auth ();
+                return;
+            }
+            string realm = HttpAuthPolicy.sanitize_realm (request.get_realm ());
+            var input = yield choose_http_auth_input (
+                origin, realm, pending_auth_cancellable);
+            if (generation != auth_generation || pending_auth_request != request ||
+                    pending_auth_document_uri != document_uri) return;
+            if (input == null ||
+                    !HttpAuthPolicy.credentials_are_bounded (
+                        input.username, input.password) ||
+                    !http_auth_context_is_current (tab, request, document_uri)) {
+                finish_http_auth (true);
+                status.label = "Authentication request canceled";
+                return;
+            }
+
+            finish_http_auth (false);
+            var credential = new WebKit.Credential (
+                input.username, input.password, WebKit.CredentialPersistence.NONE);
+            input.username = "";
+            input.password = "";
+            request.authenticate (credential);
+            status.label = "Credentials sent once; Xanh did not save them";
+        }
+
+        async HttpAuthInput? choose_http_auth_input (
+                string origin, string realm, Cancellable cancellable) {
+            var picker = new Gtk.Popover ();
+            picker.autohide = false;
+            picker.has_arrow = false;
+            picker.set_size_request (460, -1);
+            pending_auth_popover = picker;
+
+            var root = new Gtk.Box (Gtk.Orientation.VERTICAL, 10);
+            root.margin_start = 18;
+            root.margin_end = 18;
+            root.margin_top = 18;
+            root.margin_bottom = 18;
+            var heading = new Gtk.Label ("Sign in to %s".printf (origin));
+            heading.halign = Gtk.Align.START;
+            heading.ellipsize = Pango.EllipsizeMode.MIDDLE;
+            root.append (heading);
+            var explanation = new Gtk.Label (
+                ("%s requests HTTP authentication. Credentials are sent once and are " +
+                "not saved by Xanh.").printf (realm));
+            explanation.halign = Gtk.Align.START;
+            explanation.wrap = true;
+            explanation.add_css_class ("dim-label");
+            root.append (explanation);
+
+            var username = new Gtk.Entry ();
+            username.placeholder_text = "Username";
+            username.max_length = HttpAuthPolicy.MAX_USERNAME_CHARACTERS;
+            username.input_purpose = Gtk.InputPurpose.NAME;
+            username.input_hints = Gtk.InputHints.PRIVATE |
+                Gtk.InputHints.NO_SPELLCHECK | Gtk.InputHints.NO_EMOJI;
+            username.enable_undo = false;
+            root.append (username);
+            var password = new Gtk.Entry ();
+            password.placeholder_text = "Password";
+            password.visibility = false;
+            password.max_length = HttpAuthPolicy.MAX_PASSWORD_CHARACTERS;
+            password.input_purpose = Gtk.InputPurpose.PASSWORD;
+            password.input_hints = Gtk.InputHints.PRIVATE |
+                Gtk.InputHints.NO_SPELLCHECK | Gtk.InputHints.NO_EMOJI;
+            password.enable_undo = false;
+            root.append (password);
+
+            var buttons = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 8);
+            buttons.halign = Gtk.Align.END;
+            var cancel = new Gtk.Button.with_label ("Cancel");
+            var sign_in = new Gtk.Button.with_label ("Sign In Once");
+            sign_in.add_css_class ("suggested-action");
+            buttons.append (cancel);
+            buttons.append (sign_in);
+            root.append (buttons);
+            picker.child = root;
+
+            HttpAuthInput? selected = null;
+            bool completed = false;
+            SourceFunc resume = choose_http_auth_input.callback;
+            picker.closed.connect (() => {
+                if (!completed) {
+                    completed = true;
+                    Idle.add (() => {
+                        resume ();
+                        return Source.REMOVE;
+                    });
+                }
+            });
+            cancel.clicked.connect (() => picker.popdown ());
+            sign_in.clicked.connect (() => {
+                if (completed) return;
+                selected = new HttpAuthInput (username.text, password.text);
+                completed = true;
+                picker.popdown ();
+                Idle.add (() => {
+                    resume ();
+                    return Source.REMOVE;
+                });
+            });
+            username.activate.connect (() => password.grab_focus ());
+            password.activate.connect (() => sign_in.activate ());
+            ulong cancel_signal = cancellable.cancelled.connect (() => picker.popdown ());
+            picker.set_parent (address);
+            picker.popup ();
+            username.grab_focus ();
+            yield;
+            if (cancel_signal != 0)
+                SignalHandler.disconnect (cancellable, cancel_signal);
+            if (pending_auth_popover == picker) pending_auth_popover = null;
+            username.text = "";
+            password.text = "";
+            if (picker.get_parent () != null) picker.unparent ();
+            return selected;
+        }
+
+        bool http_auth_context_is_current (TabRecord tab,
+                WebKit.AuthenticationRequest request,
+                string? document_uri) {
+            var browser_application = application as BrowserApplication;
+            bool application_clear = browser_application != null &&
+                browser_application.is_browsing_data_clear_in_progress ();
+            bool supported_scheme =
+                request.get_scheme () == WebKit.AuthenticationScheme.HTTP_BASIC ||
+                request.get_scheme () == WebKit.AuthenticationScheme.HTTP_DIGEST;
+            if (!supported_scheme || request.is_for_proxy () || request.is_retry ())
+                return false;
+            var origin = request.get_security_origin ();
+            return HttpAuthPolicy.is_prompt_context_current (
+                document_uri, tab.view.uri, request.get_host (), request.get_port (),
+                origin.get_protocol (), origin.get_host (), origin.get_port (),
+                supported_scheme, false, false, is_active,
+                active_tab () == tab, tab.recovery.process_stopped,
+                clearing_data || application_clear);
+        }
+
+        void finish_http_auth (bool cancel_request) {
+            var request = pending_auth_request;
+            var cancellable = pending_auth_cancellable;
+            var picker = pending_auth_popover;
+            if (request != null && pending_auth_cancelled_signal != 0)
+                SignalHandler.disconnect (request, pending_auth_cancelled_signal);
+            pending_auth_cancelled_signal = 0;
+            pending_auth_request = null;
+            pending_auth_tab = null;
+            pending_auth_document_uri = null;
+            pending_auth_cancellable = null;
+            pending_auth_popover = null;
+            auth_generation++;
+            if (pending_auth_timeout_source != 0) {
+                Source.remove (pending_auth_timeout_source);
+                pending_auth_timeout_source = 0;
+            }
+            picker?.popdown ();
+            cancellable?.cancel ();
+            if (cancel_request) request?.cancel ();
+        }
+
+        void cancel_http_auth (TabRecord? tab = null) {
+            if (pending_auth_request == null ||
+                    (tab != null && pending_auth_tab != tab)) return;
+            finish_http_auth (true);
+        }
+
         void handle_download (WebKit.Download download, bool private_mode) {
             download.decide_destination.connect ((suggested) => {
                 var dialog = new Gtk.FileDialog ();
@@ -908,6 +1148,7 @@ namespace Xanh {
                 cancel_credential_picker ();
             cancel_permission_request (tab);
             cancel_tls_error (tab);
+            cancel_http_auth (tab);
             tab.recovery.reset_for_explicit_navigation ();
             tab.state.recovery_uri = null;
         }
@@ -978,6 +1219,7 @@ namespace Xanh {
                 cancel_credential_picker ();
             cancel_permission_request (tab);
             cancel_tls_error (tab);
+            cancel_http_auth (tab);
             disconnect_tab_bridges (tab);
             int page = notebook.page_num (tab.view);
             if (page >= 0) notebook.remove_page (page);
@@ -1039,6 +1281,7 @@ namespace Xanh {
             cancel_credential_picker ();
             cancel_permission_request ();
             cancel_tls_error ();
+            cancel_http_auth ();
             tabs.foreach ((id, tab) => disconnect_tab_bridges (tab));
             if (session_save_source != 0) {
                 Source.remove (session_save_source);
@@ -1624,6 +1867,7 @@ namespace Xanh {
             cancel_credential_picker ();
             cancel_permission_request ();
             cancel_tls_error ();
+            cancel_http_auth ();
             tabs.foreach ((id, tab) => tab.view.stop_loading ());
         }
 

@@ -61,6 +61,23 @@ the API does not open the Firefox Sync production gate without the native core,
 vault, origin/nonce validation, private-mode exclusion and Windows security
 evidence listed below.
 
+The preview host also applies a navigation-action policy before WebKit loads a
+request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /
+`about:srcdoc` set remain inside WebKit. `mailto:` and `tel:` are delegated to
+Windows only for a direct, unconsumed user gesture when WebKit explicitly
+allows external schemes. Xanh requires WebKit's existing trusted, button-down
+link-click signal; WebKit exposes no mouse button for an untrusted event, so
+`HTMLElement.click()` and dispatched synthetic events fail closed without a new
+IPC field. The accepted gesture token is consumed before launch,
+so one click can delegate at most one external URI; redirects and every other
+scheme fail closed. The
+policy is unit-tested independently from the Windows build, and the custom
+navigation-action API preserves WebKit's internal redirect signal so a page
+cannot disguise an external redirect as a click.
+Every source-revision update must revalidate the upstream trusted-button
+invariant in `WebMouseEvent.cpp`; CI fetches and checks that exact file from the
+pinned commit.
+
 The pinned commit is the peeled upstream `webkitgtk-2.52.6` tag rather than an
 arbitrary `main` snapshot. The GTK release tag is used because WinCairo and GTK
 are built from the same WebKit source tree, and this gives the Windows preview
@@ -75,6 +92,9 @@ the complete edition.
 
 Before publishing, build on a clean Windows x64 host and run upstream WebKit
 tests plus browser navigation, TLS, download, media and process-crash tests.
+Navigation tests must include malformed and overlong URLs, userinfo, invalid
+ports, redirect-to-external, script-created external navigation and direct
+user-clicked `mailto:`/`tel:` links.
 Verify the revision/provenance file, remove unrelated upstream test binaries
 from the package only after a dependency-closure audit, sign all shipped PE
 files and test on clean Windows 10 and Windows 11 systems. Compile and exercise

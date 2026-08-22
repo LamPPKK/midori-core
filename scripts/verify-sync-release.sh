@@ -153,6 +153,39 @@ case "$edition" in
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F 'worldName.length() > 128' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+WK_EXPORT bool WKXanhNavigationActionIsRedirect(WKNavigationActionRef action);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+WK_EXPORT bool WKXanhNavigationActionIsTrustedLinkClick(WKNavigationActionRef action);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+WK_EXPORT bool WKXanhNavigationActionTakeUserGesture(WKNavigationActionRef action);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    if (!userInitiatedAction || userInitiatedAction->consumed())' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    userInitiatedAction->setConsumed();' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    return navigationAction->navigationType() == WebCore::NavigationType::LinkClicked && navigationAction->mouseButton() != WebKit::WebMouseEventButton::None;' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    navigationClient.decidePolicyForNavigationAction = decidePolicyForNavigationAction;' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        WKXanhNavigationActionIsRedirect(navigationAction),' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+        WKXanhNavigationActionIsTrustedLinkClick(navigationAction),' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    grep -F '+    bool shouldOpenExternal = decision == XanhNavigationPolicy::Decision::openExternal && WKXanhNavigationActionTakeUserGesture(navigationAction);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    wincairo_take_line="$(grep -nF '+    bool shouldOpenExternal = decision == XanhNavigationPolicy::Decision::openExternal && WKXanhNavigationActionTakeUserGesture(navigationAction);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch | cut -d: -f1)"
+    wincairo_ignore_line="$(grep -nF '+    WKFramePolicyListenerIgnore(listener);' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch | cut -d: -f1)"
+    if [[ ! "$wincairo_take_line" =~ ^[0-9]+$ ]] || \
+      [[ ! "$wincairo_ignore_line" =~ ^[0-9]+$ ]] || \
+      (( wincairo_take_line >= wincairo_ignore_line )); then
+      echo 'WinCairo must consume the trusted gesture before resolving the navigation listener' >&2
+      exit 1
+    fi
+    grep -F '+inline constexpr size_t maximumURLCharacters = 8192;' \
+      platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
+    test -f platform/windows-webkit/tests/XanhNavigationPolicyTest.cpp
     grep -F 'WebKit WinCairo source preview' THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_release_tag" THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_revision" THIRD_PARTY_NOTICES.md >/dev/null

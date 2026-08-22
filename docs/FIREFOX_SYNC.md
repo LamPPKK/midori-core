@@ -281,7 +281,11 @@ must still pass build, ELF, device, SBOM and security evidence gates in
 The pinned WinCairo source delta now exposes bounded named-isolated-world C APIs
 for user scripts, request/reply message handlers and deterministic per-world
 teardown without restoring the privileged injected bundle. Its MiniBrowser host
-does not register the credential bridge yet, so WinCairo remains blocked until
+now enforces bounded credential-free HTTP(S) navigation before load and permits
+only trusted, direct user-clicked, non-redirected `mailto:`/`tel:` delegation;
+it relies on WebKit's existing mouse-button field, which is populated only for
+a trusted button-down event, and consumes the gesture once. It does
+not register the credential bridge yet, so WinCairo remains blocked until
 host origin/nonce/private-mode validation, the vault and packaged native core
 pass security tests. `scripts/verify-sync-release.sh` is a fail-closed mechanical
 prerequisite check, not an audit substitute. Its Linux production

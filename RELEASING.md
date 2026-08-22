@@ -381,6 +381,16 @@ The source-fork isolated-world C API must compile in the Windows build and pass
 message-world, request/reply, duplicate-handler and teardown tests. Its presence
 alone is not a credential bridge: keep Sync disabled until the WinCairo host,
 vault, packaged native core and security evidence are complete.
+The pre-load navigation-action policy must also reject overlong/malformed URLs,
+userinfo, invalid ports, script-created external navigation and every external
+redirect. Verify that only a direct user gesture can delegate bounded `mailto:`
+or `tel:` URLs and that regular credential-free HTTP(S) plus the narrow internal
+blank/srcdoc set still load. A single click token must never launch more than
+one external handler, including pages that loop or synthesize link clicks.
+Verify WebKit only exposes a button for trusted, button-down link events and that
+`HTMLElement.click()` plus manually dispatched click events remain blocked even
+inside a real user-event handler. Keyboard-only activation is intentionally
+blocked in this preview until it has an equivalent trusted-event signal.
 
 This preview is not production-ready until its upstream MiniBrowser-based UI
 has the same encrypted backup import/export surface as the WinUI and Android

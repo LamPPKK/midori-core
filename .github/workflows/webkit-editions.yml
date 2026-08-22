@@ -90,6 +90,9 @@ jobs:
         run: |
           revision="$(cat platform/windows-webkit/WEBKIT_REVISION)"
           files=(
+            Source/WebKit/Shared/WebMouseEvent.cpp
+            Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
+            Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
             Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
             Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
             Source/WebKit/UIProcess/API/C/WKUserScriptRef.cpp
@@ -98,6 +101,7 @@ jobs:
             Tools/MiniBrowser/win/MainWindow.cpp
             Tools/MiniBrowser/win/MiniBrowserLib.rc
             Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+            Tools/MiniBrowser/win/WebKitBrowserWindow.h
           )
           for file in "${files[@]}"; do
             mkdir -p "_webkit/$(dirname "${file}")"
@@ -117,6 +121,21 @@ jobs:
           grep -F 'WK_EXPORT bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld' _webkit/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.h
           grep -F 'API::ContentWorld::sharedWorldWithName(worldName)' _webkit/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
           grep -F 'm_name, contentWorld);' _webkit/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
+          grep -F 'WK_EXPORT bool WKXanhNavigationActionIsRedirect' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
+          grep -F 'WK_EXPORT bool WKXanhNavigationActionTakeUserGesture' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
+          grep -F 'WK_EXPORT bool WKXanhNavigationActionIsTrustedLinkClick' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
+          grep -F 'if (mouseEventData && mouseEventData->buttonDown && mouseEventData->isTrusted)' _webkit/Source/WebKit/Shared/WebMouseEvent.cpp
+          grep -F 'if (!userInitiatedAction || userInitiatedAction->consumed())' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
+          grep -F 'userInitiatedAction->setConsumed();' _webkit/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
+          grep -F 'navigationClient.decidePolicyForNavigationAction = decidePolicyForNavigationAction' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'WKXanhNavigationActionIsRedirect(navigationAction)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'WKXanhNavigationActionIsTrustedLinkClick(navigationAction)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'bool shouldOpenExternal = decision == XanhNavigationPolicy::Decision::openExternal && WKXanhNavigationActionTakeUserGesture(navigationAction);' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          c++ -std=c++17 -Wall -Wextra -Werror \
+            -I _webkit/Tools/MiniBrowser/win \
+            platform/windows-webkit/tests/XanhNavigationPolicyTest.cpp \
+            -o /tmp/xanh-navigation-policy-test
+          /tmp/xanh-navigation-policy-test
 
   dependency-review:
     if: github.event_name == 'pull_request'

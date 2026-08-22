@@ -1,3 +1,45 @@
+diff --git a/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp b/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
+index 927cf536..f9ca1768 100644
+--- a/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
++++ b/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.cpp
+@@ -65,3 +65,23 @@ WK_EXPORT bool WKNavigationActionHasUnconsumedUserGesture(WKNavigationActionRef
+ {
+     return WebKit::toImpl(action)->isProcessingUnconsumedUserGesture();
+ }
++
++WK_EXPORT bool WKXanhNavigationActionIsTrustedLinkClick(WKNavigationActionRef action)
++{
++    auto* navigationAction = WebKit::toImpl(action);
++    return navigationAction->navigationType() == WebCore::NavigationType::LinkClicked && navigationAction->mouseButton() != WebKit::WebMouseEventButton::None;
++}
++
++WK_EXPORT bool WKXanhNavigationActionIsRedirect(WKNavigationActionRef action)
++{
++    return WebKit::toImpl(action)->isRedirect();
++}
++
++WK_EXPORT bool WKXanhNavigationActionTakeUserGesture(WKNavigationActionRef action)
++{
++    auto* userInitiatedAction = WebKit::toImpl(action)->userInitiatedAction();
++    if (!userInitiatedAction || userInitiatedAction->consumed())
++        return false;
++    userInitiatedAction->setConsumed();
++    return true;
++}
+diff --git a/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h b/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
+index 9c175e79..98fb44ee 100644
+--- a/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
++++ b/Source/WebKit/UIProcess/API/C/WKNavigationActionRef.h
+@@ -41,6 +41,9 @@ WK_EXPORT bool WKNavigationActionGetShouldOpenExternalSchemes(WKNavigationAction
+ WK_EXPORT WKFrameInfoRef WKNavigationActionCopyTargetFrameInfo(WKNavigationActionRef action);
+ WK_EXPORT WKFrameNavigationType WKNavigationActionGetNavigationType(WKNavigationActionRef action);
+ WK_EXPORT bool WKNavigationActionHasUnconsumedUserGesture(WKNavigationActionRef action);
++WK_EXPORT bool WKXanhNavigationActionIsTrustedLinkClick(WKNavigationActionRef action);
++WK_EXPORT bool WKXanhNavigationActionIsRedirect(WKNavigationActionRef action);
++WK_EXPORT bool WKXanhNavigationActionTakeUserGesture(WKNavigationActionRef action);
+ 
+ #ifdef __cplusplus
+ }
 diff --git a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp b/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
 index 5519ce0e..78d36e3d 100644
 --- a/Source/WebKit/UIProcess/API/C/WKUserContentControllerRef.cpp
@@ -141,10 +183,18 @@ index de8b6a3c..3afeadea 100644
  WK_EXPORT WKStringRef WKUserScriptCopySource(WKUserScriptRef userScript);
  WK_EXPORT _WKUserScriptInjectionTime WKUserScriptGetInjectionTime(WKUserScriptRef userScript);
 diff --git a/Tools/MiniBrowser/win/CMakeLists.txt b/Tools/MiniBrowser/win/CMakeLists.txt
-index fba0731a..71f08fa8 100644
+index fba0731a..7b4d600c 100644
 --- a/Tools/MiniBrowser/win/CMakeLists.txt
 +++ b/Tools/MiniBrowser/win/CMakeLists.txt
-@@ -38,4 +38,4 @@ target_include_directories(MiniBrowserInjectedBundle PRIVATE ${CMAKE_BINARY_DIR}
+@@ -17,6 +17,7 @@ set(MiniBrowser_SOURCES
+ set(MiniBrowser_PRIVATE_DEFINITIONS _UNICODE)
+ set(MiniBrowser_PRIVATE_LIBRARIES
+     comctl32
++    shell32
+     shlwapi
+     user32
+ )
+@@ -38,4 +39,4 @@ target_include_directories(MiniBrowserInjectedBundle PRIVATE ${CMAKE_BINARY_DIR}
  WEBKIT_EXECUTABLE_DECLARE(MiniBrowser)
  WEBKIT_EXECUTABLE(MiniBrowser)
  
@@ -219,10 +269,30 @@ index a27a1f4e..87b5c052 100755
  
  #endif    // English (United States) resources
 diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
-index 990ba53c..6a9b9078 100644
+index 990ba53c..9ff4fb0b 100644
 --- a/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
 +++ b/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
-@@ -49,7 +49,6 @@
+@@ -28,6 +28,7 @@
+ #include "Common.h"
+ #include "Common2.h"
+ #include "MiniBrowserLibResource.h"
++#include "XanhNavigationPolicy.h"
+ #include <WebCore/GDIUtilities.h>
+ #include <WebKit/WKAuthenticationChallenge.h>
+ #include <WebKit/WKAuthenticationDecisionListener.h>
+@@ -39,6 +40,7 @@
+ #include <WebKit/WKFrameInfoRef.h>
+ #include <WebKit/WKHTTPCookieStoreRef.h>
+ #include <WebKit/WKInspector.h>
++#include <WebKit/WKNavigationActionRef.h>
+ #include <WebKit/WKNavigationResponseRef.h>
+ #include <WebKit/WKPagePrivate.h>
+ #include <WebKit/WKPreferencesRefPrivate.h>
+@@ -46,10 +48,10 @@
+ #include <WebKit/WKProtectionSpaceCurl.h>
+ #include <WebKit/WKSecurityOriginRef.h>
+ #include <WebKit/WKURLResponse.h>
++#include <WebKit/WKURLRequest.h>
  #include <WebKit/WKWebsiteDataStoreConfigurationRef.h>
  #include <WebKit/WKWebsiteDataStoreRef.h>
  #include <WebKit/WKWebsiteDataStoreRefCurl.h>
@@ -230,7 +300,7 @@ index 990ba53c..6a9b9078 100644
  #include <sstream>
  #include <vector>
  
-@@ -118,22 +117,6 @@ WKRetainPtr<WKURLRef> createWKURL(const std::wstring& str)
+@@ -118,22 +120,6 @@ WKRetainPtr<WKURLRef> createWKURL(const std::wstring& str)
      return adoptWK(WKURLCreateWithUTF8CString(utf8.data()));
  }
  
@@ -253,7 +323,7 @@ index 990ba53c..6a9b9078 100644
  Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND mainWnd, bool)
  {
      auto websiteDataStoreConf = adoptWK(WKWebsiteDataStoreConfigurationCreate());
-@@ -141,13 +124,12 @@ Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND
+@@ -141,13 +127,12 @@ Ref<BrowserWindow> WebKitBrowserWindow::create(BrowserWindowClient& client, HWND
      auto websiteDataStore = adoptWK(WKWebsiteDataStoreCreateWithConfiguration(websiteDataStoreConf.get()));
  
      auto contextConf = adoptWK(WKContextConfigurationCreate());
@@ -268,7 +338,15 @@ index 990ba53c..6a9b9078 100644
  
      auto pageConf = adoptWK(WKPageConfigurationCreate());
      WKPageConfigurationSetWebsiteDataStore(pageConf.get(), websiteDataStore.get());
-@@ -486,7 +468,7 @@ void WebKitBrowserWindow::didChangeTitle(const void* clientInfo)
+@@ -171,6 +156,7 @@ WebKitBrowserWindow::WebKitBrowserWindow(BrowserWindowClient& client, WKPageConf
+     WKPageNavigationClientV3 navigationClient = { };
+     navigationClient.base.version = 3;
+     navigationClient.base.clientInfo = this;
++    navigationClient.decidePolicyForNavigationAction = decidePolicyForNavigationAction;
+     navigationClient.decidePolicyForNavigationResponse = decidePolicyForNavigationResponse;
+     navigationClient.didFailProvisionalNavigation = didFailProvisionalNavigation;
+     navigationClient.didReceiveAuthenticationChallenge = didReceiveAuthenticationChallenge;
+@@ -486,7 +472,7 @@ void WebKitBrowserWindow::didChangeTitle(const void* clientInfo)
      auto& thisWindow = toWebKitBrowserWindow(clientInfo);
      auto page = WKViewGetPage(thisWindow.m_view.get());
      WKRetainPtr<WKStringRef> title = adoptWK(WKPageCopyTitle(page));
@@ -277,3 +355,352 @@ index 990ba53c..6a9b9078 100644
      SetWindowText(thisWindow.m_hMainWnd, titleString.c_str());
  }
  
+@@ -511,6 +497,40 @@ void WebKitBrowserWindow::didChangeActiveURL(const void* clientInfo)
+     thisWindow.m_client.activeURLChanged(createString(url.get()));
+ }
+ 
++void WebKitBrowserWindow::decidePolicyForNavigationAction(WKPageRef, WKNavigationActionRef navigationAction, WKFramePolicyListenerRef listener, WKTypeRef, const void* clientInfo)
++{
++    WKRetainPtr<WKURLRequestRef> request = adoptWK(WKNavigationActionCopyRequest(navigationAction));
++    WKRetainPtr<WKURLRef> url;
++    if (request)
++        url = adoptWK(WKURLRequestCopyURL(request.get()));
++    WKRetainPtr<WKStringRef> urlString;
++    if (url)
++        urlString = adoptWK(WKURLCopyString(url.get()));
++    if (!urlString || WKStringGetLength(urlString.get()) > XanhNavigationPolicy::maximumURLCharacters) {
++        WKFramePolicyListenerIgnore(listener);
++        return;
++    }
++
++    auto urlValue = createString(urlString.get());
++    auto decision = XanhNavigationPolicy::decide(urlValue,
++        WKNavigationActionHasUnconsumedUserGesture(navigationAction),
++        WKXanhNavigationActionIsTrustedLinkClick(navigationAction),
++        WKXanhNavigationActionIsRedirect(navigationAction),
++        WKNavigationActionGetShouldOpenExternalSchemes(navigationAction));
++    if (decision == XanhNavigationPolicy::Decision::allowInWebView) {
++        WKFramePolicyListenerUse(listener);
++        return;
++    }
++
++    bool shouldOpenExternal = decision == XanhNavigationPolicy::Decision::openExternal && WKXanhNavigationActionTakeUserGesture(navigationAction);
++    WKFramePolicyListenerIgnore(listener);
++    if (!shouldOpenExternal)
++        return;
++
++    auto& thisWindow = toWebKitBrowserWindow(clientInfo);
++    ShellExecuteW(thisWindow.m_hMainWnd, L"open", urlValue.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
++}
++
+ void WebKitBrowserWindow::decidePolicyForNavigationResponse(WKPageRef, WKNavigationResponseRef navigationResponse, WKFramePolicyListenerRef listener, WKTypeRef, const void* clientInfo)
+ {
+     auto& thisWindow = toWebKitBrowserWindow(clientInfo);
+@@ -805,4 +825,3 @@ void WebKitBrowserWindow::runJavaScriptPrompt(WKPageRef, WKStringRef message, WK
+     MessageBox(thisWindow.m_hMainWnd, text.c_str(), title.c_str(), MB_OK);
+     WKPageRunJavaScriptPromptResultListenerCall(listener, defaultValue);
+ }
+-
+diff --git a/Tools/MiniBrowser/win/WebKitBrowserWindow.h b/Tools/MiniBrowser/win/WebKitBrowserWindow.h
+index b21f403c..7b6b999f 100644
+--- a/Tools/MiniBrowser/win/WebKitBrowserWindow.h
++++ b/Tools/MiniBrowser/win/WebKitBrowserWindow.h
+@@ -75,6 +75,7 @@ private:
+     static void didChangeIsLoading(const void*);
+     static void didChangeEstimatedProgress(const void*);
+     static void didChangeActiveURL(const void*);
++    static void decidePolicyForNavigationAction(WKPageRef, WKNavigationActionRef, WKFramePolicyListenerRef, WKTypeRef, const void*);
+     static void decidePolicyForNavigationResponse(WKPageRef, WKNavigationResponseRef, WKFramePolicyListenerRef, WKTypeRef, const void*);
+     static void didFailProvisionalNavigation(WKPageRef, WKNavigationRef, WKErrorRef, WKTypeRef, const void*);
+     static void didReceiveAuthenticationChallenge(WKPageRef, WKAuthenticationChallengeRef, const void*);
+diff --git a/Tools/MiniBrowser/win/XanhNavigationPolicy.h b/Tools/MiniBrowser/win/XanhNavigationPolicy.h
+new file mode 100644
+index 00000000..e397d150
+--- /dev/null
++++ b/Tools/MiniBrowser/win/XanhNavigationPolicy.h
+@@ -0,0 +1,285 @@
++/*
++ * Copyright (C) 2026 Xanh Browser contributors.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIMED.
++ */
++
++#pragma once
++
++#include <cstddef>
++#include <string_view>
++
++namespace XanhNavigationPolicy {
++
++inline constexpr size_t maximumURLCharacters = 8192;
++inline constexpr size_t maximumExternalURLCharacters = 2048;
++
++enum class Decision {
++    allowInWebView,
++    openExternal,
++    block,
++};
++
++inline wchar_t toASCIILower(wchar_t character)
++{
++    if (character >= L'A' && character <= L'Z')
++        return character + (L'a' - L'A');
++    return character;
++}
++
++inline bool equalASCIIFolded(std::wstring_view left, std::wstring_view right)
++{
++    if (left.size() != right.size())
++        return false;
++    for (size_t index = 0; index < left.size(); ++index) {
++        if (toASCIILower(left[index]) != toASCIILower(right[index]))
++            return false;
++    }
++    return true;
++}
++
++inline bool isASCIIAlphaNumeric(wchar_t character)
++{
++    character = toASCIILower(character);
++    return (character >= L'a' && character <= L'z') || (character >= L'0' && character <= L'9');
++}
++
++inline bool hasForbiddenCharacters(std::wstring_view url)
++{
++    for (auto character : url) {
++        if (character <= 0x20 || character == 0x7f || (character >= 0x80 && character <= 0x9f) || character == L'\\')
++            return true;
++    }
++    return false;
++}
++
++inline bool hasValidPort(std::wstring_view port)
++{
++    if (port.empty() || port.size() > 5)
++        return false;
++
++    unsigned value = 0;
++    for (auto character : port) {
++        if (character < L'0' || character > L'9')
++            return false;
++        value = value * 10 + static_cast<unsigned>(character - L'0');
++    }
++    return value <= 65535;
++}
++
++inline bool isValidIPv4Host(std::wstring_view host)
++{
++    unsigned octets = 0;
++    size_t start = 0;
++    while (start < host.size()) {
++        auto end = host.find(L'.', start);
++        auto octet = host.substr(start, end == std::wstring_view::npos ? host.size() - start : end - start);
++        if (octet.empty() || octet.size() > 3)
++            return false;
++        unsigned value = 0;
++        for (auto character : octet) {
++            if (character < L'0' || character > L'9')
++                return false;
++            value = value * 10 + static_cast<unsigned>(character - L'0');
++        }
++        if (value > 255)
++            return false;
++        ++octets;
++        if (end == std::wstring_view::npos)
++            break;
++        start = end + 1;
++    }
++    return octets == 4;
++}
++
++inline bool isValidDomainHost(std::wstring_view host)
++{
++    if (host.empty() || host.size() > 253 || host.front() == L'.')
++        return false;
++    bool onlyDigitsAndDots = true;
++    for (auto character : host) {
++        if (!isASCIIAlphaNumeric(character) && character != L'.' && character != L'-' && character != L'_')
++            return false;
++        if ((character < L'0' || character > L'9') && character != L'.')
++            onlyDigitsAndDots = false;
++    }
++    if (host.find(L"..") != std::wstring_view::npos)
++        return false;
++    if (onlyDigitsAndDots)
++        return isValidIPv4Host(host);
++
++    size_t start = 0;
++    while (start < host.size()) {
++        auto end = host.find(L'.', start);
++        auto label = host.substr(start, end == std::wstring_view::npos ? host.size() - start : end - start);
++        if (label.empty())
++            return end == host.size() - 1;
++        if (label.size() > 63 || label.front() == L'-' || label.back() == L'-')
++            return false;
++        if (end == std::wstring_view::npos)
++            break;
++        start = end + 1;
++    }
++    return true;
++}
++
++inline bool isValidIPv6Group(std::wstring_view group, bool allowIPv4, unsigned& groupCount)
++{
++    if (group.empty())
++        return false;
++    if (allowIPv4 && group.find(L'.') != std::wstring_view::npos) {
++        if (!isValidIPv4Host(group))
++            return false;
++        groupCount += 2;
++        return true;
++    }
++    if (group.size() > 4)
++        return false;
++    for (auto character : group) {
++        character = toASCIILower(character);
++        if (!((character >= L'0' && character <= L'9') || (character >= L'a' && character <= L'f')))
++            return false;
++    }
++    ++groupCount;
++    return true;
++}
++
++inline bool countIPv6Groups(std::wstring_view side, bool allowIPv4, unsigned& groupCount)
++{
++    if (side.empty())
++        return true;
++    if (side.front() == L':' || side.back() == L':')
++        return false;
++    size_t start = 0;
++    while (start < side.size()) {
++        auto end = side.find(L':', start);
++        auto group = side.substr(start, end == std::wstring_view::npos ? side.size() - start : end - start);
++        bool isLast = end == std::wstring_view::npos;
++        if (!isValidIPv6Group(group, allowIPv4 && isLast, groupCount))
++            return false;
++        if (isLast)
++            break;
++        start = end + 1;
++    }
++    return true;
++}
++
++inline bool isValidIPv6Host(std::wstring_view host)
++{
++    if (host.empty())
++        return false;
++    auto compression = host.find(L"::");
++    if (compression != std::wstring_view::npos && host.find(L"::", compression + 2) != std::wstring_view::npos)
++        return false;
++
++    unsigned groupCount = 0;
++    if (compression == std::wstring_view::npos)
++        return countIPv6Groups(host, true, groupCount) && groupCount == 8;
++
++    auto left = host.substr(0, compression);
++    auto right = host.substr(compression + 2);
++    if (!countIPv6Groups(left, false, groupCount) || !countIPv6Groups(right, true, groupCount))
++        return false;
++    return groupCount < 8;
++}
++
++inline bool isAllowedWebURL(std::wstring_view url)
++{
++    if (url.empty() || url.size() > maximumURLCharacters || hasForbiddenCharacters(url))
++        return false;
++
++    auto separator = url.find(L"://");
++    if (separator == std::wstring_view::npos)
++        return false;
++    auto scheme = url.substr(0, separator);
++    if (!equalASCIIFolded(scheme, L"http") && !equalASCIIFolded(scheme, L"https"))
++        return false;
++
++    auto authorityStart = separator + 3;
++    auto authorityEnd = url.find_first_of(L"/?#", authorityStart);
++    auto authority = url.substr(authorityStart, authorityEnd == std::wstring_view::npos ? url.size() - authorityStart : authorityEnd - authorityStart);
++    if (authority.empty() || authority.find(L'@') != std::wstring_view::npos)
++        return false;
++
++    if (authority.front() == L'[') {
++        auto closingBracket = authority.find(L']');
++        if (closingBracket == std::wstring_view::npos || !isValidIPv6Host(authority.substr(1, closingBracket - 1)))
++            return false;
++        auto suffix = authority.substr(closingBracket + 1);
++        return suffix.empty() || (suffix.front() == L':' && hasValidPort(suffix.substr(1)));
++    }
++
++    auto colon = authority.find(L':');
++    if (colon == std::wstring_view::npos)
++        return isValidDomainHost(authority);
++    if (authority.find(L':', colon + 1) != std::wstring_view::npos)
++        return false;
++    return isValidDomainHost(authority.substr(0, colon)) && hasValidPort(authority.substr(colon + 1));
++}
++
++inline bool isAllowedInternalURL(std::wstring_view url)
++{
++    auto fragment = url.find(L'#');
++    auto base = url.substr(0, fragment);
++    if (url.size() > maximumURLCharacters || hasForbiddenCharacters(url))
++        return false;
++    return equalASCIIFolded(base, L"about:blank") || equalASCIIFolded(base, L"about:srcdoc");
++}
++
++inline bool isAllowedExternalURL(std::wstring_view url)
++{
++    if (url.empty() || url.size() > maximumExternalURLCharacters || hasForbiddenCharacters(url))
++        return false;
++    auto separator = url.find(L':');
++    if (separator == std::wstring_view::npos || separator + 1 == url.size())
++        return false;
++    auto scheme = url.substr(0, separator);
++    if (!equalASCIIFolded(scheme, L"mailto") && !equalASCIIFolded(scheme, L"tel"))
++        return false;
++
++    auto isHexDigit = [](wchar_t character) {
++        character = toASCIILower(character);
++        return (character >= L'0' && character <= L'9') || (character >= L'a' && character <= L'f');
++    };
++    auto hexValue = [](wchar_t character) -> unsigned {
++        character = toASCIILower(character);
++        return character >= L'a' ? static_cast<unsigned>(character - L'a' + 10) : static_cast<unsigned>(character - L'0');
++    };
++    constexpr std::wstring_view allowedPunctuation = L"-._~!$&'()*+,;=:@/?#[]";
++    for (size_t index = separator + 1; index < url.size(); ++index) {
++        auto character = url[index];
++        if (character == L'%') {
++            if (index + 2 >= url.size() || !isHexDigit(url[index + 1]) || !isHexDigit(url[index + 2]))
++                return false;
++            unsigned decoded = hexValue(url[index + 1]) * 16 + hexValue(url[index + 2]);
++            if (decoded <= 0x20 || decoded == 0x7f)
++                return false;
++            index += 2;
++            continue;
++        }
++        if (!isASCIIAlphaNumeric(character) && allowedPunctuation.find(character) == std::wstring_view::npos)
++            return false;
++    }
++    return true;
++}
++
++inline Decision decide(std::wstring_view url, bool hasUnconsumedUserGesture, bool isTrustedLinkClick, bool isRedirect, bool shouldOpenExternalSchemes)
++{
++    if (isAllowedWebURL(url) || isAllowedInternalURL(url))
++        return Decision::allowInWebView;
++    if (isAllowedExternalURL(url) && hasUnconsumedUserGesture && isTrustedLinkClick && !isRedirect && shouldOpenExternalSchemes)
++        return Decision::openExternal;
++    return Decision::block;
++}
++
++} // namespace XanhNavigationPolicy

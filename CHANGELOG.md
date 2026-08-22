@@ -85,6 +85,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   message-world propagation and deterministic per-world teardown. The host,
   vault and native Sync packaging remain release-gated; distribution notices
   now identify the exact upstream source and published Xanh delta.
+- Added a redirect-aware WinCairo navigation-action policy that bounds and
+  validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
+  delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture
+  token to Windows.
 - Added a reproducible WPE Android source-fork contract pinned to WPEView 0.3.3,
   WPE WebKit 2.52.6 and an exact Cerbero revision. The delta adds 16 KiB linker
   alignment and a bounded main-frame-only isolated script/message bridge; CI

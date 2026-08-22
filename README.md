@@ -162,6 +162,9 @@ upstream stable release commit matching the shared WebKit 2.52.6 security
 baseline and lives in
 [`platform/windows-webkit/`](platform/windows-webkit/README.md).
 Its pinned source delta includes isolated-world C API primitives, while the
+MiniBrowser host additionally blocks non-web navigation before load and only
+delegates trusted, direct user-clicked, non-redirected `mailto:`/`tel:` links,
+with one external launch per consumed gesture. The
 credential host, vault and signed package remain deliberately release-gated.
 
 ## Encrypted backup and sync

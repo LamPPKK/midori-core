@@ -131,6 +131,32 @@ case "$edition" in
     grep -F 'AddressResolver.is_safe_external_uri' desktop/browser-window.vala >/dev/null
     grep -F 'disconnect_tab_bridges (tab);' desktop/browser-window.vala >/dev/null
     grep -F 'add_executable(external-navigation-bridge-test' CMakeLists.txt >/dev/null
+    test -f desktop/permission-policy.vala
+    test -f tests-modern/permission-policy-test.vala
+    grep -F 'add_xanh_test(permission-policy-test' CMakeLists.txt >/dev/null
+    grep -F 'AddressResolver.is_safe_secure_web_uri' \
+      desktop/permission-policy.vala >/dev/null
+    grep -F 'input.length <= 1024' desktop/address-resolver.vala >/dev/null
+    grep -F 'requested_document_uri == current_document_uri' \
+      desktop/permission-policy.vala >/dev/null
+    grep -F 'PermissionPolicy.display_origin' desktop/browser-window.vala >/dev/null
+    grep -F 'PermissionPolicy.storage_access_matches_document' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'request is WebKit.PointerLockPermissionRequest' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'pending_permission_timeout_source = Timeout.add_seconds (30' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'pending_permission_document_uri != document_uri' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'finish_permission_request (choice == 1);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_permission_request (tab);' desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_permission_request ();' desktop/browser-window.vala >/dev/null
+    if grep -E 'NotificationPermissionRequest|MediaKeySystemPermissionRequest|ClipboardPermissionRequest|XRPermissionRequest' \
+      desktop/browser-window.vala >/dev/null; then
+      echo 'Unsupported Linux permission classes must remain deny-by-default' >&2
+      exit 1
+    fi
     grep -F 'webkit_user_script_new_for_world' desktop/credential-bridge.c >/dev/null
     grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' desktop/credential-bridge.c >/dev/null
     grep -F 'webkit_web_view_call_async_javascript_function' desktop/credential-bridge.c >/dev/null

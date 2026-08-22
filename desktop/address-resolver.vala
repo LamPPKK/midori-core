@@ -35,6 +35,21 @@ namespace Xanh {
                 is_safe_web_uri (input);
         }
 
+        public static bool is_safe_secure_web_uri (string? input) {
+            if (!is_safe_web_uri (input)) return false;
+            try {
+                return Uri.parse (input, UriFlags.SCHEME_NORMALIZE).get_scheme () == "https";
+            } catch (UriError error) {
+                return false;
+            }
+        }
+
+        public static bool is_safe_host_name (string? input) {
+            return input != null && input.length > 0 && input.length <= 1024 &&
+                input.validate () && !contains_control_character (input) &&
+                !contains_whitespace (input) && valid_host (input);
+        }
+
         public static bool is_safe_external_uri (string? input) {
             if (input == null || input.length == 0 ||
                     input.length > MAX_EXTERNAL_URI_BYTES || !input.validate () ||

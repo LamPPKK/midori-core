@@ -136,7 +136,24 @@ allowed historical material, never a shipping dependency or application ID.
    Repeat in a private tab and confirm the handoff occurs only after the same
    explicit activation, with no browser history/session write.
 
-6. For a Sync-enabled candidate, start with a populated pre-Sync profile and
+6. Exercise Linux permission requests from an HTTPS page for camera,
+   microphone, combined audio/video, display capture, geolocation, device
+   enumeration, pointer lock and third-party Storage Access. Confirm the native
+   dialog names the top-level HTTPS origin, including a non-default port, and
+   grants only the selected capability in the current document and is not
+   remembered by Xanh across navigation.
+   Repeat from HTTP/userinfo URLs, a hidden tab and an inactive window, and
+   change the URL or fragment while the prompt is open; each must deny. Also
+   cancel by switching/closing tabs, starting another permission prompt, losing
+   focus, terminating the renderer, starting Clear Browsing Data and waiting 30
+   seconds. Confirm notifications, DRM key systems, clipboard, XR and unknown
+   request types never receive permission. For Storage Access, mismatch the
+   current domain, use an invalid requesting domain, or make the requesting and
+   current domain equal or a direct parent/child relation; all must deny. Repeat
+   supported cases in a private tab and confirm no permission decision is
+   persisted after closing it.
+
+7. For a Sync-enabled candidate, start with a populated pre-Sync profile and
    verify that the private migration snapshot is mode `0600`, the stored
    checksum matches it, all source rows are processed, every safe/eligible
    record is acknowledged and rejected-row counts are audited before the
@@ -166,7 +183,7 @@ allowed historical material, never a shipping dependency or application ID.
    that a pending marker blocks scheduled, pre-sleep and manual Sync as well as
    reconnect until cleanup acknowledgement succeeds.
 
-7. On a clean regular profile, unlock the Logins vault through the reviewed OS
+8. On a clean regular profile, unlock the Logins vault through the reviewed OS
    user-presence flow, activate a password field with a real pointer/keyboard
    event and choose a username in the native GTK picker. Confirm the selected
    value fills only the exact committed HTTPS top frame. Repeat with HTTP,

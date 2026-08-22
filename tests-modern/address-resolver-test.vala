@@ -33,6 +33,11 @@ void test_safe_web_uri_policy () {
     assert (!Xanh.AddressResolver.is_safe_web_uri (
         prefix + string.nfill (Xanh.AddressResolver.MAX_WEB_URI_BYTES - prefix.length + 1, 'a')));
     assert (Xanh.AddressResolver.resolve (string.nfill (2049, 'a')) == "about:blank");
+    assert (Xanh.AddressResolver.is_safe_secure_web_uri ("https://example.com/"));
+    assert (!Xanh.AddressResolver.is_safe_secure_web_uri ("http://example.com/"));
+    assert (Xanh.AddressResolver.is_safe_host_name ("bücher.example"));
+    assert (!Xanh.AddressResolver.is_safe_host_name ("bad host"));
+    assert (!Xanh.AddressResolver.is_safe_host_name (string.nfill (1025, 'a')));
 }
 
 void test_navigation_and_external_uri_policy () {

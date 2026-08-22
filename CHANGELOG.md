@@ -31,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   handed to the OS only after trusted activation plus active-tab, exact-document
   and foreground revalidation. Synthetic, redirected, iframe and stale requests
   fail closed, and bridge signal handlers are detached with their tabs.
+- Replaced the generic Linux website-permission dialog with an HTTPS-only,
+  deny-by-default per-page policy. Supported media/location/device, pointer
+  lock and validated Storage Access requests are tied to the exact active
+  document and canceled across navigation, tab/window lifecycle, renderer loss,
+  privacy clearing, replacement or timeout; unsupported request types are
+  denied without falling through to WebKit defaults.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

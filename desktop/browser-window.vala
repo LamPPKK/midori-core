@@ -53,6 +53,12 @@ namespace Xanh {
         string? credential_picker_request_id;
         Cancellable? credential_request_cancellable;
         uint credential_picker_timeout_source;
+        WebKit.PermissionRequest? pending_permission_request;
+        TabRecord? pending_permission_tab;
+        string? pending_permission_document_uri;
+        Cancellable? pending_permission_cancellable;
+        uint pending_permission_timeout_source;
+        uint64 permission_generation;
 
         public BrowserWindow (Gtk.Application application, BrowserDatabase database) {
             Object (application: application, title: Config.APP_NAME, default_width: 1100, default_height: 760);
@@ -85,6 +91,7 @@ namespace Xanh {
             notify["is-active"].connect (() => {
                 if (!is_active) {
                     cancel_credential_picker ();
+                    cancel_permission_request ();
                     (application as BrowserApplication)?.lock_sync_vault ();
                     tabs.foreach ((id, tab) => {
                         if (tab.recovery.cancel_automatic_recovery ()) {
@@ -186,6 +193,7 @@ namespace Xanh {
             notebook.enable_popup = true;
             notebook.switch_page.connect ((page, index) => {
                 cancel_credential_picker ();
+                cancel_permission_request ();
                 var selected = page as WebKit.WebView;
                 tabs.foreach ((id, tab) => {
                     if (tab.view != selected &&
@@ -529,6 +537,10 @@ namespace Xanh {
                         credential_picker_bridge == tab.credential_bridge) {
                     cancel_credential_picker ();
                 }
+                if (event == WebKit.LoadEvent.STARTED &&
+                        pending_permission_tab == tab) {
+                    cancel_permission_request ();
+                }
                 if (event == WebKit.LoadEvent.COMMITTED) {
                     tab.recovery.record_committed_uri (tab.view.uri);
                 }
@@ -570,12 +582,14 @@ namespace Xanh {
                 return true;
             });
             tab.view.permission_request.connect ((request) => {
-                ask_permission.begin (tab, request);
+                handle_permission_request (tab, request);
                 return true;
             });
             tab.view.web_process_terminated.connect ((reason) => {
                 if (credential_picker_bridge == tab.credential_bridge)
                     cancel_credential_picker ();
+                if (pending_permission_tab == tab)
+                    cancel_permission_request ();
                 tab.recovery.record_termination ();
                 tab.state.recovery_uri = tab.recovery.recovery_uri;
                 show_process_stopped (tab);
@@ -588,19 +602,133 @@ namespace Xanh {
             });
         }
 
-        async void ask_permission (TabRecord tab, WebKit.PermissionRequest request) {
+        void handle_permission_request (TabRecord tab, WebKit.PermissionRequest request) {
+            cancel_permission_request ();
+            string? document_uri = tab.view.uri;
+            string? capability = permission_capability (request, document_uri);
+            if (capability == null || !permission_context_is_current (tab, document_uri)) {
+                request.deny ();
+                status.label = "Website permission denied";
+                return;
+            }
+
+            permission_generation++;
+            uint64 generation = permission_generation;
+            pending_permission_request = request;
+            pending_permission_tab = tab;
+            pending_permission_document_uri = document_uri;
+            pending_permission_cancellable = new Cancellable ();
+            pending_permission_timeout_source = Timeout.add_seconds (30, () => {
+                if (generation == permission_generation) {
+                    pending_permission_timeout_source = 0;
+                    cancel_permission_request ();
+                }
+                return Source.REMOVE;
+            });
+            ask_permission.begin (tab, request, document_uri, capability, generation);
+        }
+
+        async void ask_permission (TabRecord tab, WebKit.PermissionRequest request,
+                string document_uri, string capability, uint64 generation) {
+            string? origin = PermissionPolicy.display_origin (document_uri);
+            if (origin == null) {
+                cancel_permission_request ();
+                return;
+            }
             var dialog = new Gtk.AlertDialog ("Allow website permission?");
-            dialog.detail = "%s is requesting access to a protected browser capability."
-                .printf (tab.state.uri);
-            dialog.buttons = { "Deny", "Allow once" };
+            dialog.detail = "%s wants to %s. Xanh will not remember this decision after navigation."
+                .printf (origin, capability);
+            dialog.buttons = { "Deny", "Allow on This Page" };
             dialog.cancel_button = 0;
             dialog.default_button = 0;
+            int choice = 0;
             try {
-                if ((yield dialog.choose (this, null)) == 1) request.allow ();
-                else request.deny ();
+                choice = yield dialog.choose (this, pending_permission_cancellable);
             } catch (Error error) {
-                request.deny ();
+                choice = 0;
             }
+            if (generation != permission_generation ||
+                    pending_permission_request != request ||
+                    pending_permission_document_uri != document_uri) {
+                return;
+            }
+            if (!permission_context_is_current (tab, document_uri)) {
+                finish_permission_request (false);
+                return;
+            }
+            finish_permission_request (choice == 1);
+        }
+
+        string? permission_capability (WebKit.PermissionRequest request,
+                string? document_uri) {
+            var media = request as WebKit.UserMediaPermissionRequest;
+            if (media != null) {
+                if (WebKit.user_media_permission_is_for_display_device (media) &&
+                        media.is_for_audio_device)
+                    return "share your screen and audio";
+                if (WebKit.user_media_permission_is_for_display_device (media))
+                    return "share your screen";
+                if (media.is_for_audio_device && media.is_for_video_device)
+                    return "use your camera and microphone";
+                if (media.is_for_video_device) return "use your camera";
+                if (media.is_for_audio_device) return "use your microphone";
+                return null;
+            }
+            if (request is WebKit.GeolocationPermissionRequest)
+                return "access your location";
+            if (request is WebKit.DeviceInfoPermissionRequest)
+                return "list available camera and microphone devices";
+            if (request is WebKit.PointerLockPermissionRequest)
+                return "lock the pointer inside this page";
+            var storage = request as WebKit.WebsiteDataAccessPermissionRequest;
+            if (storage != null && document_uri != null &&
+                    PermissionPolicy.storage_access_matches_document (
+                        document_uri, storage.get_current_domain (),
+                        storage.get_requesting_domain ())) {
+                return "let %s access its website data while you visit %s".printf (
+                    storage.get_requesting_domain (), storage.get_current_domain ());
+            }
+            return null;
+        }
+
+        bool permission_context_is_current (TabRecord tab, string? document_uri) {
+            var browser_application = application as BrowserApplication;
+            bool application_clear = browser_application != null &&
+                browser_application.is_browsing_data_clear_in_progress ();
+            return PermissionPolicy.is_prompt_context_current (
+                document_uri, tab.view.uri, is_active, active_tab () == tab,
+                tab.recovery.process_stopped, clearing_data || application_clear);
+        }
+
+        void finish_permission_request (bool allow) {
+            var request = pending_permission_request;
+            var cancellable = pending_permission_cancellable;
+            pending_permission_request = null;
+            pending_permission_tab = null;
+            pending_permission_document_uri = null;
+            pending_permission_cancellable = null;
+            permission_generation++;
+            if (pending_permission_timeout_source != 0) {
+                Source.remove (pending_permission_timeout_source);
+                pending_permission_timeout_source = 0;
+            }
+            cancellable?.cancel ();
+            if (request == null) return;
+            if (allow) {
+                request.allow ();
+                status.label = "Website permission allowed for this page";
+            } else {
+                request.deny ();
+                status.label = "Website permission denied";
+            }
+        }
+
+        void cancel_permission_request (TabRecord? tab = null) {
+            if (pending_permission_request == null ||
+                    (tab != null && pending_permission_tab != tab)) {
+                return;
+            }
+            finish_permission_request (false);
         }
 
         async void show_tls_error (TabRecord tab, string uri, TlsCertificate tls,
@@ -681,6 +809,7 @@ namespace Xanh {
         void begin_explicit_navigation (TabRecord tab) {
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
+            cancel_permission_request (tab);
             tab.recovery.reset_for_explicit_navigation ();
             tab.state.recovery_uri = null;
         }
@@ -749,6 +878,7 @@ namespace Xanh {
             if (tab == null) return;
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
+            cancel_permission_request (tab);
             disconnect_tab_bridges (tab);
             int page = notebook.page_num (tab.view);
             if (page >= 0) notebook.remove_page (page);
@@ -808,6 +938,7 @@ namespace Xanh {
 
         bool on_close_request () {
             cancel_credential_picker ();
+            cancel_permission_request ();
             tabs.foreach ((id, tab) => disconnect_tab_bridges (tab));
             if (session_save_source != 0) {
                 Source.remove (session_save_source);
@@ -1391,6 +1522,7 @@ namespace Xanh {
         void prepare_for_data_clear () {
             clearing_data = true;
             cancel_credential_picker ();
+            cancel_permission_request ();
             tabs.foreach ((id, tab) => tab.view.stop_loading ());
         }
 

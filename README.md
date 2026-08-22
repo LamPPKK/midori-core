@@ -91,6 +91,18 @@ valid allowlisted URI in the address bar is also an explicit handoff. Private
 tabs use the same policy, so an approved handoff intentionally discloses that
 URI to the selected external application.
 
+Powerful-feature permissions on Linux are deny-by-default. Camera, microphone,
+display capture, geolocation, device enumeration, pointer lock and a validated
+third-party Storage Access request may show a native **Allow on This Page**
+prompt only for the exact current HTTPS document in the selected tab of the
+active window.
+The request is revalidated after the prompt and is denied on navigation, tab
+switch/close, focus loss, renderer termination, data clearing, replacement by a
+new prompt or a 30-second timeout. Notifications, DRM key systems, clipboard,
+XR and unknown request types remain denied until they have dedicated UI and
+origin/lifecycle handling. Private tabs use the same one-request policy without
+persisting a Xanh decision across navigation.
+
 ### Build and test
 
 ```sh
@@ -339,6 +351,10 @@ and device/security evidence pass the WPE release gate.
   and exact `about:blank` stay in WebKit; an allowlisted external scheme needs
   either explicit address-bar activation or a trusted active-top-frame event
   from the named isolated bridge, followed by host-side URI/document checks.
+- Linux powerful-feature permissions are HTTPS-only, native-confirmed and
+  scoped to one still-current request. Unsupported request classes are denied,
+  while navigation, tab/window lifecycle, renderer loss, privacy clearing and
+  timeout all cancel a pending prompt.
 - Apple editions use only the system WebKit data stores, keep their gated
   credential bridge in an isolated content world and use a nonpersistent store
   without that bridge for private tabs; macOS runs in the App Sandbox. Web and

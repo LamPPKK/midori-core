@@ -1,0 +1,657 @@
+diff --git a/tools/scripts/bootstrap.py b/tools/scripts/bootstrap.py
+--- a/tools/scripts/bootstrap.py
++++ b/tools/scripts/bootstrap.py
+@@ -81,10 +81,12 @@ from urllib.request import urlretrieve
+ 
+ class Bootstrap:
+     default_arch = "arm64"
+-    default_version = "2.50.6"
++    default_version = "2.52.6"
+ 
+     _cerbero_origin = "https://github.com/Igalia/wpe-android-cerbero.git"
+-    _cerbero_branch = "main"
++    _cerbero_revision = "5e73f46751c7f7a4c7200ca0c86d950982db5ea6"
++    _pinned_wpewebkit_version = "2.52.6"
++    _wpewebkit_checksum = "b2bafef2751625b7fdf530f230ff0f542ff0eeba3590c3a989d931b2a55c858e"
+ 
+     _packages_url_template = "https://wpewebkit.org/android/bootstrap/{version}/{filename}"
+     _devel_package_name_template = "wpewebkit-android-{arch}-{version}.tar.xz"
+@@ -232,15 +234,20 @@ class Bootstrap:
+             raise Exception("Illegal configuration: build mode is not specified")
+ 
+         if os.path.isdir(self._cerbero_root_dir):
+-            print("Updating Cerbero git repository...")
+-            subprocess.check_call(
+-                ["git", "reset", "--hard", f"origin/{self._cerbero_branch}"], cwd=self._cerbero_root_dir)
+-            subprocess.check_call(["git", "pull", "origin", self._cerbero_branch], cwd=self._cerbero_root_dir)
++            revision = subprocess.check_output(
++                ["git", "rev-parse", "HEAD"], cwd=self._cerbero_root_dir, encoding="utf-8").strip()
++            if revision != self._cerbero_revision:
++                raise RuntimeError(
++                    f"Cerbero checkout must remain pinned to {self._cerbero_revision}; found {revision}")
+         else:
+-            print("Cloning Cerbero git repository...")
++            print("Cloning pinned Cerbero git repository...")
+             os.makedirs(self._project_build_dir, exist_ok=True)
+-            subprocess.check_call(["git", "clone", "--branch", self._cerbero_branch,
+-                                  self._cerbero_origin, "cerbero"], cwd=self._project_build_dir)
++            subprocess.check_call(
++                ["git", "clone", "--no-checkout", self._cerbero_origin, "cerbero"], cwd=self._project_build_dir)
++            subprocess.check_call(
++                ["git", "checkout", "--detach", self._cerbero_revision], cwd=self._cerbero_root_dir)
++
++        self._patch_pinned_cerbero()
+ 
+         try:
+             subprocess.check_call(self._cerbero_command_args + ["bootstrap"])
+@@ -249,6 +256,41 @@ class Bootstrap:
+         if self._debug:
+             self._patch_wpewebkit_recipe_for_debug_build()
+ 
++    def _patch_pinned_cerbero(self):
++        replacements = {
++            os.path.join("recipes", "wpewebkit.recipe"): [
++                ("version = '2.51.93'", f"version = '{self._pinned_wpewebkit_version}'"),
++                ("1916e4605281faf2b241d8053b06c3678bc1ac234fc0fe543f3a0e729aecfa61",
++                 self._wpewebkit_checksum),
++            ],
++            os.path.join("packages", "wpewebkit.package"): [
++                ("version = '2.51.93'", f"version = '{self._pinned_wpewebkit_version}'"),
++            ],
++            os.path.join("packages", "wpewebkit-core.package"): [
++                ("version = '2.51.93'", f"version = '{self._pinned_wpewebkit_version}'"),
++            ],
++            os.path.join("config", "android.config"): [
++                ("-Wl,--warn-shared-textrel,--undefined-version '",
++                 "-Wl,--warn-shared-textrel,--undefined-version "
++                 "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 '"),
++            ],
++        }
++        for relative_path, edits in replacements.items():
++            path = os.path.join(self._cerbero_root_dir, relative_path)
++            with open(path, encoding="utf-8") as source_file:
++                contents = source_file.read()
++            changed = False
++            for original, replacement in edits:
++                if replacement in contents:
++                    continue
++                if contents.count(original) != 1:
++                    raise RuntimeError(f"Pinned Cerbero input drifted: {relative_path}")
++                contents = contents.replace(original, replacement, 1)
++                changed = True
++            if changed:
++                with open(path, "w", encoding="utf-8", newline="") as source_file:
++                    source_file.write(contents)
++
+     def build_deps(self):
+         if not self._build:
+             raise Exception("Illegal configuration: build mode is not specified")
+@@ -517,7 +559,8 @@ class Bootstrap:
+             self.ensure_cerbero()
+             version = self.build_deps()
+         else:
+-            self.download_all_packages(version)
++            raise RuntimeError(
++                "No official WPE Android bootstrap package exists for 2.52.6; rerun with --build on Linux")
+         self.extract_deps(version)
+         self.install_deps()
+ 
+diff --git a/wpeview/src/main/cpp/CMakeLists.txt b/wpeview/src/main/cpp/CMakeLists.txt
+--- a/wpeview/src/main/cpp/CMakeLists.txt
++++ b/wpeview/src/main/cpp/CMakeLists.txt
+@@ -25,6 +25,9 @@ endif()
+ 
+ function(target_configure_quality TARGET_NAME)
+     set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS OFF)
++    target_link_options(
++        ${TARGET_NAME}
++        PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
+     if(CLANG_TIDY_EXE)
+         set_target_properties(${TARGET_NAME} PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+     endif()
+diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.cpp b/wpeview/src/main/cpp/Runtime/WKWebView.cpp
+--- a/wpeview/src/main/cpp/Runtime/WKWebView.cpp
++++ b/wpeview/src/main/cpp/Runtime/WKWebView.cpp
+@@ -29,6 +29,7 @@
+ #include "WKWebContext.h"
+ 
+ #include <android/native_window_jni.h>
++#include <cstring>
+ #include <libsoup/soup.h>
+ #include <unistd.h>
+ #include <wpe-android/view-backend.h>
+@@ -42,6 +43,57 @@ void handleCommitBuffer(void* context, WPEAndroidBuffer* buffer, int fenceID)
+ }
+ 
+ const int httpErrorsStart = 400;
++constexpr size_t maxBridgeSourceBytes = 256 * 1024;
++constexpr size_t maxFunctionBodyBytes = 64 * 1024;
++constexpr size_t maxArgumentValueBytes = 16 * 1024;
++constexpr size_t maxBridgeMessageBytes = 64 * 1024;
++constexpr size_t maxArguments = 16;
++
++bool isBridgeName(const char* value) noexcept
++{
++    if (!value || !g_ascii_isalpha(*value))
++        return false;
++    size_t length = 1;
++    for (const char* current = value + 1; *current; ++current, ++length) {
++        if (length >= 64 || (!g_ascii_isalnum(*current) && *current != '_'))
++            return false;
++    }
++    return length <= 64;
++}
++
++bool isArgumentName(const char* value) noexcept
++{
++    if (!value || (!g_ascii_isalpha(*value) && *value != '_' && *value != '$'))
++        return false;
++    size_t length = 1;
++    for (const char* current = value + 1; *current; ++current, ++length) {
++        if (length >= 64)
++            return false;
++        if (!g_ascii_isalnum(*current) && *current != '_' && *current != '$')
++            return false;
++    }
++    return length <= 64;
++}
++
++bool javaStringToUtf8(JNIEnv* env, jstring input, std::string& output) noexcept
++{
++    if (!env || !input)
++        return false;
++    jsize length = env->GetStringLength(input);
++    const jchar* characters = env->GetStringChars(input, nullptr);
++    if (!characters)
++        return false;
++    GError* error = nullptr;
++    g_autofree gchar* utf8 = g_utf16_to_utf8(
++        reinterpret_cast<const gunichar2*>(characters), length, nullptr, nullptr, &error);
++    env->ReleaseStringChars(input, characters);
++    if (!utf8) {
++        g_clear_error(&error);
++        return false;
++    }
++    output.assign(utf8);
++    return true;
++}
+ 
+ class SslErrorHandler final {
+ public:
+@@ -337,6 +389,22 @@ public:
+ 
+     void onInputMethodContextOut(jobject obj) const noexcept { callJavaMethod(m_onInputMethodContextOut, obj); }
+ 
++    static void onIsolatedScriptMessage(WebKitUserContentManager*, WebKitJavascriptResult* result,
++        WKWebView* wkWebView) noexcept
++    {
++        if (!result || !wkWebView)
++            return;
++        JSCValue* value = webkit_javascript_result_get_js_value(result);
++        if (!value || !jsc_value_is_string(value))
++            return;
++        g_autofree gchar* message = jsc_value_to_string(value);
++        if (!message || strlen(message) > maxBridgeMessageBytes)
++            return;
++        auto javaMessage = JNI::String(message);
++        callJavaMethod(getJNIPageCache().m_onIsolatedScriptMessage, wkWebView->m_webViewJavaInstance.get(),
++            static_cast<jstring>(javaMessage));
++    }
++
+     static void onEvaluateJavascriptReady(WebKitWebView* webView, GAsyncResult* result, JNIWKCallback callback) noexcept
+     {
+         GError* error = nullptr;
+@@ -365,6 +433,33 @@ public:
+         }
+     }
+ 
++    static void onCallIsolatedJavascriptReady(
++        WebKitWebView* webView, GAsyncResult* result, JNIWKCallback callback) noexcept
++    {
++        GError* error = nullptr;
++        JSCValue* value = webkit_web_view_call_async_javascript_function_finish(webView, result, &error);
++        if (value == nullptr) {
++            g_clear_error(&error);
++            WKCallback::onStringResult(callback, nullptr);
++        } else {
++            JSCException* exception = jsc_context_get_exception(jsc_value_get_context(value));
++            if (exception != nullptr || jsc_value_is_null(value) == TRUE || jsc_value_is_undefined(value) == TRUE) {
++                WKCallback::onStringResult(callback, JNI::String("null"));
++            } else {
++                g_autofree gchar* stringValue = jsc_value_to_json(value, 0);
++                WKCallback::onStringResult(callback, JNI::String(stringValue));
++            }
++            g_object_unref(value);
++        }
++
++        try {
++            JNIEnv* env = JNI::getCurrentThreadJNIEnv();
++            env->DeleteGlobalRef(callback);
++        } catch (const std::exception& ex) {
++            Logging::logError("Failed to release isolated-world WKCallback reference (%s)", ex.what());
++        }
++    }
++
+ private:
+     template <typename T, typename... Args>
+     static void callJavaMethod(const JNI::Method<T> method, jobject obj, Args&&... args) noexcept
+@@ -388,6 +483,7 @@ private:
+     const JNI::Method<jboolean(jstring, jstring, jintArray, jlong)> m_onReceivedSslError;
+     const JNI::Method<void()> m_onEnterFullscreenMode;
+     const JNI::Method<void()> m_onExitFullscreenMode;
++    const JNI::Method<void(jstring)> m_onIsolatedScriptMessage;
+     const JNI::Method<void(jstring, jstring, jstringArray, jstring, jint, jstringArray)> m_onReceivedHttpError;
+     // NOLINTEND(cppcoreguidelines-avoid-const-or-ref-data-members)
+ 
+@@ -415,6 +511,11 @@ private:
+     static void nativeRequestExitFullscreenMode(JNIEnv* env, jobject obj, jlong wkWebViewPtr) noexcept;
+     static void nativeEvaluateJavascript(
+         JNIEnv* env, jobject obj, jlong wkWebViewPtr, jstring script, JNIWKCallback callback) noexcept;
++    static jboolean nativeInstallIsolatedBridge(JNIEnv* env, jobject obj, jlong wkWebViewPtr, jstring source,
++        jstring worldName, jstring handlerName) noexcept;
++    static void nativeRemoveIsolatedBridge(JNIEnv* env, jobject obj, jlong wkWebViewPtr) noexcept;
++    static void nativeCallIsolatedJavascriptFunction(JNIEnv* env, jobject obj, jlong wkWebViewPtr, jstring body,
++        jstringArray argumentNames, jstringArray argumentValues, jstring worldName, JNIWKCallback callback) noexcept;
+     static void nativeScriptDialogClose(JNIEnv* env, jobject obj, jlong dialogPtr) noexcept;
+     static void nativeScriptDialogConfirm(
+         JNIEnv* env, jobject obj, jlong dialogPtr, jboolean confirm, jstring text) noexcept;
+@@ -443,6 +544,7 @@ JNIWKWebViewCache::JNIWKWebViewCache()
+     , m_onReceivedSslError(getMethod<jboolean(jstring, jstring, jintArray, jlong)>("onReceivedSslError"))
+     , m_onEnterFullscreenMode(getMethod<void()>("onEnterFullscreenMode"))
+     , m_onExitFullscreenMode(getMethod<void()>("onExitFullscreenMode"))
++    , m_onIsolatedScriptMessage(getMethod<void(jstring)>("onIsolatedScriptMessage"))
+     , m_onReceivedHttpError(
+           getMethod<void(jstring, jstring, jstringArray, jstring, jint, jstringArray)>("onReceivedHttpError"))
+ {
+@@ -474,6 +576,12 @@ JNIWKWebViewCache::JNIWKWebViewCache()
+             "nativeRequestExitFullscreenMode", JNIWKWebViewCache::nativeRequestExitFullscreenMode),
+         JNI::NativeMethod<void(jlong, jstring, JNIWKCallback)>(
+             "nativeEvaluateJavascript", JNIWKWebViewCache::nativeEvaluateJavascript),
++        JNI::NativeMethod<jboolean(jlong, jstring, jstring, jstring)>(
++            "nativeInstallIsolatedBridge", JNIWKWebViewCache::nativeInstallIsolatedBridge),
++        JNI::NativeMethod<void(jlong)>(
++            "nativeRemoveIsolatedBridge", JNIWKWebViewCache::nativeRemoveIsolatedBridge),
++        JNI::NativeMethod<void(jlong, jstring, jstringArray, jstringArray, jstring, JNIWKCallback)>(
++            "nativeCallIsolatedJavascriptFunction", JNIWKWebViewCache::nativeCallIsolatedJavascriptFunction),
+         JNI::NativeMethod<void(jlong)>("nativeScriptDialogClose", JNIWKWebViewCache::nativeScriptDialogClose),
+         JNI::NativeMethod<void(jlong, jboolean, jstring)>(
+             "nativeScriptDialogConfirm", JNIWKWebViewCache::nativeScriptDialogConfirm),
+@@ -720,6 +828,116 @@ void JNIWKWebViewCache::nativeEvaluateJavascript(
+     }
+ }
+ 
++jboolean JNIWKWebViewCache::nativeInstallIsolatedBridge(JNIEnv* env, jobject /*obj*/, jlong wkWebViewPtr,
++    jstring source, jstring worldName, jstring handlerName) noexcept
++{
++    auto* wkWebView = reinterpret_cast<WKWebView*>(wkWebViewPtr); // NOLINT(performance-no-int-to-ptr)
++    if (!wkWebView || !wkWebView->m_userContentManager)
++        return JNI_FALSE;
++
++    std::string sourceUtf8;
++    std::string worldUtf8;
++    std::string handlerUtf8;
++    if (!javaStringToUtf8(env, source, sourceUtf8) || !javaStringToUtf8(env, worldName, worldUtf8)
++        || !javaStringToUtf8(env, handlerName, handlerUtf8) || sourceUtf8.size() > maxBridgeSourceBytes
++        || !isBridgeName(worldUtf8.c_str()) || !isBridgeName(handlerUtf8.c_str()))
++        return JNI_FALSE;
++
++    wkWebView->removeIsolatedBridge();
++    g_autofree gchar* signalName = g_strdup_printf("script-message-received::%s", handlerUtf8.c_str());
++    gulong signal = g_signal_connect(wkWebView->m_userContentManager, signalName,
++        G_CALLBACK(JNIWKWebViewCache::onIsolatedScriptMessage), wkWebView);
++    if (!signal || !webkit_user_content_manager_register_script_message_handler_in_world(
++                       wkWebView->m_userContentManager, handlerUtf8.c_str(), worldUtf8.c_str())) {
++        if (signal)
++            g_signal_handler_disconnect(wkWebView->m_userContentManager, signal);
++        return JNI_FALSE;
++    }
++
++    const gchar* allowedSchemes[] = {"http://*/*", "https://*/*", nullptr};
++    WebKitUserScript* script = webkit_user_script_new_for_world(sourceUtf8.c_str(),
++        WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, worldUtf8.c_str(),
++        allowedSchemes, nullptr);
++    if (!script) {
++        g_signal_handler_disconnect(wkWebView->m_userContentManager, signal);
++        webkit_user_content_manager_unregister_script_message_handler_in_world(
++            wkWebView->m_userContentManager, handlerUtf8.c_str(), worldUtf8.c_str());
++        return JNI_FALSE;
++    }
++
++    webkit_user_content_manager_add_script(wkWebView->m_userContentManager, script);
++    wkWebView->m_isolatedUserScript = script;
++    wkWebView->m_isolatedMessageSignal = signal;
++    wkWebView->m_isolatedWorldName = worldUtf8;
++    wkWebView->m_isolatedHandlerName = handlerUtf8;
++    return JNI_TRUE;
++}
++
++void JNIWKWebViewCache::nativeRemoveIsolatedBridge(
++    JNIEnv* /*env*/, jobject /*obj*/, jlong wkWebViewPtr) noexcept
++{
++    auto* wkWebView = reinterpret_cast<WKWebView*>(wkWebViewPtr); // NOLINT(performance-no-int-to-ptr)
++    if (wkWebView)
++        wkWebView->removeIsolatedBridge();
++}
++
++void JNIWKWebViewCache::nativeCallIsolatedJavascriptFunction(JNIEnv* env, jobject /*obj*/, jlong wkWebViewPtr,
++    jstring body, jstringArray argumentNames, jstringArray argumentValues, jstring worldName,
++    JNIWKCallback callback) noexcept
++{
++    auto reject = [callback]() {
++        if (callback)
++            WKCallback::onStringResult(callback, nullptr);
++    };
++    auto* wkWebView = reinterpret_cast<WKWebView*>(wkWebViewPtr); // NOLINT(performance-no-int-to-ptr)
++    if (!wkWebView || !wkWebView->m_webView || !wkWebView->m_isolatedUserScript || !argumentNames
++        || !argumentValues) {
++        reject();
++        return;
++    }
++
++    std::string bodyUtf8;
++    std::string worldUtf8;
++    jsize nameCount = env->GetArrayLength(argumentNames);
++    jsize valueCount = env->GetArrayLength(argumentValues);
++    if (!javaStringToUtf8(env, body, bodyUtf8) || !javaStringToUtf8(env, worldName, worldUtf8)
++        || bodyUtf8.size() > maxFunctionBodyBytes || worldUtf8 != wkWebView->m_isolatedWorldName
++        || nameCount != valueCount || nameCount < 0 || static_cast<size_t>(nameCount) > maxArguments) {
++        reject();
++        return;
++    }
++
++    GVariantBuilder builder;
++    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
++    for (jsize index = 0; index < nameCount; ++index) {
++        auto name = static_cast<jstring>(
++            env->GetObjectArrayElement(reinterpret_cast<jobjectArray>(argumentNames), index));
++        auto value = static_cast<jstring>(
++            env->GetObjectArrayElement(reinterpret_cast<jobjectArray>(argumentValues), index));
++        std::string nameUtf8;
++        std::string valueUtf8;
++        bool valid = javaStringToUtf8(env, name, nameUtf8) && javaStringToUtf8(env, value, valueUtf8)
++            && isArgumentName(nameUtf8.c_str()) && valueUtf8.size() <= maxArgumentValueBytes;
++        env->DeleteLocalRef(name);
++        env->DeleteLocalRef(value);
++        if (!valid) {
++            g_variant_builder_clear(&builder);
++            reject();
++            return;
++        }
++        g_variant_builder_add(&builder, "{sv}", nameUtf8.c_str(), g_variant_new_string(valueUtf8.c_str()));
++    }
++    g_autoptr(GVariant) arguments = g_variant_ref_sink(g_variant_builder_end(&builder));
++    JNIWKCallback globalCallback
++        = callback ? reinterpret_cast<JNIWKCallback>(env->NewGlobalRef(callback)) : nullptr;
++    if (callback && !globalCallback)
++        return;
++    webkit_web_view_call_async_javascript_function(wkWebView->m_webView, bodyUtf8.c_str(), -1, arguments,
++        worldUtf8.c_str(), "xanh-browser-wpe://isolated-bridge", nullptr,
++        globalCallback ? reinterpret_cast<GAsyncReadyCallback>(onCallIsolatedJavascriptReady) : nullptr,
++        globalCallback);
++}
++
+ void JNIWKWebViewCache::nativeScriptDialogClose(JNIEnv* /*env*/, jobject /*obj*/, jlong dialogPtr) noexcept
+ {
+     Logging::logDebug("WKWebView::nativeScriptDialogClose() [tid %d]", gettid());
+@@ -798,8 +1014,10 @@ WKWebView::WKWebView(JNIEnv* env, JNIWKWebView jniWKWebView, WKWebContext* wkWeb
+ 
+     gboolean const automationMode = wkWebContext->automationMode() ? TRUE : FALSE;
+ 
++    m_userContentManager = webkit_user_content_manager_new();
+     m_webView = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "backend", viewBackend, "web-context",
+-        wkWebContext->webContext(), "is-controlled-by-automation", automationMode, nullptr));
++        wkWebContext->webContext(), "user-content-manager", m_userContentManager, "is-controlled-by-automation",
++        automationMode, nullptr));
+     webkit_web_view_set_input_method_context(m_webView, m_inputMethodContext.webKitInputMethodContext());
+ 
+     m_signalHandlers.push_back(
+@@ -830,6 +1048,7 @@ WKWebView::WKWebView(JNIEnv* env, JNIWKWebView jniWKWebView, WKWebContext* wkWeb
+ 
+ void WKWebView::close() noexcept
+ {
++    removeIsolatedBridge();
+     if (m_webView != nullptr) {
+         // Ensure that renderer is destroyed first so that all pending commits will be cleared before page is gone
+         m_renderer.reset();
+@@ -846,6 +1065,28 @@ void WKWebView::close() noexcept
+         g_object_unref(m_webView);
+         m_webView = nullptr;
+     }
++    g_clear_object(&m_userContentManager);
++}
++
++void WKWebView::removeIsolatedBridge() noexcept
++{
++    if (!m_userContentManager)
++        return;
++    if (m_isolatedMessageSignal) {
++        g_signal_handler_disconnect(m_userContentManager, m_isolatedMessageSignal);
++        m_isolatedMessageSignal = 0;
++    }
++    if (!m_isolatedHandlerName.empty() && !m_isolatedWorldName.empty()) {
++        webkit_user_content_manager_unregister_script_message_handler_in_world(
++            m_userContentManager, m_isolatedHandlerName.c_str(), m_isolatedWorldName.c_str());
++    }
++    if (m_isolatedUserScript) {
++        webkit_user_content_manager_remove_script(m_userContentManager, m_isolatedUserScript);
++        webkit_user_script_unref(m_isolatedUserScript);
++        m_isolatedUserScript = nullptr;
++    }
++    m_isolatedWorldName.clear();
++    m_isolatedHandlerName.clear();
+ }
+ 
+ void WKWebView::onInputMethodContextIn() noexcept
+diff --git a/wpeview/src/main/cpp/Runtime/WKWebView.h b/wpeview/src/main/cpp/Runtime/WKWebView.h
+--- a/wpeview/src/main/cpp/Runtime/WKWebView.h
++++ b/wpeview/src/main/cpp/Runtime/WKWebView.h
+@@ -26,6 +26,7 @@
+ #include "JNI/JNI.h"
+ #include "Renderer.h"
+ 
++#include <string>
+ #include <vector>
+ 
+ DECLARE_JNI_CLASS_SIGNATURE(JNIWKWebView, "org/wpewebkit/wpe/WKWebView");
+@@ -45,6 +46,7 @@ public:
+     ~WKWebView() override { close(); }
+ 
+     void close() noexcept;
++    void removeIsolatedBridge() noexcept;
+ 
+     float deviceScale() const noexcept { return m_deviceScale; }
+     WebKitWebView* webView() const noexcept { return m_webView; }
+@@ -66,6 +68,11 @@ private:
+ 
+     WPEAndroidViewBackend* m_viewBackend = nullptr;
+     WebKitWebView* m_webView = nullptr;
++    WebKitUserContentManager* m_userContentManager = nullptr;
++    WebKitUserScript* m_isolatedUserScript = nullptr;
++    gulong m_isolatedMessageSignal = 0;
++    std::string m_isolatedWorldName;
++    std::string m_isolatedHandlerName;
+     std::vector<gulong> m_signalHandlers;
+     bool m_isFullscreenRequested = false;
+     bool m_isHeadless = false;
+diff --git a/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java b/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java
+--- a/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java
++++ b/wpeview/src/main/java/org/wpewebkit/wpe/WKWebView.java
+@@ -67,6 +67,7 @@ import java.security.cert.CertificateFactory;
+ import java.security.cert.X509Certificate;
+ import java.util.HashMap;
+ import java.util.Map;
++import java.util.regex.Pattern;
+ 
+ /**
+  * A WKWebView roughly corresponds with a tab in a regular browser UI.
+@@ -78,6 +79,12 @@ import java.util.Map;
+ @UiThread
+ public final class WKWebView {
+     private static final String LOGTAG = "WKWebView";
++    private static final int MAX_BRIDGE_SOURCE_BYTES = 256 * 1024;
++    private static final int MAX_FUNCTION_BODY_BYTES = 64 * 1024;
++    private static final int MAX_ARGUMENT_VALUE_BYTES = 16 * 1024;
++    private static final int MAX_ARGUMENTS = 16;
++    private static final Pattern BRIDGE_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_]{0,63}");
++    private static final Pattern ARGUMENT_NAME = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]{0,63}");
+ 
+     public static final int LOAD_STARTED = 0;
+     public static final int LOAD_REDIRECTED = 1;
+@@ -113,6 +120,7 @@ public final class WKWebView {
+     private boolean canGoBack = true;
+     private boolean canGoForward = true;
+     protected boolean ignoreTouchEvents = false;
++    private @Nullable IsolatedScriptMessageCallback isolatedScriptMessageCallback;
+ 
+     private static int kHeadlessWidth = 1080;
+     private static int kHeadlessHeight = 2274;
+@@ -175,6 +183,7 @@ public final class WKWebView {
+         // Make sure that we do not trigger any callbacks after destruction
+         wpeChromeClient = null;
+         wpeViewClient = null;
++        isolatedScriptMessageCallback = null;
+         if (nativePtr != 0) {
+             close();
+             nativeDestroy(nativePtr);
+@@ -243,6 +252,78 @@ public final class WKWebView {
+         nativeEvaluateJavascript(nativePtr, script, callback);
+     }
+ 
++    @FunctionalInterface
++    public interface IsolatedScriptMessageCallback {
++        void onMessage(@NonNull String message);
++    }
++
++    public boolean installIsolatedBridge(@NonNull String source, @NonNull String worldName,
++                                         @NonNull String handlerName,
++                                         @NonNull IsolatedScriptMessageCallback callback) {
++        requireBoundedUtf8(source, MAX_BRIDGE_SOURCE_BYTES, "Bridge source");
++        requireBridgeName(worldName, "World name");
++        requireBridgeName(handlerName, "Handler name");
++        if (nativePtr == 0)
++            return false;
++        isolatedScriptMessageCallback = callback;
++        boolean installed = nativeInstallIsolatedBridge(nativePtr, source, worldName, handlerName);
++        if (!installed)
++            isolatedScriptMessageCallback = null;
++        return installed;
++    }
++
++    public void removeIsolatedBridge() {
++        if (nativePtr != 0)
++            nativeRemoveIsolatedBridge(nativePtr);
++        isolatedScriptMessageCallback = null;
++    }
++
++    public void callIsolatedJavascriptFunction(@NonNull String body, @NonNull Map<String, String> arguments,
++                                               @NonNull String worldName,
++                                               @Nullable WKCallback<String> callback) {
++        requireBoundedUtf8(body, MAX_FUNCTION_BODY_BYTES, "Function body");
++        requireBridgeName(worldName, "World name");
++        if (arguments.size() > MAX_ARGUMENTS)
++            throw new IllegalArgumentException("Too many isolated-world arguments");
++
++        String[] names = new String[arguments.size()];
++        String[] values = new String[arguments.size()];
++        int index = 0;
++        for (Map.Entry<String, String> entry : arguments.entrySet()) {
++            if (entry.getKey() == null || !ARGUMENT_NAME.matcher(entry.getKey()).matches())
++                throw new IllegalArgumentException("Invalid JavaScript argument name");
++            if (entry.getValue() == null)
++                throw new IllegalArgumentException("JavaScript argument value must not be null");
++            requireBoundedUtf8(entry.getValue(), MAX_ARGUMENT_VALUE_BYTES, "Argument value");
++            names[index] = entry.getKey();
++            values[index] = entry.getValue();
++            index++;
++        }
++        if (nativePtr == 0) {
++            if (callback != null)
++                callback.onResult(null);
++            return;
++        }
++        nativeCallIsolatedJavascriptFunction(nativePtr, body, names, values, worldName, callback);
++    }
++
++    private static void requireBridgeName(@NonNull String value, @NonNull String label) {
++        if (!BRIDGE_NAME.matcher(value).matches())
++            throw new IllegalArgumentException(label + " is invalid");
++    }
++
++    private static void requireBoundedUtf8(@NonNull String value, int maximum, @NonNull String label) {
++        if (value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > maximum)
++            throw new IllegalArgumentException(label + " is too large");
++    }
++
++    @Keep
++    private void onIsolatedScriptMessage(@NonNull String message) {
++        IsolatedScriptMessageCallback current = isolatedScriptMessageCallback;
++        if (current != null)
++            new Handler(Looper.getMainLooper()).post(() -> current.onMessage(message));
++    }
++
+     public void setTLSErrorsPolicy(int policy) {
+         if ((policy == WEBKIT_TLS_ERRORS_POLICY_IGNORE) || (policy == WEBKIT_TLS_ERRORS_POLICY_FAIL)) {
+             nativeSetTLSErrorsPolicy(nativePtr, policy);
+@@ -740,6 +821,12 @@ public final class WKWebView {
+     private native void nativeDeleteInputMethodContent(long nativePtr, int offset);
+     private native void nativeRequestExitFullscreenMode(long nativePtr);
+     private native void nativeEvaluateJavascript(long nativePtr, String script, WKCallback<String> callback);
++    private native boolean nativeInstallIsolatedBridge(long nativePtr, String source, String worldName,
++                                                       String handlerName);
++    private native void nativeRemoveIsolatedBridge(long nativePtr);
++    private native void nativeCallIsolatedJavascriptFunction(long nativePtr, String body, String[] argumentNames,
++                                                             String[] argumentValues, String worldName,
++                                                             WKCallback<String> callback);
+     private native void nativeScriptDialogClose(long nativeDialogPtr);
+     private native void nativeScriptDialogConfirm(long nativeDialogPtr, boolean confirm, @Nullable String text);
+     private native void nativeSetTLSErrorsPolicy(long nativePtr, int policy);
+diff --git a/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java b/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java
+--- a/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java
++++ b/wpeview/src/main/java/org/wpewebkit/wpeview/WPEView.java
+@@ -38,6 +38,8 @@ import org.wpewebkit.wpe.WKCallback;
+ import org.wpewebkit.wpe.WKRuntime;
+ import org.wpewebkit.wpe.WKWebView;
+ 
++import java.util.Map;
++
+ /**
+  * WPEView wraps WPE WebKit browser engine in a reusable Android library.
+  * WPEView serves a similar purpose as the Android built-in WebView and tries to mimic
+@@ -270,6 +272,37 @@ public class WPEView extends FrameLayout {
+         wkWebView.evaluateJavascript(script, WKCallback.fromWPECallback(resultCallback));
+     }
+ 
++    /** Receives string messages from a named, isolated WebKit script world. */
++    @FunctionalInterface
++    public interface IsolatedScriptMessageCallback {
++        void onMessage(@NonNull String message);
++    }
++
++    /**
++     * Installs one document-start, main-frame-only script and message handler in a named world.
++     * A view intentionally supports one bridge at a time so embedders cannot accidentally leave
++     * privileged handlers registered across feature lifecycles.
++     */
++    public boolean installIsolatedBridge(@NonNull String source, @NonNull String worldName,
++                                         @NonNull String handlerName,
++                                         @NonNull IsolatedScriptMessageCallback callback) {
++        return wkWebView.installIsolatedBridge(source, worldName, handlerName, callback::onMessage);
++    }
++
++    /** Removes the isolated script and message handler, if one is installed. */
++    public void removeIsolatedBridge() { wkWebView.removeIsolatedBridge(); }
++
++    /**
++     * Calls a JavaScript function body in the installed isolated world. Arguments are transferred
++     * as WebKit typed strings rather than interpolated into source code.
++     */
++    public void callIsolatedJavascriptFunction(@NonNull String body, @NonNull Map<String, String> arguments,
++                                               @NonNull String worldName,
++                                               @Nullable WPECallback<String> resultCallback) {
++        wkWebView.callIsolatedJavascriptFunction(
++            body, arguments, worldName, WKCallback.fromWPECallback(resultCallback));
++    }
++
+     /**
+      * Return the WPESettings object used to control the settings for this
+      * WPEView.

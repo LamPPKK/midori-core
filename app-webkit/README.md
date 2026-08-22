@@ -35,6 +35,21 @@ values are provided. The guarded `bundleWebKitProductionRelease` task also
 blocks publishing while the pinned WPE artifact is below the repository's
 engine and 16 KiB page-alignment requirements.
 
+The reviewed source-fork contract lives in [`wpe-fork/`](wpe-fork/README.md).
+After building its AAR, use it in a verification build with an exact checksum:
+
+```sh
+./scripts/verify-android-16k.sh /absolute/path/to/wpeview-release.aar
+./gradlew --no-daemon :app-webkit:assembleDebug \
+  -PxanhWpeForkAar=/absolute/path/to/wpeview-release.aar \
+  -PxanhWpeForkSha256=<sha256>
+```
+
+`XANH_WPE_FORK_AAR` and `XANH_WPE_FORK_SHA256` are the equivalent CI
+environment variables. The checksum is mandatory whenever the local fork AAR
+override is used, and the engine-information menu then reports the locked fork
+runtime rather than the Maven preview runtime.
+
 ## Preview limitations
 
 WPE Android is still an experimental embedding port. The current published
@@ -45,6 +60,13 @@ browser-flow testing. The required floor follows the
 [latest WPE stable release](https://wpewebkit.org/release/); wrapper availability
 is tracked separately through the
 [WPE Android releases](https://github.com/Igalia/wpe-android/releases).
+
+Because no official WPE Android 2.52.6 bootstrap package is published, the
+repository carries a pinned source delta that builds that stable runtime, adds
+16 KiB linker alignment and exposes a main-frame-only isolated script
+world/message bridge. This closes the source/API design gap, but production
+remains blocked until the resulting binaries and bridge pass the release
+evidence listed in [`../RELEASING.md`](../RELEASING.md).
 
 Any distributed artifact must also carry the required WebKit/WPEView and
 third-party license notices and satisfy the corresponding source-availability

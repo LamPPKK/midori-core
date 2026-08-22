@@ -131,6 +131,14 @@ engine versions are pinned in `app-webkit/WPEVIEW_VERSION` and
 Track reviewed wrapper releases on the
 [official WPE Android release page](https://github.com/Igalia/wpe-android/releases).
 
+The repository also carries a reproducible source-fork contract at
+[`app-webkit/wpe-fork/`](app-webkit/wpe-fork/README.md). It locks WPE Android
+and Cerbero revisions, upgrades the source-built engine to WPE WebKit 2.52.6,
+adds 16 KiB ELF alignment flags and supplies a bounded, main-frame-only bridge
+in a named isolated script world. It does not replace the Maven preview by
+default and does not open the production gate until the built AAR, bridge,
+devices, SBOM and security evidence have all been reviewed.
+
 ## Apple platforms
 
 The shared SwiftUI app provides multi-tab and private-tab browsing on macOS,

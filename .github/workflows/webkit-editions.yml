@@ -9,6 +9,20 @@ permissions:
   contents: read
 
 jobs:
+  wpe-android-fork-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Fetch locked WPE Android source
+        run: |
+          revision="$(cat app-webkit/wpe-fork/WPE_ANDROID_REVISION)"
+          git init _wpe_android
+          git -C _wpe_android remote add origin https://github.com/Igalia/wpe-android.git
+          git -C _wpe_android fetch --depth=1 origin "${revision}"
+          git -C _wpe_android checkout --detach FETCH_HEAD
+      - name: Verify Xanh source-fork contract
+        run: ./scripts/verify-wpe-android-fork.sh _wpe_android
+
   android-wpe:
     runs-on: ubuntu-latest
     steps:
@@ -41,6 +55,13 @@ jobs:
           if zipinfo -1 app-webkit/build/outputs/apk/debug/app-webkit-debug.apk | \
             grep -Eq '^lib/(armeabi-v7a|x86)/'; then
             echo 'Unexpected unsupported Android ABI' >&2
+            exit 1
+          fi
+      - name: Confirm published preview still fails the production 16 KiB gate
+        run: |
+          if ./scripts/verify-android-16k.sh \
+            app-webkit/build/outputs/apk/debug/app-webkit-debug.apk; then
+            echo 'Published WPEView preview unexpectedly passed; review and update the production gate' >&2
             exit 1
           fi
       - uses: actions/upload-artifact@v4

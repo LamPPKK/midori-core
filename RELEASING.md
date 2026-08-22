@@ -223,6 +223,24 @@ all native libraries pass the 16 KiB check and the guarded
 Bundle the reviewed WebKit/WPEView third-party notices and fulfill all source
 availability obligations before distribution.
 
+For the source-built candidate, use the exact revisions and patch in
+`app-webkit/wpe-fork/`. CI must first prove that the patch still applies to the
+locked WPE Android source. Build both arm64 and x86_64 AAR contents on Linux,
+then run `scripts/verify-android-16k.sh` on the final AAR and on the application
+artifact. Supply the following commit-bound files to
+`scripts/verify-sync-release.sh wpe`:
+
+- `XANH_WPE_FORK_BUILD_EVIDENCE`: source revisions, commands, toolchain and AAR
+  SHA-256;
+- `XANH_WPE_16K_EVIDENCE`: every packaged ELF and its LOAD alignment;
+- `XANH_WPE_BRIDGE_REVIEW_EVIDENCE`: isolated-world, top-frame, nonce/origin,
+  teardown and forged-message review;
+- `XANH_WPE_DEVICE_TEST_EVIDENCE`: API 31/36 arm64/x86_64 browser and Sync tests;
+- `XANH_WPE_SBOM_EVIDENCE`: SBOM, notices and reproducible source archive.
+
+These evidence paths supplement the existing fail-closed boolean gates; they
+do not turn a source patch or unsigned verification artifact into a release.
+
 ## 5. Validate Apple and Windows
 
 Before producing source artifacts, validate the new native editions.

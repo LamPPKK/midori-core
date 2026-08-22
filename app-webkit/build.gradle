@@ -16,6 +16,13 @@ def wpeViewVersion = file('WPEVIEW_VERSION').text.trim()
 def wpeRuntimeVersion = file('WPE_RUNTIME_VERSION').text.trim()
 def wpeProductionBaseline = rootProject.file('WEBKITGTK_MIN_VERSION').text.trim()
 def wpeRuntimeProductionReady = false
+def wpeForkAarPath = providers.gradleProperty('xanhWpeForkAar')
+    .orElse(providers.environmentVariable('XANH_WPE_FORK_AAR')).orNull
+def wpeForkAarSha256 = providers.gradleProperty('xanhWpeForkSha256')
+    .orElse(providers.environmentVariable('XANH_WPE_FORK_SHA256')).orNull
+def effectiveWpeRuntimeVersion = wpeForkAarPath
+    ? file('wpe-fork/WPE_RUNTIME_VERSION').text.trim()
+    : wpeRuntimeVersion
 
 def uploadStoreFile = providers.gradleProperty('xanhWebKitUploadStoreFile')
     .orElse(providers.environmentVariable('XANH_WEBKIT_KEYSTORE')).orNull
@@ -39,7 +46,8 @@ android {
         versionName = '1.0.0'
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
         resValue 'string', 'wpe_view_version', wpeViewVersion
-        resValue 'string', 'wpe_runtime_version', wpeRuntimeVersion
+        resValue 'string', 'wpe_runtime_version', effectiveWpeRuntimeVersion
+        buildConfigField 'boolean', 'XANH_WPE_SOURCE_FORK', (!!wpeForkAarPath).toString()
         buildConfigField 'boolean', 'XANH_SYNC_FEATURE_ENABLED', syncFeatureEnabled.toString()
         buildConfigField 'String', 'XANH_FXA_CLIENT_ID', '"' + syncClientId.replace('"', '\\"') + '"'
         buildConfigField 'boolean', 'XANH_FXA_PRODUCTION_APPROVED', syncProductionApproved.toString()
@@ -128,12 +136,48 @@ tasks.register('verifyWebKitReleaseSigning') {
 tasks.register('verifyWebKitProductionEngine') {
     doLast {
         if (!wpeRuntimeProductionReady) {
+            def engine = wpeForkAarPath
+                ? "source-fork candidate with WPE WebKit ${effectiveWpeRuntimeVersion}"
+                : "WPEView ${wpeViewVersion} with WPE WebKit ${wpeRuntimeVersion}"
             throw new GradleException(
-                "WPEView ${wpeViewVersion} embeds WPE WebKit ${wpeRuntimeVersion} and ships a native " +
-                    'library that is not 16 KiB page aligned. Keep this edition in preview until a ' +
-                    "WPEView release with WPE WebKit ${wpeProductionBaseline}+ and full 16 KiB alignment is verified."
+                "The ${engine} is not production-approved. Keep this edition in preview until " +
+                    "WPE WebKit ${wpeProductionBaseline}+, full 16 KiB alignment, isolated-bridge " +
+                    'device tests, SBOM and security evidence are verified.'
             )
         }
+    }
+}
+
+tasks.register('verifyWpeForkArtifact') {
+    doLast {
+        if (!wpeForkAarPath) return
+        def artifact = file(wpeForkAarPath)
+        if (!artifact.isFile()) {
+            throw new GradleException("Xanh WPE fork AAR does not exist: ${artifact}")
+        }
+        if (!wpeForkAarSha256 || !(wpeForkAarSha256 ==~ /[0-9a-fA-F]{64}/)) {
+            throw new GradleException(
+                'xanhWpeForkSha256 or XANH_WPE_FORK_SHA256 must contain the reviewed AAR SHA-256'
+            )
+        }
+        def digest = java.security.MessageDigest.getInstance('SHA-256')
+        artifact.withInputStream { input ->
+            byte[] buffer = new byte[64 * 1024]
+            int count
+            while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count)
+        }
+        def actual = digest.digest().encodeHex().toString()
+        if (!actual.equalsIgnoreCase(wpeForkAarSha256)) {
+            throw new GradleException(
+                "Xanh WPE fork AAR checksum mismatch: expected ${wpeForkAarSha256}, got ${actual}"
+            )
+        }
+    }
+}
+
+if (wpeForkAarPath) {
+    tasks.matching { it.name == 'preBuild' }.configureEach {
+        dependsOn 'verifyWpeForkArtifact'
     }
 }
 
@@ -149,6 +193,7 @@ dependencies {
     implementation project(':backup-core')
     implementation 'com.google.android.play:feature-delivery-ktx:2.1.0'
     implementation 'androidx.activity:activity-ktx:1.12.3'
+    implementation 'androidx.annotation:annotation:1.9.1'
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'androidx.biometric:biometric:1.1.0'
     implementation 'androidx.browser:browser:1.9.0'
@@ -156,7 +201,11 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
     implementation 'androidx.webkit:webkit:1.15.0'
     implementation 'com.google.android.material:material:1.13.0'
-    implementation "org.wpewebkit.wpeview:wpeview:${wpeViewVersion}"
+    if (wpeForkAarPath) {
+        implementation files(wpeForkAarPath)
+    } else {
+        implementation "org.wpewebkit.wpeview:wpeview:${wpeViewVersion}"
+    }
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'

@@ -252,8 +252,12 @@ Until every applicable item is recorded, Sync remains release-gated on that
 edition. A successful verification build is not permission to advertise
 Mozilla-hosted Firefox compatibility.
 
-WPE remains blocked while WPEView lacks an isolated document-start/message
-bridge and while every native library has not passed 16 KiB page-size checks.
+The published WPEView 0.3.3 artifact remains blocked because it lacks an
+isolated document-start/message bridge and not every native library passes
+16 KiB page-size checks. The pinned source delta in `app-webkit/wpe-fork/`
+implements the missing bridge against WPE WebKit 2.52.6, but it remains a
+candidate until the resulting AAR passes the build, ELF, device, SBOM and
+security evidence gates in `RELEASING.md`.
 WinCairo remains blocked until its isolated bridge, vault and packaged native
 core pass security tests. `scripts/verify-sync-release.sh` is a fail-closed
 mechanical prerequisite check, not an audit substitute. Its Linux production

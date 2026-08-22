@@ -82,6 +82,22 @@ case "$edition" in
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
     grep -F 'xanh-browser-windows://accounts/oauth' \
       platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs >/dev/null
+    test -f app-webkit/wpe-fork/WPE_ANDROID_REVISION
+    test -f app-webkit/wpe-fork/CERBERO_REVISION
+    test -f app-webkit/wpe-fork/WPE_RUNTIME_VERSION
+    test -f app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch
+    test -x scripts/verify-wpe-android-fork.sh
+    test -x scripts/verify-android-16k.sh
+    test "$(cat app-webkit/wpe-fork/WPE_RUNTIME_VERSION)" = "$(cat WEBKITGTK_MIN_VERSION)"
+    grep -F 'WEBKIT_USER_CONTENT_INJECT_TOP_FRAME' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F 'register_script_message_handler_in_world' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F 'webkit_web_view_call_async_javascript_function' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F -- '-Wl,-z,max-page-size=16384' \
+      app-webkit/wpe-fork/patches/xanh-isolated-bridge.patch >/dev/null
+    grep -F 'WPE Android, WPEView and WPE WebKit' THIRD_PARTY_NOTICES.md >/dev/null
     ;;
   linux)
     verify_native_core
@@ -142,6 +158,11 @@ case "$edition" in
     test "${XANH_ANDROID_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;
   wpe)
+    require_evidence XANH_WPE_FORK_BUILD_EVIDENCE
+    require_evidence XANH_WPE_16K_EVIDENCE
+    require_evidence XANH_WPE_BRIDGE_REVIEW_EVIDENCE
+    require_evidence XANH_WPE_DEVICE_TEST_EVIDENCE
+    require_evidence XANH_WPE_SBOM_EVIDENCE
     test "${XANH_WPE_ISOLATED_BRIDGE:-0}" = 1
     test "${XANH_ANDROID_16K_NATIVE_OK:-0}" = 1
     ;;

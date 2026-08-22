@@ -76,6 +76,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Raised the Linux and WPE production security baseline to WebKitGTK/WPE
   WebKit 2.52.6 following WSA-2026-0005; the Android WPE preview remains
   blocked on its upstream 2.50.6 runtime and 16 KiB native-library alignment.
+- Added a reproducible WPE Android source-fork contract pinned to WPEView 0.3.3,
+  WPE WebKit 2.52.6 and an exact Cerbero revision. The delta adds 16 KiB linker
+  alignment and a bounded main-frame-only isolated script/message bridge; CI
+  verifies patch drift while production remains gated on built-artifact,
+  device, SBOM and security evidence.
 - Renamed the Linux application to Xanh Browser with application ID
   `io.github.lamppkk.xanhbrowser`.
 - Renamed the small Android edition to Xanh Browser Lite with application ID

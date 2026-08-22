@@ -209,9 +209,11 @@ Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
 the Application Services runtime; the base app loads it only after the user
 chooses Firefox Sync. CI builds both base-only and `lite-with-sync` bundles,
 runs `scripts/verify-lite-sync-size.sh`, and rejects a base-module increase over
-1 MiB, native Sync code in `base/`, or unsupported legacy ABIs. The WPE split
-shares the data UI but deliberately has no password-fill bridge and remains
-blocked from production.
+1 MiB, native Sync code in `base/`, or unsupported legacy ABIs. Its System
+WebView credential picker requires a recent trusted user gesture and consumes only the
+bounded exact-origin form records returned by the shared Android runtime. The
+WPE split shares the data UI but deliberately has no password-fill bridge and
+remains blocked from production.
 
 ## Repository map
 

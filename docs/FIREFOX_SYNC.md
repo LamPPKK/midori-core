@@ -105,8 +105,11 @@ Android Lite uses an on-demand Play dynamic feature. `sync-feature-common`
 contains the UI, JobScheduler integration and password manager;
 `sync-feature` adds the AndroidX WebKit document-start/message bridge. The base
 APK contains neither the Rust runtime nor native Application Services
-libraries until the user enables Sync. The WPE feature reuses the management
-UI but never loads a privileged password-fill script.
+libraries until the user enables Sync. The System WebView bridge accepts only
+main-frame messages for the exact committed HTTPS origin, requires a recent
+trusted pointer or keyboard gesture, rejects synthetic DOM events, and asks the shared runtime for a bounded
+exact-origin form-credential set before presenting native UI. The WPE feature
+reuses the management UI but never loads a privileged password-fill script.
 
 Linux now has an asynchronous GTK host for account initialization, system-
 browser OAuth, exact callback routing, Secret Service persistence, manual/

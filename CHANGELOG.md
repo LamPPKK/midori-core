@@ -87,6 +87,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   mistaken for Play upload artifacts.
 - Added exact-origin credential policy, five-minute vault expiry, HTTPS-only
   self-hosted configuration and approval-gated Mozilla-hosted release checks.
+- Hardened the Lite System WebView picker with bounded bridge messages, a
+  recent trusted-user-gesture requirement, exact-origin runtime queries and
+  navigation-bound filling of the selected form field.
 
 ### Removed
 

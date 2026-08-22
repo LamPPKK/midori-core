@@ -5,7 +5,6 @@ import android.webkit.WebView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.core.net.toUri
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
@@ -15,6 +14,7 @@ import io.github.lamppkk.xanhbrowser.sync.BridgeEnvelope
 import io.github.lamppkk.xanhbrowser.sync.BridgePolicy
 import io.github.lamppkk.xanhbrowser.sync.CredentialContext
 import io.github.lamppkk.xanhbrowser.sync.CredentialPolicy
+import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,7 +42,10 @@ class LiteCredentialBridge private constructor(
             WebViewCompat.addWebMessageListener(
                 webView,
                 BRIDGE_NAME,
-                setOf("https://*"),
+                // Some serviced legacy WebView releases reject the
+                // non-standard `https://*` rule. The callback validates the
+                // main frame and exact committed HTTPS origin before use.
+                setOf("*"),
                 WebViewCompat.WebMessageListener(::onMessage),
             )
             installed = true
@@ -56,7 +59,7 @@ class LiteCredentialBridge private constructor(
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         ) return
         scriptHandler?.remove()
-        val origin = committedUrl!!.toUri().let { "${it.scheme}://${it.host}${portSuffix(it)}" }
+        val origin = CredentialPolicy.canonicalHttpsOrigin(committedUrl!!) ?: return
         scriptHandler = WebViewCompat.addDocumentStartJavaScript(
             webView,
             bootstrapScript(navigationNonce),
@@ -89,7 +92,9 @@ class LiteCredentialBridge private constructor(
     ) {
         if (!isMainFrame || message.type != WebMessageCompat.TYPE_STRING) return
         val currentUrl = committedUrl ?: return
-        val parsed = runCatching { JSONObject(message.data ?: return) }.getOrNull() ?: return
+        val data = message.data ?: return
+        if (data.length > MAX_BRIDGE_MESSAGE_CHARS) return
+        val parsed = runCatching { JSONObject(data) }.getOrNull() ?: return
         val envelope = BridgeEnvelope(
             parsed.optLong("tabId", -1),
             parsed.optString("navigationNonce"),
@@ -107,27 +112,29 @@ class LiteCredentialBridge private constructor(
         val requestUrl = view.url ?: return
         activity.lifecycleScope.launch {
             val runtime = LiteSyncCoordinator.get(activity).runtimeOrNull() ?: return@launch
-            if (!runtime.touchVault()) return@launch
-            val requestedOrigin = canonicalOrigin(sourceOrigin.toString()) ?: return@launch
+            if (!runCatching { runtime.touchVault() }.getOrDefault(false)) return@launch
+            val requestedOrigin = CredentialPolicy.canonicalHttpsOrigin(
+                sourceOrigin.toString(),
+                requireOriginOnly = true,
+            ) ?: return@launch
+            val context = CredentialContext(
+                documentUrl = requestUrl,
+                topFrameOrigin = requestedOrigin,
+                frameOrigin = requestedOrigin,
+                isPrivate = false,
+                userSelected = true,
+            )
             val logins = withContext(Dispatchers.IO) {
-                runtime.listLogins().filter { canonicalOrigin(it.origin) == requestedOrigin }
-            }
+                runCatching { runtime.credentialLogins(context) }
+            }.getOrElse { return@launch }
             if (logins.isEmpty() || activity.isFinishing) return@launch
             AlertDialog.Builder(activity)
                 .setTitle(R.string.sync_passwords)
                 .setItems(logins.map { it.username.ifBlank { activity.getString(R.string.sync_empty_username) } }.toTypedArray()) {
                     _, index ->
                     val selected = logins[index]
-                    val allowed = runtime.touchVault() && CredentialPolicy.isAllowed(
-                        CredentialContext(
-                            documentUrl = requestUrl,
-                            topFrameOrigin = requestedOrigin,
-                            frameOrigin = requestedOrigin,
-                            isPrivate = false,
-                            userSelected = true,
-                        ),
-                        vaultUnlocked = true,
-                    )
+                    val allowed = runCatching { runtime.touchVault() }.getOrDefault(false) &&
+                        CredentialPolicy.isAllowed(context, vaultUnlocked = true)
                     if (!allowed || navigationNonce != envelope.navigationNonce || webView.url != requestUrl) {
                         return@setItems
                     }
@@ -153,49 +160,65 @@ class LiteCredentialBridge private constructor(
         (() => {
           if (window.top !== window || !window.$BRIDGE_NAME) return;
           let requestedFor = null;
-          document.addEventListener('focusin', event => {
-            const target = event.target;
+          let userGestureDeadline = 0;
+          const noteUserGesture = () => { userGestureDeadline = performance.now() + 1500; };
+          const requestCredential = target => {
             if (!(target instanceof HTMLInputElement) || target.type !== 'password') return;
-            if (requestedFor === target) return;
+            if (performance.now() > userGestureDeadline) return;
+            userGestureDeadline = 0;
             requestedFor = target;
             window.$BRIDGE_NAME.postMessage(JSON.stringify({
               tabId: $tabId,
               navigationNonce: '$nonce',
               messageType: 'credential-request'
             }));
+          };
+          document.addEventListener('pointerdown', event => {
+            if (!event.isTrusted) return;
+            noteUserGesture();
+            requestCredential(event.target);
+          }, true);
+          document.addEventListener('keydown', event => {
+            if (event.isTrusted) noteUserGesture();
+          }, true);
+          document.addEventListener('focusin', event => {
+            if (!event.isTrusted) return;
+            requestCredential(event.target);
           }, true);
           window.$BRIDGE_NAME.onmessage = event => {
             let credential;
             try { credential = JSON.parse(event.data); } catch (_) { return; }
             if (!credential || credential.type !== 'credential-selected') return;
-            const password = document.querySelector('input[type="password"]');
-            if (!password) return;
-            const user = document.querySelector('input[autocomplete="username"], input[type="email"], input[type="text"]');
+            const password = requestedFor;
+            if (!(password instanceof HTMLInputElement) || !password.isConnected) return;
+            const root = password.form || document;
+            const user = root.querySelector('input[autocomplete="username"], input[type="email"], input[type="text"]');
             if (user) {
               user.value = credential.username || '';
               user.dispatchEvent(new Event('input', { bubbles: true }));
             }
             password.value = credential.password || '';
             password.dispatchEvent(new Event('input', { bubbles: true }));
+            requestedFor = null;
           };
         })();
     """.trimIndent()
 
-    private fun canonicalHttpsUrl(value: String?): String? = value?.takeIf {
-        val uri = it.toUri()
-        uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null
+    private fun canonicalHttpsUrl(value: String?): String? {
+        val candidate = value ?: return null
+        return runCatching {
+            val uri = URI(candidate)
+            require(
+                uri.scheme.equals("https", true) && uri.host != null && uri.userInfo == null &&
+                    uri.port in -1..65_535,
+            )
+            uri.toASCIIString()
+        }.getOrNull()
     }
-
-    private fun canonicalOrigin(value: String): String? {
-        val uri = value.toUri()
-        if (uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null) return null
-        return "https://${uri.host!!.lowercase()}${portSuffix(uri)}"
-    }
-
-    private fun portSuffix(uri: Uri): String = if (uri.port >= 0) ":${uri.port}" else ""
 
     companion object {
         private const val BRIDGE_NAME = "xanhLiteCredentials"
+        private const val MAX_BRIDGE_MESSAGE_CHARS = 4_096
 
         @JvmStatic
         fun attach(activity: AppCompatActivity, webView: WebView): LiteCredentialBridge =

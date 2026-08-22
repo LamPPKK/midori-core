@@ -121,6 +121,15 @@ prompt is canceled on the same tab/document/window, renderer, clear-data,
 replacement and 30-second timeout boundaries. Private tabs use the same manual,
 non-persistent path.
 
+Linux downloads use WebKitGTK 6.0's absolute local-path API only after the
+native save dialog has confirmed the exact destination. Server-provided names
+are stripped of path separators, controls, directional formatting and excessive
+length before they reach the dialog. Overwrite is enabled only after that native
+confirmation; closing the window or clearing data cancels an unresolved choice.
+A failed download produces one `failed` database entry, never a second false
+`finished` entry. Private downloads require the same explicit save choice but
+are not written to Xanh's download database.
+
 ### Build and test
 
 ```sh

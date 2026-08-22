@@ -218,6 +218,27 @@ case "$edition" in
       echo 'Linux HTTP authentication must not propose or persist credentials' >&2
       exit 1
     fi
+    test -f desktop/download-policy.vala
+    test -f tests-modern/download-policy-test.vala
+    grep -F 'add_xanh_test(download-policy-test' CMakeLists.txt >/dev/null
+    grep -F 'MAX_SUGGESTED_NAME_BYTES = 240' desktop/download-policy.vala >/dev/null
+    grep -F 'MAX_DESTINATION_BYTES = 4096' desktop/download-policy.vala >/dev/null
+    grep -F 'dialog.initial_name = DownloadPolicy.sanitize_suggested_filename (suggested);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'dialog.save.begin (this, cancellable' desktop/browser-window.vala >/dev/null
+    grep -F 'DownloadPolicy.local_destination_path (file)' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'download.set_allow_overwrite (true);' desktop/browser-window.vala >/dev/null
+    grep -F 'download.set_destination (path);' desktop/browser-window.vala >/dev/null
+    grep -F 'bool failed = failed_downloads.remove (download);' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'DownloadPolicy.should_record_finished (failed)' \
+      desktop/browser-window.vala >/dev/null
+    grep -F 'cancel_pending_download_choices ();' desktop/browser-window.vala >/dev/null
+    if grep -F 'dialog.initial_name = suggested;' desktop/browser-window.vala >/dev/null; then
+      echo 'Linux must sanitize untrusted server-provided download names' >&2
+      exit 1
+    fi
     if grep -E 'NotificationPermissionRequest|MediaKeySystemPermissionRequest|ClipboardPermissionRequest|XRPermissionRequest' \
       desktop/browser-window.vala >/dev/null; then
       echo 'Unsupported Linux permission classes must remain deny-by-default' >&2

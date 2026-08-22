@@ -105,6 +105,7 @@ vala_precompile(XANH_APP_C xanh-browser
     desktop/permission-policy.vala
     desktop/tls-error-policy.vala
     desktop/http-auth-policy.vala
+    desktop/download-policy.vala
     desktop/credential-data.vala
     desktop/sync-data.vala
     desktop/profile-importer.vala
@@ -232,6 +233,8 @@ if(BUILD_TESTING)
         SUPPORT desktop/address-resolver.vala desktop/tls-error-policy.vala)
     add_xanh_test(http-auth-policy-test SOURCE tests-modern/http-auth-policy-test.vala
         SUPPORT desktop/address-resolver.vala desktop/http-auth-policy.vala)
+    add_xanh_test(download-policy-test SOURCE tests-modern/download-policy-test.vala
+        SUPPORT desktop/download-policy.vala)
     add_xanh_test(web-process-recovery-test
         SOURCE tests-modern/web-process-recovery-test.vala
         SUPPORT desktop/address-resolver.vala desktop/web-process-recovery.vala)
@@ -255,6 +258,7 @@ if(BUILD_TESTING)
             desktop/permission-policy.vala
             desktop/tls-error-policy.vala
             desktop/http-auth-policy.vala
+            desktop/download-policy.vala
             desktop/credential-data.vala
             desktop/sync-data.vala
             desktop/profile-importer.vala

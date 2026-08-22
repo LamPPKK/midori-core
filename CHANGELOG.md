@@ -45,6 +45,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   an exact-HTTPS-origin, one-shot Basic/Digest prompt. It disables persistence,
   rejects proxy/retry/cross-origin and unsupported schemes, and cancels across
   tab/document/window, renderer, clear-data, replacement or timeout state.
+- Hardened Linux download destinations with bounded control-free suggested
+  names, an exact native-confirmed absolute local path and cancellable picker
+  lifecycle. Failed transfers are recorded once instead of also appearing as
+  finished; private transfers do not enter Xanh's download database.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

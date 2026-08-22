@@ -132,6 +132,18 @@ allowed historical material, never a shipping dependency or application ID.
    challenge and Clear Browsing Data; all must fail closed. Repeat Basic/Digest
    in a private tab and confirm closing the tab leaves no credential state.
 
+   Exercise downloads whose suggested names contain path traversal, slash and
+   backslash separators, CR/LF, bidi controls, leading dots and oversized UTF-8.
+   The native save dialog must receive only the bounded sanitized name. Confirm
+   that WebKitGTK 6.0 receives the exact absolute local path selected by the
+   dialog, remote/non-local `GFile` destinations are rejected, and an existing
+   file is overwritten only after the native picker confirms that exact path.
+   Cancel the picker, close the window and start Clear Browsing Data while it is
+   open; the pending download must be canceled. Force a network/write failure
+   and confirm the database contains one `failed` record and no `finished`
+   record for it. Repeat in a private tab: an explicitly selected file may
+   remain, but Xanh's download database must receive no row.
+
 4. Use `webkit_web_view_terminate_web_process()` and a deliberately crashing
    test page to exercise every `WebKitWebProcessTerminationReason`. A selected
    foreground tab may perform exactly one fresh body-free URI load from its

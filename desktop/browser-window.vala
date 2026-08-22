@@ -82,6 +82,10 @@ namespace Xanh {
         ulong pending_auth_cancelled_signal;
         uint pending_auth_timeout_source;
         uint64 auth_generation;
+        HashTable<WebKit.Download, Cancellable> pending_download_choices =
+            new HashTable<WebKit.Download, Cancellable> (direct_hash, direct_equal);
+        HashTable<WebKit.Download, bool> failed_downloads =
+            new HashTable<WebKit.Download, bool> (direct_hash, direct_equal);
 
         public BrowserWindow (Gtk.Application application, BrowserDatabase database) {
             Object (application: application, title: Config.APP_NAME, default_width: 1100, default_height: 760);
@@ -1098,23 +1102,40 @@ namespace Xanh {
 
         void handle_download (WebKit.Download download, bool private_mode) {
             download.decide_destination.connect ((suggested) => {
+                if (pending_download_choices.lookup (download) != null) return true;
+                var cancellable = new Cancellable ();
+                pending_download_choices.insert (download, cancellable);
                 var dialog = new Gtk.FileDialog ();
                 dialog.title = "Save Download";
-                dialog.initial_name = suggested;
-                dialog.save.begin (this, null, (object, result) => {
+                dialog.modal = true;
+                dialog.initial_name = DownloadPolicy.sanitize_suggested_filename (suggested);
+                dialog.save.begin (this, cancellable, (object, result) => {
                     try {
                         var file = dialog.save.end (result);
-                        string? path = file.get_path ();
-                        if (path == null) throw new IOError.INVALID_ARGUMENT ("Downloads require a local file");
+                        bool is_current = pending_download_choices.lookup (download) == cancellable;
+                        if (is_current) pending_download_choices.remove (download);
+                        if (!is_current || cancellable.is_cancelled ()) return;
+                        string? path = DownloadPolicy.local_destination_path (file);
+                        if (path == null)
+                            throw new IOError.INVALID_ARGUMENT (
+                                "Downloads require a bounded absolute local path");
+                        download.set_allow_overwrite (true);
                         download.set_destination (path);
                     } catch (Error error) {
-                        download.cancel ();
+                        bool is_current = pending_download_choices.lookup (download) == cancellable;
+                        if (is_current) pending_download_choices.remove (download);
+                        if (!cancellable.is_cancelled ()) download.cancel ();
                     }
                 });
                 return true;
             });
             download.finished.connect (() => {
+                finish_download_choice (download);
+                // WebKit emits finished after failed; never turn that cleanup
+                // notification into a second, successful database record.
+                bool failed = failed_downloads.remove (download);
                 if (private_mode) return;
+                if (!DownloadPolicy.should_record_finished (failed)) return;
                 try {
                     database.record_download (download.get_request ().get_uri (),
                         download.get_destination () ?? "", "finished");
@@ -1123,6 +1144,8 @@ namespace Xanh {
                 }
             });
             download.failed.connect ((error) => {
+                finish_download_choice (download);
+                failed_downloads.insert (download, true);
                 if (private_mode) return;
                 try {
                     database.record_download (download.get_request ().get_uri (),
@@ -1131,6 +1154,24 @@ namespace Xanh {
                     warning ("Cannot record failed download: %s", database_error.message);
                 }
             });
+        }
+
+        void finish_download_choice (WebKit.Download download) {
+            var cancellable = pending_download_choices.lookup (download);
+            if (cancellable == null) return;
+            pending_download_choices.remove (download);
+            cancellable.cancel ();
+        }
+
+        void cancel_pending_download_choices () {
+            var downloads = new GenericArray<WebKit.Download> (
+                pending_download_choices.size ());
+            pending_download_choices.foreach ((download, cancellable) => {
+                downloads.add (download);
+                cancellable.cancel ();
+            });
+            pending_download_choices.remove_all ();
+            downloads.foreach ((download) => download.cancel ());
         }
 
         TabRecord? active_tab () {
@@ -1282,6 +1323,7 @@ namespace Xanh {
             cancel_permission_request ();
             cancel_tls_error ();
             cancel_http_auth ();
+            cancel_pending_download_choices ();
             tabs.foreach ((id, tab) => disconnect_tab_bridges (tab));
             if (session_save_source != 0) {
                 Source.remove (session_save_source);
@@ -1868,6 +1910,7 @@ namespace Xanh {
             cancel_permission_request ();
             cancel_tls_error ();
             cancel_http_auth ();
+            cancel_pending_download_choices ();
             tabs.foreach ((id, tab) => tab.view.stop_loading ());
         }
 

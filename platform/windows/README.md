@@ -55,6 +55,13 @@ callback to the one live Xanh Browser instance. Opaque state is encrypted with
 user-bound DPAPI, while unlocking the local Logins key requires Windows Hello
 or the device PIN and expires after five minutes/backgrounding.
 
+Regular tabs install a document-start WebView2 credential bridge. A page can
+only request the native chooser after a trusted pointer or keyboard event. The
+host validates the top-level source URI, tab ID, per-navigation nonce, exact
+HTTPS origin and bounded message before asking the native Sync core for its
+already-sanitized credential set. InPrivate tabs never enable web messaging or
+the bridge. WebView2's built-in autofill and password saving remain disabled.
+
 The normal unsigned verification artifact does not carry the Rust native DLL
 and therefore fails closed. Supply an architecture-matched DLL explicitly:
 
@@ -76,9 +83,11 @@ Mozilla approval, distribute only the HTTPS self-hosted configuration and run
 
 - Only valid `http`, `https` and `about:blank` navigation reaches WebView2.
 - A small allowlist of external schemes is handed to Windows after validation.
-- Host objects and web messaging are disabled because this edition exposes no
-  native bridge to pages.
-- Autofill and password saving are disabled for the 1.0 privacy baseline.
+- Host objects remain disabled. Web messaging is enabled only in regular tabs
+  for the bounded credential bridge and is checked against the exact current
+  document, tab ID and navigation nonce.
+- WebView2 autofill and password saving are disabled; Xanh's preview native
+  picker requires Windows Hello/PIN vault unlock and explicit selection.
 - Private tabs use WebView2 InPrivate controller options.
 - WebView2 data lives under the user's local application-data directory, so an
   unpackaged install remains writable under protected application locations.
@@ -86,3 +95,7 @@ Mozilla approval, distribute only the HTTPS self-hosted configuration and run
   process crashes recreate the affected tab at its last safe web address.
 - The app uses an Evergreen runtime so WebView2 security fixes arrive through
   the Microsoft Edge update channel independently of the app release.
+
+The Sync-enabled Windows build remains release-gated until this bridge passes
+forged-message, stale-navigation, renderer-crash and x64/ARM64 security tests
+with a signed native DLL. Ordinary verification artifacts still omit that DLL.

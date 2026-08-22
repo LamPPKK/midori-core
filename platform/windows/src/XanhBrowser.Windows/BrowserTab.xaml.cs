@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.Web.WebView2.Core;
+using System.Text.Json;
 using Windows.System;
 using XanhBrowser.Core;
 
@@ -11,9 +12,13 @@ public sealed partial class BrowserTab : UserControl, IDisposable
 {
     private readonly bool _isPrivate;
     private readonly Uri _initialUri;
+    private readonly Func<CredentialAccessContext, Task<FirefoxCredentialRecord?>>? _credentialPicker;
+    private readonly string _credentialTabId = Guid.NewGuid().ToString("N");
     private bool _disposed;
     private bool _permissionDialogOpen;
     private Uri _currentUri;
+    private string? _credentialNonce;
+    private string? _credentialScriptId;
 
     public event EventHandler<string>? TitleChanged;
     public event EventHandler? BrowserProcessExited;
@@ -21,9 +26,13 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     public bool IsPrivate => _isPrivate;
     public Uri CurrentUri => _currentUri;
 
-    public BrowserTab(bool isPrivate, Uri? initialUri = null)
+    public BrowserTab(
+        bool isPrivate,
+        Uri? initialUri = null,
+        Func<CredentialAccessContext, Task<FirefoxCredentialRecord?>>? credentialPicker = null)
     {
         _isPrivate = isPrivate;
+        _credentialPicker = credentialPicker;
         _initialUri = initialUri is not null && AddressResolver.IsAllowedWebUri(initialUri)
             ? initialUri
             : AddressResolver.DefaultHomePage;
@@ -58,6 +67,11 @@ public sealed partial class BrowserTab : UserControl, IDisposable
                 BrowserWebView.Close();
                 return;
             }
+            if (_credentialPicker is not null && !_isPrivate)
+            {
+                _credentialScriptId = await BrowserWebView.CoreWebView2
+                    .AddScriptToExecuteOnDocumentCreatedAsync(CredentialBootstrapScript());
+            }
             Navigate(_initialUri);
         }
         catch (Exception error)
@@ -77,7 +91,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
 
         var settings = sender.CoreWebView2.Settings;
         settings.AreHostObjectsAllowed = false;
-        settings.IsWebMessageEnabled = false;
+        settings.IsWebMessageEnabled = _credentialPicker is not null && !_isPrivate;
         settings.IsScriptEnabled = true;
         settings.AreDefaultScriptDialogsEnabled = true;
         settings.IsGeneralAutofillEnabled = false;
@@ -91,6 +105,8 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         sender.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
         sender.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
         sender.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
+        if (_credentialPicker is not null && !_isPrivate)
+            sender.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
     }
 
     private void CoreWebView2_DocumentTitleChanged(object? sender, object args)
@@ -215,6 +231,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         CoreWebView2NavigationStartingEventArgs args)
     {
         LoadProgress.Visibility = Visibility.Visible;
+        _credentialNonce = null;
         if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri)
             && AddressResolver.IsAllowedWebUri(uri))
         {
@@ -228,6 +245,122 @@ public sealed partial class BrowserTab : UserControl, IDisposable
             await Launcher.LaunchUriAsync(uri);
         }
     }
+
+    private async void CoreWebView2_WebMessageReceived(
+        CoreWebView2 sender,
+        CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        if (_disposed || _isPrivate || _credentialPicker is null
+            || !Uri.TryCreate(args.Source, UriKind.Absolute, out var documentUri)
+            || !documentUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(documentUri.UserInfo)
+            || !Uri.TryCreate(sender.Source, UriKind.Absolute, out var currentDocument)
+            || currentDocument != documentUri)
+            return;
+
+        try
+        {
+            var json = args.WebMessageAsJson;
+            if (json.Length > 4_096) return;
+            using var message = JsonDocument.Parse(json);
+            var root = message.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("tabId", out var tabId)
+                || tabId.GetString() != _credentialTabId
+                || !root.TryGetProperty("navigationNonce", out var nonceValue)
+                || nonceValue.GetString() is not { Length: > 0 and <= 128 } nonce
+                || !root.TryGetProperty("messageType", out var typeValue)
+                || typeValue.GetString() is not { Length: > 0 and <= 64 } messageType
+                || !root.TryGetProperty("origin", out var originValue)
+                || !Uri.TryCreate(originValue.GetString(), UriKind.Absolute, out var claimedOrigin))
+                return;
+
+            if (messageType == "credential-ready")
+            {
+                var readyContext = new CredentialAccessContext(
+                    documentUri, claimedOrigin, claimedOrigin, _isPrivate, UserSelected: true);
+                if (_credentialNonce is null && readyContext.IsAllowed) _credentialNonce = nonce;
+                return;
+            }
+            if (messageType != "credential-request" || _credentialNonce != nonce) return;
+
+            var context = new CredentialAccessContext(
+                documentUri, claimedOrigin, claimedOrigin, _isPrivate, UserSelected: true);
+            if (!context.IsAllowed) return;
+            var selected = await _credentialPicker(context);
+            if (selected is null || _disposed || _credentialNonce != nonce
+                || !Uri.TryCreate(sender.Source, UriKind.Absolute, out var latestDocument)
+                || latestDocument != documentUri)
+                return;
+            sender.PostWebMessageAsJson(JsonSerializer.Serialize(new
+            {
+                type = "credential-selected",
+                tabId = _credentialTabId,
+                navigationNonce = nonce,
+                username = selected.Username,
+                password = selected.Password,
+            }));
+        }
+        catch (JsonException)
+        {
+            // Malformed renderer messages are ignored and never reach native Sync.
+        }
+        catch (Exception)
+        {
+            // Credential UI/native-runtime failures are fail-closed for the page.
+        }
+    }
+
+    private string CredentialBootstrapScript() => $$"""
+        (() => {
+          if (window.top !== window || location.protocol !== 'https:' || !window.chrome?.webview) return;
+          const tabId = '{{_credentialTabId}}';
+          const navigationNonce = crypto.randomUUID();
+          let requestedFor = null;
+          let userGestureDeadline = 0;
+          const post = messageType => window.chrome.webview.postMessage({
+            tabId,
+            navigationNonce,
+            messageType,
+            origin: location.origin
+          });
+          const requestCredential = target => {
+            if (!(target instanceof HTMLInputElement) || target.type !== 'password') return;
+            if (performance.now() > userGestureDeadline) return;
+            userGestureDeadline = 0;
+            requestedFor = target;
+            post('credential-request');
+          };
+          post('credential-ready');
+          document.addEventListener('pointerdown', event => {
+            if (!event.isTrusted) return;
+            userGestureDeadline = performance.now() + 1500;
+            requestCredential(event.target);
+          }, true);
+          document.addEventListener('keydown', event => {
+            if (event.isTrusted) userGestureDeadline = performance.now() + 1500;
+          }, true);
+          document.addEventListener('focusin', event => {
+            if (event.isTrusted) requestCredential(event.target);
+          }, true);
+          window.chrome.webview.addEventListener('message', event => {
+            const credential = event.data;
+            if (!credential || credential.type !== 'credential-selected'
+                || credential.tabId !== tabId || credential.navigationNonce !== navigationNonce) return;
+            const password = requestedFor;
+            if (!(password instanceof HTMLInputElement) || !password.isConnected) return;
+            const root = password.form || document;
+            const user = root.querySelector('input[autocomplete="username"], input[type="email"], input[type="text"]');
+            if (user) {
+              user.value = credential.username || '';
+              user.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            password.value = credential.password || '';
+            password.dispatchEvent(new Event('input', { bubbles: true }));
+            requestedFor = null;
+          });
+        })();
+        """;
 
     private void BrowserWebView_NavigationCompleted(
         WebView2 sender,
@@ -321,6 +454,10 @@ public sealed partial class BrowserTab : UserControl, IDisposable
             BrowserWebView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
             BrowserWebView.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
             BrowserWebView.CoreWebView2.SourceChanged -= CoreWebView2_SourceChanged;
+            if (_credentialPicker is not null && !_isPrivate)
+                BrowserWebView.CoreWebView2.WebMessageReceived -= CoreWebView2_WebMessageReceived;
+            if (_credentialScriptId is not null)
+                BrowserWebView.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_credentialScriptId);
         }
         BrowserWebView.Close();
         TitleChanged = null;

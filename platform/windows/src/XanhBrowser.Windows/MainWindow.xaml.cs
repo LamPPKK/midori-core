@@ -14,6 +14,8 @@ public sealed partial class MainWindow : Window
     private readonly SemaphoreSlim _syncInitialization = new(1, 1);
     private readonly DispatcherTimer _vaultTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private Uri? _pendingSyncCallback;
+    private bool _credentialDialogOpen;
+    private bool _userPresenceInProgress;
 
     public MainWindow()
     {
@@ -236,8 +238,16 @@ public sealed partial class MainWindow : Window
             try
             {
                 if (coordinator.Snapshot.VaultUnlocked) await coordinator.LockVaultAsync();
-                else if (!await coordinator.UnlockVaultAsync())
-                    detail.Text = "Windows Hello or PIN verification was not completed.";
+                else
+                {
+                    _userPresenceInProgress = true;
+                    try
+                    {
+                        if (!await coordinator.UnlockVaultAsync())
+                            detail.Text = "Windows Hello or PIN verification was not completed.";
+                    }
+                    finally { _userPresenceInProgress = false; }
+                }
                 vault.Content = coordinator.Snapshot.VaultUnlocked ? "Lock password vault" : "Unlock password vault";
             }
             catch (Exception error)
@@ -362,7 +372,8 @@ public sealed partial class MainWindow : Window
         if (_sync is null) return;
         try
         {
-            if (args.WindowActivationState == WindowActivationState.Deactivated)
+            if (args.WindowActivationState == WindowActivationState.Deactivated
+                && !_userPresenceInProgress)
                 await _sync.LockVaultAsync();
             else if (_sync.Snapshot.AccountState == FirefoxAccountState.Connected)
                 await _sync.SyncAsync(FirefoxSyncReason.Startup);
@@ -390,7 +401,7 @@ public sealed partial class MainWindow : Window
 
     private TabViewItem AddTab(bool isPrivate, Uri? initialUri = null)
     {
-        var browser = new BrowserTab(isPrivate, initialUri);
+        var browser = new BrowserTab(isPrivate, initialUri, ShowCredentialPickerAsync);
         var tab = new TabViewItem
         {
             Header = isPrivate ? "Private tab" : "New tab",
@@ -406,6 +417,61 @@ public sealed partial class MainWindow : Window
         BrowserTabs.TabItems.Add(tab);
         BrowserTabs.SelectedItem = tab;
         return tab;
+    }
+
+    private async Task<FirefoxCredentialRecord?> ShowCredentialPickerAsync(
+        CredentialAccessContext context)
+    {
+        if (_credentialDialogOpen || context.IsPrivate || !context.IsAllowed) return null;
+        _credentialDialogOpen = true;
+        try
+        {
+            if (!await EnsureFirefoxSyncAsync(showConfiguration: false) || _sync is null) return null;
+            if (!_sync.Snapshot.VaultUnlocked)
+            {
+                _userPresenceInProgress = true;
+                try
+                {
+                    if (!await _sync.UnlockVaultAsync()) return null;
+                }
+                finally { _userPresenceInProgress = false; }
+            }
+            var credentials = await _sync.CredentialsAsync(context);
+            if (credentials.Count == 0) return null;
+            var labels = credentials
+                .Select(record => string.IsNullOrWhiteSpace(record.Username)
+                    ? "(empty username)"
+                    : record.Username)
+                .ToList();
+            var list = new ListView
+            {
+                ItemsSource = labels,
+                SelectionMode = ListViewSelectionMode.Single,
+                SelectedIndex = 0,
+                MaxHeight = 320,
+                MinWidth = 360,
+            };
+            var dialog = new ContentDialog
+            {
+                XamlRoot = BrowserTabs.XamlRoot,
+                Title = $"Choose a saved login for {context.DocumentUri.IdnHost}",
+                Content = list,
+                PrimaryButtonText = "Fill",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary
+                || list.SelectedIndex < 0
+                || list.SelectedIndex >= credentials.Count)
+                return null;
+            var selected = credentials[list.SelectedIndex];
+            await _sync.TouchCredentialAsync(selected.Id, context);
+            return selected;
+        }
+        finally
+        {
+            _credentialDialogOpen = false;
+        }
     }
 
     private async void ExportBackup_Click(object sender, RoutedEventArgs e)
@@ -561,14 +627,17 @@ public sealed partial class MainWindow : Window
         WinRT.Interop.InitializeWithWindow.Initialize(picker, windowHandle);
     }
 
-    private static void AttachBrowser(TabViewItem tab, BrowserTab browser)
+    private void AttachBrowser(TabViewItem tab, BrowserTab browser)
     {
         browser.TitleChanged += (_, title) => tab.Header = string.IsNullOrWhiteSpace(title)
             ? (browser.IsPrivate ? "Private tab" : "New tab")
             : title;
         browser.BrowserProcessExited += (_, _) =>
         {
-            var replacement = new BrowserTab(browser.IsPrivate, browser.CurrentUri);
+            var replacement = new BrowserTab(
+                browser.IsPrivate,
+                browser.CurrentUri,
+                ShowCredentialPickerAsync);
             browser.Dispose();
             tab.Content = replacement;
             AttachBrowser(tab, replacement);

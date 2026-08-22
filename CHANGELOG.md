@@ -60,6 +60,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   boundaries. Mozilla-hosted metadata is embedded only when a separately
   approved client ID is supplied; self-hosted configuration remains the
   production fallback.
+- Added a gated Windows native credential picker with Windows Hello/PIN vault
+  unlock, bounded exact-origin C ABI queries, trusted-gesture WebView2 requests
+  and tab/navigation-nonce validation. InPrivate tabs keep web messaging off.
 
 ### Changed
 

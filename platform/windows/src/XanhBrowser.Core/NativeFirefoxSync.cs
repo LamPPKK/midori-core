@@ -16,6 +16,8 @@ public interface IFirefoxSyncRuntime : IDisposable
     void LockVault();
     string Sync(FirefoxSyncReason reason, string enginesJson);
     string RemoteTabsJson();
+    string CredentialsJson(string contextJson);
+    void TouchCredential(string id, string contextJson);
     void Disconnect(bool deleteLocal);
 }
 

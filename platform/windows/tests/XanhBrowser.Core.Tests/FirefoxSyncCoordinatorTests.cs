@@ -168,6 +168,39 @@ public sealed class FirefoxSyncCoordinatorTests
         Assert.AreEqual(0, store.Values.Count);
     }
 
+    [TestMethod]
+    public async Task CredentialQueryRequiresUnlockedVaultAndRejectsUnsafeNativeRecords()
+    {
+        var runtime = new FakeRuntime { State = FirefoxAccountState.Connected };
+        var store = new FakeSecretStore();
+        using var coordinator = Create(runtime, store);
+        await coordinator.InitializeAsync();
+        var context = new CredentialAccessContext(
+            new Uri("https://example.org/login"),
+            new Uri("https://example.org"),
+            new Uri("https://example.org"),
+            false,
+            true);
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => coordinator.CredentialsAsync(context));
+        Assert.IsTrue(await coordinator.UnlockVaultAsync());
+        runtime.CredentialsResult = """
+            [{"id":"credential-id","origin":"https://example.org","form_action_origin":"https://example.org","username_field":"username","password_field":"password","username":"person@example.org","password":"secret","time_created_epoch_millis":1,"time_password_changed_epoch_millis":1,"time_last_used_epoch_millis":1,"times_used":1}]
+            """;
+        var records = await coordinator.CredentialsAsync(context);
+        Assert.AreEqual(1, records.Count);
+        await coordinator.TouchCredentialAsync(records[0].Id, context);
+        Assert.AreEqual(1, runtime.TouchCredentialCalls);
+
+        runtime.CredentialsResult = runtime.CredentialsResult.Replace(
+            "https://example.org\",\"form_action_origin",
+            "https://evil.example\",\"form_action_origin",
+            StringComparison.Ordinal);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => coordinator.CredentialsAsync(context));
+    }
+
     private static FirefoxSyncCoordinator Create(
         FakeRuntime runtime,
         FakeSecretStore store,
@@ -203,10 +236,12 @@ public sealed class FirefoxSyncCoordinatorTests
         public Exception? UnlockError { get; set; }
         public int SyncCalls { get; private set; }
         public int DisconnectCalls { get; private set; }
+        public int TouchCredentialCalls { get; private set; }
         public int MaximumConcurrentCalls => _maximumConcurrentCalls;
         public bool LastDisconnectDeletedLocal { get; private set; }
         public FirefoxAccountState AccountState => State;
         public bool VaultUnlocked { get; private set; }
+        public string CredentialsResult { get; set; } = "[]";
 
         public FirefoxAccountState Initialize() => State;
         public string BeginOAuth() => "https://accounts.firefox.com/oauth";
@@ -240,6 +275,8 @@ public sealed class FirefoxSyncCoordinatorTests
         }
 
         public string RemoteTabsJson() => "[]";
+        public string CredentialsJson(string contextJson) => CredentialsResult;
+        public void TouchCredential(string id, string contextJson) => TouchCredentialCalls++;
 
         public void Disconnect(bool deleteLocal)
         {

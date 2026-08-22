@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -35,12 +36,12 @@ public sealed record FirefoxSyncHostSnapshot(
 public sealed class FirefoxSyncCoordinator : IDisposable
 {
     private static readonly FirefoxSyncEngine[] AllEngines =
-    [
+    {
         FirefoxSyncEngine.Bookmarks,
         FirefoxSyncEngine.History,
         FirefoxSyncEngine.Tabs,
         FirefoxSyncEngine.Passwords,
-    ];
+    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -345,6 +346,56 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         }
     }
 
+    public async Task<IReadOnlyList<FirefoxCredentialRecord>> CredentialsAsync(
+        CredentialAccessContext context,
+        CancellationToken cancellationToken = default)
+    {
+        if (!context.IsAllowed) throw new ArgumentException("Credential context is not allowed.");
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            RequireUsableVault(runtime);
+            var contextJson = context.ToNativeJson();
+            var value = await Task.Run(
+                () => runtime.CredentialsJson(contextJson), cancellationToken).ConfigureAwait(false);
+            if (Encoding.UTF8.GetByteCount(value) > 4 * 1_024 * 1_024)
+                throw new InvalidOperationException("Firefox Sync credential result is too large.");
+            var records = JsonSerializer.Deserialize<FirefoxCredentialRecord[]>(value, JsonOptions)
+                ?? throw new InvalidOperationException("Firefox Sync returned an empty credential result.");
+            if (records.Length > 100 || records.Any(record => !record.IsAllowedFor(context)))
+                throw new InvalidOperationException("Firefox Sync returned an unsafe credential result.");
+            _vaultLastActivity = _clock();
+            return records;
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task TouchCredentialAsync(
+        string id,
+        CredentialAccessContext context,
+        CancellationToken cancellationToken = default)
+    {
+        if (!context.IsAllowed) throw new ArgumentException("Credential context is not allowed.");
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            RequireUsableVault(runtime);
+            var contextJson = context.ToNativeJson();
+            await Task.Run(
+                () => runtime.TouchCredential(id, contextJson), cancellationToken).ConfigureAwait(false);
+            _vaultLastActivity = _clock();
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
     public async Task DisconnectAsync(
         bool deleteLocal,
         CancellationToken cancellationToken = default)
@@ -511,6 +562,20 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         return _runtime ?? throw new InvalidOperationException("Firefox Sync is not initialized.");
     }
 
+    private void RequireUsableVault(IFirefoxSyncRuntime runtime)
+    {
+        var currentTime = _clock();
+        if (!runtime.VaultUnlocked
+            || _vaultLastActivity is not { } last
+            || currentTime - last >= FirefoxSyncVaultSession.IdleTimeout)
+        {
+            if (runtime.VaultUnlocked) runtime.LockVault();
+            _vaultLastActivity = null;
+            Publish(runtime.AccountState, Snapshot.Status, "Password vault locked");
+            throw new InvalidOperationException("The password vault is locked.");
+        }
+    }
+
     private void Publish(FirefoxAccountState accountState, FirefoxSyncStatus status, string detail)
     {
         var runtime = _runtime;
@@ -618,7 +683,10 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         _ => "Firefox Sync is idle",
     };
 
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+    private void ThrowIfDisposed()
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(FirefoxSyncCoordinator));
+    }
 
     private sealed record SyncWireResult(
         [property: JsonPropertyName("status")] string Status,

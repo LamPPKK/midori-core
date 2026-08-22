@@ -107,8 +107,9 @@ contains the UI, JobScheduler integration and password manager;
 APK contains neither the Rust runtime nor native Application Services
 libraries until the user enables Sync. The System WebView bridge accepts only
 main-frame messages for the exact committed HTTPS origin, requires a recent
-trusted pointer or keyboard gesture, rejects synthetic DOM events, and asks the shared runtime for a bounded
-exact-origin form-credential set before presenting native UI. The WPE feature
+trusted pointer or keyboard gesture, rejects synthetic DOM events, and asks the
+shared runtime for a bounded exact-origin form-credential set before presenting
+native UI. The WPE feature
 reuses the management UI but never loads a privileged password-fill script.
 
 Linux now has an asynchronous GTK host for account initialization, system-
@@ -123,12 +124,13 @@ disconnected but its local runtime remains available. If that runtime cannot be
 opened, Xanh reports the partial clear, persists a non-secret pending-clear
 marker and retries it before later migration or Sync. The standard build remains
 fail-closed unless the native core and an approved Mozilla or HTTPS self-hosted
-configuration are supplied. Apple and Windows now have platform coordinators
-and settings UI, but remain fail-closed
-until their pinned native artifacts and credential bridges are packaged and
-reviewed. WPE and WinCairo remain integration boundaries rather than production
-enablement. Environment flags are attestations backed by test evidence, not
-switches that make an incomplete integration safe.
+configuration are supplied. Windows now has a bounded WebView2 credential
+picker backed by Windows Hello/PIN, exact source/origin checks and a per-
+navigation nonce; Apple still has only its coordinator/settings boundary. Both
+remain fail-closed until pinned native artifacts and platform bridge evidence
+are packaged and reviewed. WPE and WinCairo remain integration boundaries
+rather than production enablement. Environment flags are attestations backed
+by test evidence, not switches that make an incomplete integration safe.
 
 ## Implementation snapshot (2026-08-22)
 
@@ -164,10 +166,11 @@ list/add/update/delete/touch operations through UniFFI and the stable C ABI.
 It derives both stored origins from a strict HTTPS same-origin context, requires
 an explicit native user action and an unlocked vault, rejects private browsing,
 and filters HTTP-auth, userinfo, cross-origin and oversized upstream records.
-Plaintext output is explicitly short-lived secret material. This is the shared
-storage/FFI contract only: no edition may enable filling until its native picker,
-fresh OS user-presence check and isolated tab-ID/navigation-nonce bridge pass
-the security gate.
+Plaintext output is explicitly short-lived secret material. Android standard,
+Android Lite and the gated Windows host now consume this boundary through
+native pickers; Apple and Linux presentation remain incomplete. No edition may
+ship filling until its picker, OS user-presence policy and tab-ID/navigation-
+nonce bridge pass that platform's security gate.
 
 The Linux GTK host runs native C ABI/network calls and SQLite snapshot/hash
 preparation away from the UI thread; size-bounded JSON assembly and panel updates
@@ -201,13 +204,14 @@ Apple now provides system-browser OAuth callback routing, a single-flight actor,
 engine switches, server backoff, remote-tab presentation, Keychain/
 LocalAuthentication vault state and restart-safe keep/delete disconnect intent.
 Windows provides the equivalent WinUI coordinator, single-instance protocol
-activation, DPAPI/Windows Hello persistence and architecture-specific native
-DLL packaging input. Both hosts keep Mozilla-hosted mode disabled unless the
+activation, DPAPI/Windows Hello persistence, a gated exact-origin WebView2
+credential picker and architecture-specific native DLL packaging input. Both
+hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
 The platform boundary tests currently pass locally: 19 Apple tests cover the
 contract, coordinator and device-only Keychain/LocalAuthentication policy,
-while 28 Windows tests cover the contract, coordinator, P/Invoke surface and
+while 30 Windows tests cover the contract, coordinator, P/Invoke surface and
 DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application

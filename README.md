@@ -197,23 +197,25 @@ production remains gated until the Logins credential UI,
 Sync-enabled Flatpak packaging, audited OS user-presence for password unlock,
 and the interoperability/security evidence are complete.
 
-Apple and Windows now include native settings/coordinator hosts for
-system-browser OAuth, engine selection, backoff-aware Sync, remote tabs,
-device-bound secure state and five-minute password-vault locking. Their
-ordinary verification artifacts intentionally omit the native Mozilla runtime;
-production remains blocked until the pinned XCFramework/DLL, isolated
-credential bridges and platform interoperability/security evidence are
-packaged and reviewed. Each platform uses its own registered callback scheme.
+Apple and Windows include native settings/coordinator hosts for system-browser
+OAuth, engine selection, backoff-aware Sync, remote tabs, device-bound secure
+state and five-minute password-vault locking. Windows also has a gated native
+credential picker with trusted-gesture, exact-origin, tab and navigation-nonce
+checks; InPrivate tabs never install it. Apple credential presentation remains
+pending. Their ordinary verification artifacts intentionally omit the native
+Mozilla runtime, and production remains blocked until the pinned XCFramework/
+DLL and platform interoperability/security evidence are packaged and reviewed.
+Each platform uses its own registered callback scheme.
 
 Lite keeps Sync out of its base install. A Play on-demand dynamic feature owns
 the Application Services runtime; the base app loads it only after the user
 chooses Firefox Sync. CI builds both base-only and `lite-with-sync` bundles,
 runs `scripts/verify-lite-sync-size.sh`, and rejects a base-module increase over
 1 MiB, native Sync code in `base/`, or unsupported legacy ABIs. Its System
-WebView credential picker requires a recent trusted user gesture and consumes only the
-bounded exact-origin form records returned by the shared Android runtime. The
-WPE split shares the data UI but deliberately has no password-fill bridge and
-remains blocked from production.
+WebView credential picker requires a recent trusted user gesture and consumes
+only the bounded exact-origin form records returned by the shared Android
+runtime. The WPE split shares the data UI but deliberately has no password-fill
+bridge and remains blocked from production.
 
 ## Repository map
 

@@ -70,6 +70,35 @@ public sealed class FirefoxSyncContractTests
         Assert.IsFalse((valid with { TopFrameOrigin = new Uri("https://user@example.org") }).IsAllowed);
         Assert.IsFalse((valid with { FrameOrigin = new Uri("https://example.org/path") }).IsAllowed);
         Assert.IsFalse((valid with { FrameOrigin = new Uri("relative", UriKind.Relative) }).IsAllowed);
+        Assert.IsTrue((valid with { TopFrameOrigin = new Uri("https://example.org:443") }).IsAllowed);
+        Assert.IsFalse((valid with
+        {
+            DocumentUri = new Uri($"https://example.org/{new string('x', 8_192)}"),
+        }).IsAllowed);
+        using var native = System.Text.Json.JsonDocument.Parse(valid.ToNativeJson());
+        Assert.AreEqual(
+            "https://example.org",
+            native.RootElement.GetProperty("top_frame_origin").GetString());
+    }
+
+    [TestMethod]
+    public void CredentialRecordRequiresBoundedExactOriginFormMetadata()
+    {
+        var context = new CredentialAccessContext(
+            new Uri("https://example.org/login"),
+            new Uri("https://example.org"),
+            new Uri("https://example.org"),
+            false,
+            true);
+        var valid = new FirefoxCredentialRecord(
+            "credential-id", "https://example.org", "https://example.org",
+            "username", "password", "person@example.org", "secret", 1, 1, 1, 1);
+        Assert.IsTrue(valid.IsAllowedFor(context));
+        Assert.IsFalse((valid with { Origin = "https://evil.example" }).IsAllowedFor(context));
+        Assert.IsFalse((valid with { Id = "tài-khoản" }).IsAllowedFor(context));
+        Assert.IsFalse((valid with { Password = "" }).IsAllowedFor(context));
+        Assert.IsFalse((valid with { Password = new string('x', 4_097) }).IsAllowedFor(context));
+        Assert.IsFalse((valid with { TimesUsed = -1 }).IsAllowedFor(context));
     }
 
     [TestMethod]

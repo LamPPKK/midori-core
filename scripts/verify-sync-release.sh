@@ -84,10 +84,17 @@ case "$edition" in
     verify_native_core
     test -f platform/windows/src/XanhBrowser.Windows/WindowsSyncSecretStore.cs
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
+    test -f platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs
     grep -F 'XanhSyncNativeDll' \
       platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj >/dev/null
     grep -F 'xanh-browser-windows://accounts/oauth' \
       platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs >/dev/null
+    grep -F 'settings.IsWebMessageEnabled = _credentialPicker is not null && !_isPrivate;' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F "if (!event.isTrusted) return;" \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F '_credentialNonce != nonce' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
     test "${XANH_WINDOWS_HELLO_TESTED:-0}" = 1
     test "${XANH_WEBVIEW2_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;

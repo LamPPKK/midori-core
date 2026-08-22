@@ -294,7 +294,10 @@ or the notarized distribution channel on clean devices.
    schemes, encrypted backup import/export and recovery from a WebView2 process
    failure on current Windows 10 and Windows 11 with current Evergreen Stable
    Runtime. Decode the shared Android golden backup vector and round-trip a
-   provider-hosted file in both directions.
+   provider-hosted file in both directions. For a Sync-enabled candidate, also
+   verify Windows Hello/PIN unlock, exact-origin credential selection, cancel
+   and retry, stale navigation/process failure, forged or oversized messages,
+   background vault lock and the absence of any bridge in InPrivate tabs.
 3. Sign every executable and package with the dedicated certificate, verify the
    timestamp and signature on a separate clean system, then run Microsoft
    Defender and SmartScreen submission checks.

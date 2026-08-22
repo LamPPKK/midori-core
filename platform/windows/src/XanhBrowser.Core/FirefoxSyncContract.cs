@@ -1,3 +1,7 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace XanhBrowser.Core;
 
 public enum FirefoxAccountState { Disconnected, Authenticating, Connected, AuthIssues }
@@ -103,9 +107,25 @@ public sealed record CredentialAccessContext(
         && Origin(DocumentUri) == Origin(TopFrameOrigin)
         && Origin(TopFrameOrigin) == Origin(FrameOrigin);
 
+    public string ToNativeJson()
+    {
+        if (!IsAllowed) throw new ArgumentException("Credential context is not allowed.");
+        return JsonSerializer.Serialize(new
+        {
+            document_url = DocumentUri.AbsoluteUri,
+            top_frame_origin = CanonicalOrigin(TopFrameOrigin),
+            frame_origin = CanonicalOrigin(FrameOrigin),
+            is_private = IsPrivate,
+            user_selected = UserSelected,
+        });
+    }
+
+    internal string ExpectedOrigin => CanonicalOrigin(DocumentUri);
+
     private static bool IsSecure(Uri uri) => uri.IsAbsoluteUri
         && uri.Scheme == Uri.UriSchemeHttps
-        && string.IsNullOrEmpty(uri.UserInfo);
+        && string.IsNullOrEmpty(uri.UserInfo)
+        && Encoding.UTF8.GetByteCount(uri.AbsoluteUri) <= 8_192;
 
     private static bool IsSecureOrigin(Uri uri) => IsSecure(uri)
         && uri.AbsolutePath == "/"
@@ -113,6 +133,65 @@ public sealed record CredentialAccessContext(
         && string.IsNullOrEmpty(uri.Fragment);
 
     private static string Origin(Uri uri) => $"{uri.Scheme.ToLowerInvariant()}://{uri.IdnHost.ToLowerInvariant()}:{uri.Port}";
+
+    private static string CanonicalOrigin(Uri uri)
+    {
+        var builder = new UriBuilder(Uri.UriSchemeHttps, uri.IdnHost.ToLowerInvariant())
+        {
+            Port = uri.IsDefaultPort ? -1 : uri.Port,
+        };
+        return builder.Uri.GetLeftPart(UriPartial.Authority);
+    }
+}
+
+public sealed record FirefoxCredentialRecord(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("origin")] string Origin,
+    [property: JsonPropertyName("form_action_origin")] string FormActionOrigin,
+    [property: JsonPropertyName("username_field")] string UsernameField,
+    [property: JsonPropertyName("password_field")] string PasswordField,
+    [property: JsonPropertyName("username")] string Username,
+    [property: JsonPropertyName("password")] string Password,
+    [property: JsonPropertyName("time_created_epoch_millis")] long TimeCreatedEpochMillis,
+    [property: JsonPropertyName("time_password_changed_epoch_millis")] long TimePasswordChangedEpochMillis,
+    [property: JsonPropertyName("time_last_used_epoch_millis")] long TimeLastUsedEpochMillis,
+    [property: JsonPropertyName("times_used")] long TimesUsed)
+{
+    public bool IsAllowedFor(CredentialAccessContext context)
+    {
+        if (!context.IsAllowed
+            || !Uri.TryCreate(Origin, UriKind.Absolute, out var storedOrigin)
+            || !Uri.TryCreate(FormActionOrigin, UriKind.Absolute, out var actionOrigin))
+            return false;
+        var expected = context.ExpectedOrigin;
+        return IsSecureOrigin(storedOrigin, expected)
+            && IsSecureOrigin(actionOrigin, expected)
+            && Encoding.UTF8.GetByteCount(Id) is > 0 and <= 128
+            && Id.All(character => character is >= 'a' and <= 'z'
+                or >= 'A' and <= 'Z'
+                or >= '0' and <= '9'
+                or '-' or '_')
+            && Encoding.UTF8.GetByteCount(Username) <= 1_024
+            && Encoding.UTF8.GetByteCount(Password) is > 0 and <= 4_096
+            && ValidField(UsernameField)
+            && ValidField(PasswordField)
+            && TimeCreatedEpochMillis >= 0
+            && TimePasswordChangedEpochMillis >= 0
+            && TimeLastUsedEpochMillis >= 0
+            && TimesUsed >= 0;
+    }
+
+    private static bool IsSecureOrigin(Uri value, string expected) =>
+        value.IsAbsoluteUri
+        && value.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+        && string.IsNullOrEmpty(value.UserInfo)
+        && value.AbsolutePath == "/"
+        && string.IsNullOrEmpty(value.Query)
+        && string.IsNullOrEmpty(value.Fragment)
+        && value.GetLeftPart(UriPartial.Authority).Equals(expected, StringComparison.OrdinalIgnoreCase);
+
+    private static bool ValidField(string value) => Encoding.UTF8.GetByteCount(value) <= 256
+        && !value.Any(char.IsControl);
 }
 
 public sealed class FirefoxSyncVaultSession

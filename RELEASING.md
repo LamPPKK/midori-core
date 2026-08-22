@@ -380,7 +380,10 @@ or the notarized distribution channel on clean devices.
 Before building Windows artifacts, run
 `python3 scripts/verify_webview2_latest.py` with network access. The candidate
 must pin the newest stable Microsoft.Web.WebView2 SDK from the official NuGet
-index; prerelease or dynamic versions never satisfy this gate.
+index; prerelease or dynamic versions never satisfy this gate. On an isolated
+Windows test machine, confirm Runtime 150 and non-stable Beta/Dev/Canary
+channels are rejected before a controller or page is created, while Runtime
+151.0.4129.50 and newer stable Evergreen installations start normally.
 
 1. Run the core tests and publish both architectures:
 

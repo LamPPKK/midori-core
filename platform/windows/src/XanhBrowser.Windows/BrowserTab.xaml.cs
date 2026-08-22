@@ -51,13 +51,25 @@ public sealed partial class BrowserTab : UserControl, IDisposable
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Xanh Browser",
                 "WebView2");
+            var environmentOptions = new CoreWebView2EnvironmentOptions
+            {
+                TargetCompatibleBrowserVersion = WebView2RuntimePolicy.MinimumVersion,
+                ReleaseChannels = CoreWebView2ReleaseChannels.Stable,
+            };
             var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
                 null,
                 userDataFolder,
-                new CoreWebView2EnvironmentOptions());
+                environmentOptions);
             if (_disposed)
             {
                 return;
+            }
+            if (!WebView2RuntimePolicy.IsSupported(environment.BrowserVersionString))
+            {
+                throw new NotSupportedException(
+                    $"Xanh Browser requires the stable WebView2 Runtime "
+                    + $"{WebView2RuntimePolicy.MinimumVersion} or newer; "
+                    + $"found {environment.BrowserVersionString}.");
             }
             var controllerOptions = environment.CreateCoreWebView2ControllerOptions();
             controllerOptions.IsInPrivateModeEnabled = _isPrivate;

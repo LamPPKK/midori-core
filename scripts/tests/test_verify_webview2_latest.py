@@ -38,12 +38,26 @@ class WebView2LatestTests(unittest.TestCase):
             "1.0.4181-prerelease",
         )
 
-    def project(self, directory: str, version: str | None = "1.0.4129.50") -> Path:
+    def project(
+        self,
+        directory: str,
+        version: str | None = "1.0.4129.50",
+        runtime: str = "151.0.4129.50",
+    ) -> Path:
         root = Path(directory)
         target = root / "platform/windows/src/XanhBrowser.Windows"
         target.mkdir(parents=True)
         (target / "XanhBrowser.Windows.csproj").write_text(
             project_xml(version), encoding="utf-8"
+        )
+        policy = root / MODULE.RUNTIME_POLICY_PATH
+        policy.parent.mkdir(parents=True)
+        policy.write_text(
+            "namespace XanhBrowser.Core;\n\n"
+            "public static class WebView2RuntimePolicy\n{\n"
+            f'    public const string MinimumVersion = "{runtime}";\n'
+            "}\n",
+            encoding="utf-8",
         )
         return root
 
@@ -132,6 +146,19 @@ class WebView2LatestTests(unittest.TestCase):
                 'Version="1.0.4129.50"><Version>1.0.4129.50</Version>'
                 "</PackageReference></ItemGroup></Project>",
                 encoding="utf-8",
+            )
+            with self.assertRaises(MODULE.VerificationError):
+                MODULE.verify_project(root, self.fixture())
+
+    def test_runtime_floor_must_match_latest_sdk_build(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.project(directory, runtime="150.0.4078.44")
+            with self.assertRaises(MODULE.VerificationError):
+                MODULE.verify_project(root, self.fixture())
+
+            policy = root / MODULE.RUNTIME_POLICY_PATH
+            policy.write_text(
+                "public static class WebView2RuntimePolicy {}\n", encoding="utf-8"
             )
             with self.assertRaises(MODULE.VerificationError):
                 MODULE.verify_project(root, self.fixture())

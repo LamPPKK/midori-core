@@ -311,7 +311,9 @@ and device/security evidence pass the WPE release gate.
   web messaging to the gated regular-tab credential bridge and uses the
   Evergreen runtime for independently serviced engine updates. A scheduled
   official-NuGet verifier rejects stale, dynamic or prerelease WebView2 SDK
-  pins; the current stable SDK baseline is 1.0.4129.50.
+  pins; the current stable SDK baseline is 1.0.4129.50. Startup additionally
+  rejects non-stable channels or a Runtime older than 151.0.4129.50 before any
+  page is loaded.
 - The Flatpak manifest grants only the permissions required by current browser
   functionality.
 - Android production blocks cleartext and mixed content, enables Safe Browsing

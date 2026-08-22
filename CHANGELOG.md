@@ -24,7 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.
 - Updated the Windows edition to the stable WebView2 SDK 1.0.4129.50 / Runtime
-  151 baseline and added a weekly official-NuGet latest-stable verifier.
+  151 baseline, added a weekly official-NuGet latest-stable verifier and made
+  startup reject old or non-stable Runtime channels before page creation.
 - Added WinCairo encrypted `.xanhbackup` import/export using the native Windows
   file picker, PBKDF2-HMAC-SHA256 and AES-256-GCM through CNG, atomic file
   replacement and the shared Android/C# ASCII and Unicode golden vectors.

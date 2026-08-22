@@ -42,6 +42,12 @@ case "$edition" in
     test -f .github/workflows/webview2-baseline.yml
     grep -F 'python3 scripts/verify_androidx_webkit_latest.py' .github/workflows/webkit-baseline.yml >/dev/null
     grep -F 'python3 scripts/verify_webview2_latest.py' .github/workflows/webview2-baseline.yml >/dev/null
+    grep -F 'TargetCompatibleBrowserVersion = WebView2RuntimePolicy.MinimumVersion' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'ReleaseChannels = CoreWebView2ReleaseChannels.Stable' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'WebView2RuntimePolicy.IsSupported(environment.BrowserVersionString)' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webkit_latest.py' >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_androidx_webkit_latest.py' >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webview2_latest.py' >/dev/null

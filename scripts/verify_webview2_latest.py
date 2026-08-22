@@ -20,6 +20,9 @@ OFFICIAL_INDEX_URL = (
     "microsoft.web.webview2/index.json"
 )
 PACKAGE_ID = "Microsoft.Web.WebView2"
+RUNTIME_POLICY_PATH = Path(
+    "platform/windows/src/XanhBrowser.Core/WebView2RuntimePolicy.cs"
+)
 MAX_INDEX_BYTES = 1024 * 1024
 MAX_PROJECT_BYTES = 1024 * 1024
 MAX_PROJECT_FILES = 128
@@ -28,6 +31,12 @@ IGNORED_PATH_PARTS = {".git", ".gradle", "bin", "build", "obj"}
 STABLE_VERSION_PATTERN = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:\.(0|[1-9][0-9]*))?$"
+)
+RUNTIME_POLICY_PATTERN = re.compile(
+    rb'^\s*public const string MinimumVersion = "'
+    rb'((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.'
+    rb'(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))";\s*$',
+    re.MULTILINE,
 )
 
 
@@ -169,6 +178,23 @@ def project_webview2_pins(root: Path) -> list[tuple[Path, str]]:
     return pins
 
 
+def verify_runtime_policy(root: Path, latest: StableRelease) -> None:
+    path = root / RUNTIME_POLICY_PATH
+    contents = _read_bounded_bytes(path, MAX_PROJECT_BYTES)
+    matches = RUNTIME_POLICY_PATTERN.findall(contents)
+    if len(matches) != 1:
+        raise VerificationError(
+            f"{RUNTIME_POLICY_PATH} must declare exactly one numeric MinimumVersion"
+        )
+    text = matches[0].decode("ascii")
+    components = tuple(int(part) for part in text.split("."))
+    if components[0] < 86 or components[1:] != latest.version[1:]:
+        raise VerificationError(
+            f"WebView2 Runtime floor {text} does not match SDK {latest.text}; "
+            "verify the required Runtime major in Microsoft's release notes"
+        )
+
+
 def verify_project(root: Path, contents: bytes) -> StableRelease:
     root = root.resolve()
     latest = latest_stable_release(contents)
@@ -182,6 +208,7 @@ def verify_project(root: Path, contents: bytes) -> StableRelease:
         raise VerificationError(
             f"WebView2 SDK pins are stale ({detail}); latest stable is {latest.text}"
         )
+    verify_runtime_policy(root, latest)
     return latest
 
 

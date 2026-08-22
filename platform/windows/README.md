@@ -3,7 +3,12 @@
 This directory contains the native Windows edition built with WinUI 3,
 Windows App SDK 2.3 and the Evergreen Microsoft Edge WebView2 Runtime. The
 project pins the stable WebView2 SDK 1.0.4129.50 and verifies it weekly against
-the official NuGet flat-container index.
+the official NuGet flat-container index. At startup it requests only the stable
+release channel, sets the compatible-runtime floor and checks the actual
+environment version before creating a controller or loading any page. The
+latest-stable verifier also requires that floor's build components to match the
+pinned SDK, so a future SDK update cannot silently retain an older runtime
+policy.
 
 ## Requirements
 

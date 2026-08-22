@@ -2,32 +2,12 @@
 
 namespace Xanh {
     public class AddressResolver : Object {
-        public const int MAX_WEB_URI_BYTES = 8192;
+        public const int MAX_WEB_URI_BYTES = PageDataPolicy.MAX_WEB_URI_BYTES;
         public const int MAX_EXTERNAL_URI_BYTES = 2048;
         const int MAX_SEARCH_INPUT_BYTES = 2048;
 
         public static bool is_safe_web_uri (string? input) {
-            if (input == null || input.length == 0 ||
-                    input.length > MAX_WEB_URI_BYTES || !input.validate () ||
-                    contains_control_character (input) || contains_whitespace (input)) {
-                return false;
-            }
-            string? decoded = Uri.unescape_string (input);
-            if (decoded == null || !decoded.validate () ||
-                    contains_control_character (decoded)) {
-                return false;
-            }
-            try {
-                var parsed = Uri.parse (input, UriFlags.SCHEME_NORMALIZE);
-                string scheme = parsed.get_scheme ();
-                string? host = parsed.get_host ();
-                int port = parsed.get_port ();
-                return (scheme == "http" || scheme == "https") &&
-                    parsed.get_userinfo () == null && host != null &&
-                    valid_host (host) && (port == -1 || (port > 0 && port <= 65535));
-            } catch (UriError error) {
-                return false;
-            }
+            return PageDataPolicy.is_safe_web_uri (input);
         }
 
         public static bool is_safe_navigation_uri (string? input) {

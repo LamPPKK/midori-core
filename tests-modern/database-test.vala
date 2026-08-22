@@ -70,6 +70,46 @@ void test_import_history_is_idempotent () {
     }
 }
 
+void test_page_titles_are_sanitized_at_persistence () {
+    try {
+        var dir = DirUtils.make_tmp ("xanh-browser-test-XXXXXX");
+        var database = new Xanh.BrowserDatabase (
+            Path.build_filename (dir, "browser.db"));
+        string unsafe_title = "Before\n\u202eAfter " + string.nfill (5000, 'x');
+        database.record_history ("https://history.example", unsafe_title);
+        database.add_bookmark ("https://bookmark.example", unsafe_title);
+        var tabs = new List<Xanh.StoredPage> ();
+        var tab = new Xanh.StoredPage ("https://session.example", "Safe");
+        tab.title = unsafe_title;
+        tabs.append (tab);
+        database.save_session (tabs, 0);
+        database.execute (
+            "INSERT INTO history(uri, title, visited_at, private) " +
+            "VALUES('https://legacy.example', '%s', 1, 0);".printf (unsafe_title));
+
+        string history_title = database.list_history ().data.title;
+        string bookmark_title = database.list_bookmarks ().data.title;
+        int selected;
+        string session_title = database.load_session (out selected).data.title;
+        string legacy_title = "";
+        foreach (var page in database.list_history (10)) {
+            if (page.uri == "https://legacy.example") legacy_title = page.title;
+        }
+        assert (legacy_title != "");
+        string[] titles = {
+            history_title, bookmark_title, session_title, legacy_title
+        };
+        foreach (string title in titles) {
+            assert (title.validate ());
+            assert (!title.contains ("\n"));
+            assert (!title.contains ("\u202e"));
+            assert (title.length <= Xanh.PageDataPolicy.MAX_TITLE_BYTES);
+        }
+    } catch (Error error) {
+        Test.fail_printf ("Database error: %s", error.message);
+    }
+}
+
 void test_sync_migration_backup_and_mirror () {
     try {
         var dir = DirUtils.make_tmp ("xanh-browser-test-XXXXXX");
@@ -155,6 +195,8 @@ int main (string[] args) {
     Test.add_func ("/database/session-round-trip", test_session_round_trip);
     Test.add_func ("/database/download-round-trip", test_download_round_trip);
     Test.add_func ("/database/import-history-idempotent", test_import_history_is_idempotent);
+    Test.add_func ("/database/page-title-sanitization",
+        test_page_titles_are_sanitized_at_persistence);
     Test.add_func ("/database/sync-migration-backup-mirror", test_sync_migration_backup_and_mirror);
     return Test.run ();
 }

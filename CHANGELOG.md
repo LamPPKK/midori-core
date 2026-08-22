@@ -57,6 +57,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   tied to the exact active HTTPS document. Single/multiple selections preserve
   WebKit MIME filters and cancel across navigation, replacement, renderer,
   tab, data-clear and timeout lifecycle changes without persisting paths.
+- Added one shared 4,096-byte page-title policy across Linux WebKit UI,
+  history, bookmarks, session, Places mirrors and Sync. Control, zero-width and
+  bidi-formatting characters no longer reach durable data or browser chrome;
+  navigation, database and Sync now share the same bounded HTTP(S) validator.
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.

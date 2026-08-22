@@ -3,6 +3,12 @@
 void test_sync_uri_policy () {
     assert (Xanh.SyncDataCoordinator.is_sync_web_uri ("https://example.com/path"));
     assert (!Xanh.SyncDataCoordinator.is_sync_web_uri ("http://user@example.com/path"));
+    assert (!Xanh.SyncDataCoordinator.is_sync_web_uri ("https://foo_bar.example/"));
+    assert (!Xanh.SyncDataCoordinator.is_sync_web_uri ("https://example.com:70000/"));
+    assert (!Xanh.SyncDataCoordinator.is_sync_web_uri (
+        "https://example.com/%0d%0aheader"));
+    assert (!Xanh.SyncDataCoordinator.is_sync_web_uri (
+        "https://example.com/%5cevil"));
     assert (!Xanh.SyncDataCoordinator.is_sync_web_uri ("https://example.com/line\nfeed"));
     assert (!Xanh.SyncDataCoordinator.is_sync_web_uri (
         "https://example.com/" + string.nfill (8200, 'a')));

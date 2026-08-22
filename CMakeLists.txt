@@ -82,6 +82,7 @@ include_directories(
     ${XANH_INCLUDE_DIRS})
 
 vala_precompile(XANH_CORE_C xanh-browser-core
+    desktop/page-data-policy.vala
     desktop/plugin-api.vala
     desktop/database.vala
 PACKAGES ${XANH_VALA_PACKAGES}
@@ -227,6 +228,7 @@ if(BUILD_TESTING)
     add_test(NAME external-navigation-bridge-test COMMAND external-navigation-bridge-test)
 
     add_xanh_test(database-test SOURCE tests-modern/database-test.vala)
+    add_xanh_test(page-data-policy-test SOURCE tests-modern/page-data-policy-test.vala)
     add_xanh_test(address-resolver-test SOURCE tests-modern/address-resolver-test.vala
         SUPPORT desktop/address-resolver.vala)
     add_xanh_test(popup-policy-test SOURCE tests-modern/popup-policy-test.vala

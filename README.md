@@ -154,6 +154,17 @@ selected. Xanh does not write selected upload paths to its database, session,
 Sync data or portable backups; the operating-system chooser/portal remains
 subject to its own folder-history policy.
 
+Page-controlled titles are normalized once through the shared desktop data
+policy before they reach tab/window labels, history, bookmarks, session state,
+the Places compatibility mirror or Firefox Sync. Xanh collapses whitespace,
+removes control, zero-width and bidi-formatting characters, preserves valid
+UTF-8 boundaries and limits the result to 4,096 bytes; an empty result falls
+back to the bounded page URL or `Untitled`. The same core policy now validates
+HTTP(S) URLs for navigation, legacy storage and Sync, so userinfo, malformed
+hosts/ports, whitespace and raw or percent-decoded controls cannot be accepted
+by one data path after another path rejects them; backslashes are rejected to
+avoid GLib/WHATWG parser differentials.
+
 ### Build and test
 
 ```sh

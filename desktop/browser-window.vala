@@ -641,7 +641,8 @@ namespace Xanh {
             });
             tab.view.notify["title"].connect (() => {
                 if (!tab.recovery.process_stopped) {
-                    tab.state.title = tab.view.title ?? "New Tab";
+                    tab.state.title = PageDataPolicy.sanitized_title (
+                        tab.view.title, tab.view.uri ?? tab.state.uri);
                 }
                 update_tab_label (tab);
                 update_chrome ();
@@ -706,7 +707,8 @@ namespace Xanh {
                     bool usable_page = !tab.recovery.process_stopped;
                     if (usable_page) {
                         tab.state.uri = tab.view.uri ?? "about:blank";
-                        tab.state.title = tab.view.title ?? tab.state.uri;
+                        tab.state.title = PageDataPolicy.sanitized_title (
+                            tab.view.title, tab.state.uri);
                     }
                     bool exposed_page = usable_page && !tab.pending_popup;
                     if (usable_page && tab.pending_popup)
@@ -1696,6 +1698,8 @@ namespace Xanh {
         void update_chrome () {
             var tab = active_tab ();
             if (tab == null) return;
+            tab.state.title = PageDataPolicy.sanitized_title (
+                tab.state.title, tab.state.uri);
             if (!address.has_focus) address.text = tab.state.uri;
             back.sensitive = tab.view.can_go_back ();
             forward.sensitive = tab.view.can_go_forward ();
@@ -1717,6 +1721,8 @@ namespace Xanh {
         }
 
         void update_tab_label (TabRecord tab) {
+            tab.state.title = PageDataPolicy.sanitized_title (
+                tab.state.title, tab.state.uri);
             if (plugin_host.colorful_tabs_enabled && tab.state.tint != null) {
                 tab.label.use_markup = true;
                 tab.label.label = "<span foreground=\"%s\">%s</span>".printf (
@@ -2096,7 +2102,8 @@ namespace Xanh {
                     foreach (var page in device.tabs) {
                         var row = new Gtk.ListBoxRow ();
                         var box = new Gtk.Box (Gtk.Orientation.VERTICAL, 2);
-                        var title = new Gtk.Label (page.title);
+                        var title = new Gtk.Label (PageDataPolicy.sanitized_title (
+                            page.title, page.uri));
                         title.halign = Gtk.Align.START;
                         title.ellipsize = Pango.EllipsizeMode.END;
                         var detail = new Gtk.Label ("%s · %s".printf (device.name, page.uri));

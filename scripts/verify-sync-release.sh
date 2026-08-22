@@ -101,8 +101,16 @@ case "$edition" in
     test -f desktop/credential-data.vala
     test -f desktop/web-process-recovery.vala
     test -f tests-modern/web-process-recovery-test.vala
-    grep -F 'MAX_WEB_URI_BYTES = 8192' desktop/address-resolver.vala >/dev/null
-    grep -F 'parsed.get_userinfo () == null' desktop/address-resolver.vala >/dev/null
+    grep -F 'MAX_WEB_URI_BYTES = 8192' desktop/page-data-policy.vala >/dev/null
+    grep -F 'parsed.get_userinfo () == null' desktop/page-data-policy.vala >/dev/null
+    grep -F 'value.contains ("\\")' desktop/page-data-policy.vala >/dev/null
+    grep -F 'decoded.contains ("\\")' desktop/page-data-policy.vala >/dev/null
+    grep -F 'return PageDataPolicy.is_safe_web_uri (input);' \
+      desktop/address-resolver.vala >/dev/null
+    grep -F 'return PageDataPolicy.is_safe_web_uri (uri);' \
+      desktop/database.vala >/dev/null
+    grep -F 'return PageDataPolicy.is_safe_web_uri (uri);' \
+      desktop/sync-data.vala >/dev/null
     grep -F 'take_automatic_recovery (true)' desktop/browser-window.vala >/dev/null
     sed -n '/void maybe_recover_tab/,/void show_process_stopped/p' \
       desktop/browser-window.vala | grep -F 'tab.view.load_uri (uri);' >/dev/null
@@ -211,6 +219,23 @@ case "$edition" in
     if sed -n '/tab.view.run_file_chooser.connect/,/^            });/p' \
       desktop/browser-window.vala | grep -F 'return false' >/dev/null; then
       echo 'Linux file uploads must not fall through to an uncoordinated default chooser' >&2
+      exit 1
+    fi
+    test -f desktop/page-data-policy.vala
+    test -f tests-modern/page-data-policy-test.vala
+    grep -F 'desktop/page-data-policy.vala' CMakeLists.txt >/dev/null
+    grep -F 'add_xanh_test(page-data-policy-test' CMakeLists.txt >/dev/null
+    grep -F 'MAX_TITLE_BYTES = 4096' desktop/page-data-policy.vala >/dev/null
+    grep -F 'character.isspace ()' desktop/page-data-policy.vala >/dev/null
+    grep -F 'character.type () == UnicodeType.FORMAT' \
+      desktop/page-data-policy.vala >/dev/null
+    grep -F 'PageDataPolicy.sanitized_title (' desktop/browser-window.vala >/dev/null
+    grep -F 'PageDataPolicy.sanitized_title (title, uri)' \
+      desktop/database.vala >/dev/null
+    grep -F 'return PageDataPolicy.sanitized_title (value, "Untitled");' \
+      desktop/sync-data.vala >/dev/null
+    if grep -F 'tab.state.title = tab.view.title' desktop/browser-window.vala >/dev/null; then
+      echo 'Linux page titles must pass the shared bounded data policy' >&2
       exit 1
     fi
     test -f desktop/permission-policy.vala

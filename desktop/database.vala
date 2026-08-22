@@ -14,7 +14,9 @@ namespace Xanh {
         public int64 visited_at { get; set; }
 
         public StoredPage (string uri, string title, int64 visited_at = 0) {
-            Object (uri: uri, title: title, visited_at: visited_at);
+            string fallback = PageDataPolicy.is_safe_web_uri (uri) ? uri : "Untitled";
+            Object (uri: uri, title: PageDataPolicy.sanitized_title (title, fallback),
+                visited_at: visited_at);
         }
     }
 
@@ -135,9 +137,10 @@ namespace Xanh {
                 return;
             }
             Sqlite.Statement statement;
+            string safe_title = PageDataPolicy.sanitized_title (title, uri);
             prepare ("INSERT INTO history(uri, title, visited_at, private) VALUES(?, ?, ?, 0)", out statement);
             statement.bind_text (1, uri);
-            statement.bind_text (2, title);
+            statement.bind_text (2, safe_title);
             statement.bind_int64 (3, new DateTime.now_utc ().to_unix ());
             step_done (statement);
         }
@@ -146,15 +149,16 @@ namespace Xanh {
             if (!is_web_uri (uri)) {
                 return;
             }
+            string safe_title = PageDataPolicy.sanitized_title (title, uri);
             Sqlite.Statement statement;
             prepare ("INSERT INTO history(uri, title, visited_at, private) " +
                 "SELECT ?, ?, ?, 0 WHERE NOT EXISTS (" +
                 "SELECT 1 FROM history WHERE uri = ? AND title = ? AND visited_at = ?)", out statement);
             statement.bind_text (1, uri);
-            statement.bind_text (2, title);
+            statement.bind_text (2, safe_title);
             statement.bind_int64 (3, visited_at);
             statement.bind_text (4, uri);
-            statement.bind_text (5, title);
+            statement.bind_text (5, safe_title);
             statement.bind_int64 (6, visited_at);
             step_done (statement);
         }
@@ -164,12 +168,13 @@ namespace Xanh {
                 throw new DatabaseError.QUERY ("Only HTTP(S) pages can be bookmarked");
             }
             Sqlite.Statement statement;
+            string safe_title = PageDataPolicy.sanitized_title (title, uri);
             prepare ("""
                 INSERT INTO bookmarks(uri, title, created_at) VALUES(?, ?, ?)
                 ON CONFLICT(uri) DO UPDATE SET title = excluded.title
             """, out statement);
             statement.bind_text (1, uri);
-            statement.bind_text (2, title);
+            statement.bind_text (2, safe_title);
             statement.bind_int64 (3, new DateTime.now_utc ().to_unix ());
             step_done (statement);
         }
@@ -243,7 +248,8 @@ namespace Xanh {
             prepare ("INSERT OR REPLACE INTO places_bookmarks_mirror" +
                 "(uri, title, created_at) VALUES(?, ?, ?)", out statement);
             statement.bind_text (1, page.uri);
-            statement.bind_text (2, page.title);
+            statement.bind_text (2,
+                PageDataPolicy.sanitized_title (page.title, page.uri));
             statement.bind_int64 (3, page.visited_at);
             step_done (statement);
         }
@@ -253,7 +259,8 @@ namespace Xanh {
             prepare ("INSERT INTO places_history_mirror(uri, title, visited_at) VALUES(?, ?, ?)",
                 out statement);
             statement.bind_text (1, page.uri);
-            statement.bind_text (2, page.title);
+            statement.bind_text (2,
+                PageDataPolicy.sanitized_title (page.title, page.uri));
             statement.bind_int64 (3, page.visited_at);
             step_done (statement);
             execute ("DELETE FROM places_history_mirror WHERE id NOT IN " +
@@ -329,7 +336,8 @@ namespace Xanh {
                         out statement);
                     statement.bind_int (1, position);
                     statement.bind_text (2, tab.uri);
-                    statement.bind_text (3, tab.title);
+                    statement.bind_text (3,
+                        PageDataPolicy.sanitized_title (tab.title, tab.uri));
                     statement.bind_int (4, position == selected ? 1 : 0);
                     step_done (statement);
                     position++;
@@ -556,7 +564,8 @@ namespace Xanh {
                     prepare ("INSERT INTO places_bookmarks_mirror(uri, title, created_at) VALUES(?, ?, ?)",
                         out statement);
                     statement.bind_text (1, page.uri);
-                    statement.bind_text (2, page.title);
+                    statement.bind_text (2,
+                        PageDataPolicy.sanitized_title (page.title, page.uri));
                     statement.bind_int64 (3, page.visited_at);
                     step_done (statement);
                 }
@@ -565,7 +574,8 @@ namespace Xanh {
                     prepare ("INSERT INTO places_history_mirror(uri, title, visited_at) VALUES(?, ?, ?)",
                         out statement);
                     statement.bind_text (1, page.uri);
-                    statement.bind_text (2, page.title);
+                    statement.bind_text (2,
+                        PageDataPolicy.sanitized_title (page.title, page.uri));
                     statement.bind_int64 (3, page.visited_at);
                     step_done (statement);
                 }
@@ -633,16 +643,7 @@ namespace Xanh {
         }
 
         public static bool is_web_uri (string? uri) {
-            if (uri == null) {
-                return false;
-            }
-            try {
-                var parsed = Uri.parse (uri, UriFlags.NONE);
-                return parsed.get_host () != null &&
-                    (parsed.get_scheme () == "http" || parsed.get_scheme () == "https");
-            } catch (UriError error) {
-                return false;
-            }
+            return PageDataPolicy.is_safe_web_uri (uri);
         }
     }
 }

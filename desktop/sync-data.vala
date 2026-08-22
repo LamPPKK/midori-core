@@ -438,35 +438,11 @@ namespace Xanh {
         }
 
         public static bool is_sync_web_uri (string? uri) {
-            if (uri == null || uri.length > 8192) return false;
-            try {
-                var parsed = Uri.parse (uri, UriFlags.NONE);
-                if (parsed.get_userinfo () != null || parsed.get_host () == null ||
-                        !(parsed.get_scheme () == "http" || parsed.get_scheme () == "https"))
-                    return false;
-                int index = 0;
-                unichar character;
-                while (uri.get_next_char (ref index, out character)) {
-                    if (character.iscntrl ()) return false;
-                }
-                return true;
-            } catch (UriError error) {
-                return false;
-            }
+            return PageDataPolicy.is_safe_web_uri (uri);
         }
 
         public static string sanitized_sync_title (string? value) {
-            if (value == null) return "";
-            var builder = new StringBuilder.sized (int.min (value.length, 4096));
-            int index = 0;
-            unichar character;
-            while (value.get_next_char (ref index, out character)) {
-                if (character.iscntrl ()) continue;
-                string encoded = character.to_string ();
-                if (builder.len + encoded.length > 4096) break;
-                builder.append (encoded);
-            }
-            return builder.str;
+            return PageDataPolicy.sanitized_title (value, "Untitled");
         }
 
         static string generate_json (Json.Builder builder) {

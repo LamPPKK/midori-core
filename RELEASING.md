@@ -197,6 +197,18 @@ allowed historical material, never a shipping dependency or application ID.
    Xanh's database, session, Sync state, logs and `.xanhbackup` contain no
    selected path. Record separately whether the desktop portal remembers a
    folder, since that OS-controlled state is outside Xanh's private profile.
+
+   Set page titles containing C0 controls, tabs/newlines, Unicode line
+   separators, zero-width characters, bidi overrides/isolates, emoji sequences
+   and more than 4,096 UTF-8 bytes. Tab/window UI, native plugins, legacy
+   history/bookmarks, session restore, Places mirrors and outgoing Sync must all
+   observe the same valid title: whitespace collapsed, unsafe formatting
+   removed and truncation performed only at a UTF-8 boundary. Restart with an
+   oversized legacy database row and confirm read-time normalization protects
+   the UI even before that row is rewritten. Feed the same URL corpus through
+   address resolution, BrowserDatabase and Sync; all three must return the same
+   decision for userinfo, IDN, malformed hosts/ports, whitespace, controls and
+   backslashes (including percent-decoded forms) at the exact 8 KiB boundary.
    Verify handler-registration failure also leaves external navigation blocked.
    Repeat in a private tab and confirm the handoff occurs only after the same
    explicit activation, with no browser history/session write.

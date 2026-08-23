@@ -26,6 +26,7 @@ struct BrowserView: View {
         }
         .browserWindowMinimumSize()
         .onChange(of: tab.page.url) { _, newURL in
+            firefoxSync.clearCredentialLibrary()
             if let newURL, AddressResolver.isAllowedWebURL(newURL) {
                 tab.address = newURL.absoluteString
                 workspace.persistSession()
@@ -33,6 +34,7 @@ struct BrowserView: View {
         }
         .onChange(of: workspace.selectedTabID) { _, _ in
             firefoxSync.cancelCredentialSelection()
+            firefoxSync.clearCredentialLibrary()
             workspace.persistSession()
             workspace.selectedTab.recoverPendingWebContentProcessIfPossible(
                 isForeground: scenePhase == .active
@@ -53,6 +55,7 @@ struct BrowserView: View {
                 if phase == .active { await firefoxSync.syncIfDue(.startup) }
                 else {
                     firefoxSync.cancelCredentialSelection()
+                    firefoxSync.clearCredentialLibrary()
                     await firefoxSync.lockVault()
                 }
             }
@@ -78,6 +81,14 @@ struct BrowserView: View {
                 onOpenLibraryURL: { url in
                     guard XanhPlacesPolicy.isAllowedWebURL(url) else { return }
                     _ = workspace.addTab(initialURL: url)
+                },
+                credentialContextProvider: {
+                    guard let documentURL = tab.page.url else { return nil }
+                    return XanhCredentialContext.exactTopLevel(
+                        documentURL: documentURL,
+                        isPrivate: tab.isPrivate,
+                        userSelected: true
+                    )
                 }
             )
         }

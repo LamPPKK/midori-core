@@ -78,6 +78,15 @@ document and origin before querying Logins and again before filling. Private
 tabs do not install the script or message handler. A selection may require
 Face ID, Touch ID or the device passcode through LocalAuthentication.
 
+The Sync settings also expose a native password library for the currently
+selected regular HTTPS site. It lists at most 100 bounded Logins records and can
+add, update or confirm-delete the selected exact native login ID. Username and
+password drafts use the same shared 1,024/4,096-byte policy as Rust; passwords
+remain masked. The host re-reads the current tab context before and after vault
+unlock, query and mutation, so navigation or a tab switch clears stale rows
+instead of retargeting them. Private and non-HTTPS tabs cannot open the library,
+and scene/background vault locking clears its presented credential values.
+
 Ordinary verification builds deliberately do not contain Mozilla's native
 runtime. A Sync release must package the pinned
 `MozillaRustComponents.xcframework`, its reviewed generated Swift binding and

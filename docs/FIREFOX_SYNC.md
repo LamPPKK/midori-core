@@ -264,7 +264,13 @@ restart-safe keep/delete disconnect intent and a main-frame-only isolated
 Places library reads all four bookmark roots and recent history under the same
 native bounds, records completed regular navigations, and preserves exact GUID
 or URL/millisecond identities for rename/delete. Private tabs are excluded
-before bookmark and history mutations.
+before bookmark and history mutations. A native site-password library exposes
+the existing Logins add/update/delete contract only for the current exact HTTPS
+top-frame origin. It requires LocalAuthentication-backed vault unlock, retains
+the selected native login ID, confirms deletion, never displays the password,
+and revalidates the current page before and after each async/native boundary.
+Private, HTTP, stale-navigation and cross-origin contexts fail before mutation;
+background/vault locking clears the in-memory list presented by the UI.
 Windows provides the equivalent WinUI coordinator, single-instance protocol
 activation, DPAPI/Windows Hello persistence, a gated exact-origin WebView2
 credential picker and architecture-specific native DLL packaging input. Its
@@ -277,9 +283,10 @@ only create a regular tab after an explicit native row selection.
 Both hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
-The platform boundary tests currently pass locally: 36 Apple tests cover the
+The platform boundary tests currently pass locally: 37 Apple tests cover the
 contract, coordinator, typed Places/Remote Tabs, private-data exclusion,
-navigation/recovery policy and device-only Keychain/LocalAuthentication policy,
+Logins mutation bounds, navigation/recovery policy and device-only
+Keychain/LocalAuthentication policy,
 while 70 Windows cases cover the contract, coordinator, typed Places/tabs
 boundary, P/Invoke surface and DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its

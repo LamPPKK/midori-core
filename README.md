@@ -371,7 +371,11 @@ regular tab only after the user selects one specific safe HTTP(S) row. Its
 native Places library also presents bounded bookmark/history records, preserves
 the exact bookmark GUID or URL/millisecond visit identity for mutations, records
 only completed regular navigation and excludes private tabs before every Places
-write. Their ordinary verification artifacts intentionally omit the native
+write. Its native password library also lists, adds, updates and deletes Logins
+only for the current exact HTTPS origin after LocalAuthentication. Every result
+and exact login ID is revalidated across page/tab changes; private and non-HTTPS
+contexts never reach the native mutation API, and vault/background locking
+clears the displayed credential records. Their ordinary verification artifacts intentionally omit the native
 Mozilla runtime, and production remains blocked until the pinned XCFramework/DLL
 and platform interoperability/security evidence are packaged and reviewed. Each
 platform uses its own registered callback scheme.

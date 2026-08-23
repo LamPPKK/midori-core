@@ -161,6 +161,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added a gated Apple credential picker for macOS, iOS and iPadOS. Regular tabs
   use a main-frame-only isolated `WKContentWorld`, exact-origin and navigation-
   nonce validation plus LocalAuthentication; private tabs install no bridge.
+- Added an Apple native site-password library over the existing Logins CRUD
+  boundary. It adds, updates and confirm-deletes by exact native ID only for the
+  current authenticated HTTPS origin, bounds all secret fields/results, masks
+  passwords, rejects private pages and clears stale rows across navigation,
+  tab changes, backgrounding and vault lock.
 
 ### Changed
 

@@ -218,6 +218,16 @@ public protocol XanhFirefoxSyncRuntime: AnyObject, Sendable {
     func unlockVault(localLoginsKey: String) throws
     func lockVault() throws
     func credentials(context: XanhCredentialContext) throws -> [XanhCredentialRecord]
+    func addCredential(
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord
+    func updateCredential(
+        id: String,
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord
+    func deleteCredential(id: String, context: XanhCredentialContext) throws -> Bool
     func touchCredential(id: String, context: XanhCredentialContext) throws
     func disconnect(deleteLocal: Bool) throws
 }
@@ -651,14 +661,72 @@ public actor XanhFirefoxSyncCoordinator {
         try requireUsableVault(opened)
         let records = try opened.credentials(context: context)
         let encodedSize = try? JSONEncoder().encode(records).count
-        guard records.count <= 100,
+        guard records.count <= XanhCredentialPolicy.maximumResults,
               records.allSatisfy({ $0.isAllowed(for: context) }),
               let encodedSize,
-              encodedSize <= 4 * 1_024 * 1_024 else {
+              encodedSize <= XanhCredentialPolicy.maximumOutputBytes else {
             throw XanhSyncContractError.bridgeRejected
         }
         vaultLastActivity = now()
         return records
+    }
+
+    public func addCredential(
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord {
+        guard draft.isAllowed(for: context) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        try startOperation()
+        defer { finishOperation() }
+        let opened = try requireRuntime()
+        try requireUsableVault(opened)
+        let record = try opened.addCredential(context: context, draft: draft)
+        guard record.isAllowed(for: context) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        vaultLastActivity = now()
+        schedule.localChange = now()
+        return record
+    }
+
+    public func updateCredential(
+        id: String,
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord {
+        guard XanhCredentialPolicy.isValidID(id), draft.isAllowed(for: context) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        try startOperation()
+        defer { finishOperation() }
+        let opened = try requireRuntime()
+        try requireUsableVault(opened)
+        let record = try opened.updateCredential(id: id, context: context, draft: draft)
+        guard record.id == id, record.isAllowed(for: context) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        vaultLastActivity = now()
+        schedule.localChange = now()
+        return record
+    }
+
+    public func deleteCredential(
+        id: String,
+        context: XanhCredentialContext
+    ) throws -> Bool {
+        guard XanhCredentialPolicy.isValidID(id), context.isAllowed else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        try startOperation()
+        defer { finishOperation() }
+        let opened = try requireRuntime()
+        try requireUsableVault(opened)
+        let deleted = try opened.deleteCredential(id: id, context: context)
+        vaultLastActivity = now()
+        if deleted { schedule.localChange = now() }
+        return deleted
     }
 
     public func touchCredential(

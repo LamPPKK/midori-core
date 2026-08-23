@@ -38,6 +38,8 @@ final class FirefoxSyncViewModel {
     var recentHistory: [XanhHistoryVisitRecord] = []
     var historyStatus = "History has not been loaded."
     var isConfirmingClearHistory = false
+    var siteCredentials: [XanhCredentialRecord] = []
+    var passwordsStatus = "Passwords have not been loaded."
     var errorMessage: String?
     var credentialSelection: FirefoxCredentialSelection?
 
@@ -143,7 +145,10 @@ final class FirefoxSyncViewModel {
     func toggleVault() async {
         guard let coordinator else { return }
         do {
-            if snapshot.vaultUnlocked { try await coordinator.lockVault() }
+            if snapshot.vaultUnlocked {
+                try await coordinator.lockVault()
+                clearCredentialLibrary()
+            }
             else { try await coordinator.unlockVault() }
             await refreshSnapshot()
         } catch {
@@ -155,6 +160,7 @@ final class FirefoxSyncViewModel {
         guard let coordinator else { return }
         do {
             try await coordinator.lockVault()
+            clearCredentialLibrary()
             await refreshSnapshot()
         } catch {
             report(error)
@@ -164,7 +170,10 @@ final class FirefoxSyncViewModel {
     func lockVaultIfIdle() async {
         guard let coordinator else { return }
         do {
-            if try await coordinator.lockVaultIfIdle() { await refreshSnapshot() }
+            if try await coordinator.lockVaultIfIdle() {
+                clearCredentialLibrary()
+                await refreshSnapshot()
+            }
         } catch {
             report(error)
         }
@@ -300,6 +309,130 @@ final class FirefoxSyncViewModel {
         }
     }
 
+    @discardableResult
+    func loadSiteCredentials(
+        contextProvider: @MainActor @Sendable () -> XanhCredentialContext?
+    ) async -> Bool {
+        guard let context = contextProvider(), context.isAllowed else {
+            clearCredentialLibrary(
+                detail: "Passwords are unavailable in private or non-HTTPS pages."
+            )
+            return false
+        }
+        guard let coordinator else {
+            clearCredentialLibrary()
+            return false
+        }
+        do {
+            let currentSnapshot = await coordinator.snapshot
+            if !currentSnapshot.vaultUnlocked { try await coordinator.unlockVault() }
+            guard contextProvider() == context else {
+                clearCredentialLibrary(detail: "The page changed before passwords were loaded.")
+                return false
+            }
+            let records = try await coordinator.credentials(for: context)
+            guard contextProvider() == context else {
+                clearCredentialLibrary(detail: "The page changed before passwords were loaded.")
+                return false
+            }
+            siteCredentials = records
+            passwordsStatus = siteCredentials.isEmpty
+                ? "No saved passwords for this exact HTTPS origin."
+                : "\(siteCredentials.count) saved login(s) for this exact HTTPS origin."
+            await refreshSnapshot()
+            return true
+        } catch {
+            clearCredentialLibrary(detail: "Passwords could not be loaded.")
+            report(error)
+            return false
+        }
+    }
+
+    func addCredential(
+        draft: XanhCredentialDraft,
+        contextProvider: @MainActor @Sendable () -> XanhCredentialContext?
+    ) async {
+        guard let coordinator,
+              let context = contextProvider(),
+              draft.isAllowed(for: context) else {
+            report(XanhSyncContractError.bridgeRejected)
+            return
+        }
+        do {
+            _ = try await coordinator.addCredential(context: context, draft: draft)
+            guard contextProvider() == context else {
+                clearCredentialLibrary(detail: "The page changed after the password was saved.")
+                return
+            }
+            if await loadSiteCredentials(contextProvider: contextProvider) {
+                passwordsStatus = "Password saved for the exact HTTPS origin."
+            }
+        } catch {
+            report(error)
+        }
+    }
+
+    func updateCredential(
+        _ record: XanhCredentialRecord,
+        draft: XanhCredentialDraft,
+        contextProvider: @MainActor @Sendable () -> XanhCredentialContext?
+    ) async {
+        guard let coordinator,
+              let context = contextProvider(),
+              record.isAllowed(for: context),
+              draft.isAllowed(for: context) else {
+            report(XanhSyncContractError.bridgeRejected)
+            return
+        }
+        do {
+            _ = try await coordinator.updateCredential(
+                id: record.id,
+                context: context,
+                draft: draft
+            )
+            guard contextProvider() == context else {
+                clearCredentialLibrary(detail: "The page changed after the password was updated.")
+                return
+            }
+            if await loadSiteCredentials(contextProvider: contextProvider) {
+                passwordsStatus = "Password updated by exact login ID."
+            }
+        } catch {
+            report(error)
+        }
+    }
+
+    func deleteCredential(
+        _ record: XanhCredentialRecord,
+        contextProvider: @MainActor @Sendable () -> XanhCredentialContext?
+    ) async {
+        guard let coordinator,
+              let context = contextProvider(),
+              record.isAllowed(for: context) else {
+            report(XanhSyncContractError.bridgeRejected)
+            return
+        }
+        do {
+            let deleted = try await coordinator.deleteCredential(id: record.id, context: context)
+            guard contextProvider() == context else {
+                clearCredentialLibrary(detail: "The page changed after the password was deleted.")
+                return
+            }
+            if await loadSiteCredentials(contextProvider: contextProvider) {
+                passwordsStatus = deleted
+                    ? "Password deleted by exact login ID."
+                    : "The selected password no longer exists."
+            }
+        } catch {
+            report(error)
+        }
+    }
+
+    func clearCredentialLibrary(detail: String = "Passwords have not been loaded.") {
+        siteCredentials = []
+        passwordsStatus = detail
+    }
+
     func requestCredential(
         for context: XanhCredentialContext
     ) async -> XanhCredentialRecord? {
@@ -363,6 +496,7 @@ final class FirefoxSyncViewModel {
             recentHistory = []
             historyStatus = "History has not been loaded."
             pendingHistory = []
+            clearCredentialLibrary()
             await refreshSnapshot()
         } catch {
             report(error)

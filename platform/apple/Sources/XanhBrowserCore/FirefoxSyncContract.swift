@@ -145,6 +145,33 @@ public struct XanhCredentialContext: Equatable, Sendable {
         self.userSelected = userSelected
     }
 
+    public static func exactTopLevel(
+        documentURL: URL,
+        isPrivate: Bool,
+        userSelected: Bool
+    ) -> Self? {
+        guard documentURL.xanhIsSecureHTTPS,
+              var components = URLComponents(url: documentURL, resolvingAgainstBaseURL: false),
+              let host = components.host?.lowercased() else { return nil }
+        components.scheme = "https"
+        components.host = host
+        components.user = nil
+        components.password = nil
+        components.path = ""
+        components.query = nil
+        components.fragment = nil
+        if components.port == 443 { components.port = nil }
+        guard let origin = components.url else { return nil }
+        let context = Self(
+            documentURL: documentURL,
+            topFrameOrigin: origin,
+            frameOrigin: origin,
+            isPrivate: isPrivate,
+            userSelected: userSelected
+        )
+        return context.isAllowed ? context : nil
+    }
+
     public var isAllowed: Bool {
         guard !isPrivate, userSelected, documentURL.xanhIsSecureHTTPS,
               topFrameOrigin.xanhIsSecureOrigin,
@@ -211,21 +238,11 @@ public struct XanhCredentialRecord: Codable, Equatable, Identifiable, Sendable {
               let expectedOrigin = context.canonicalTopFrameOrigin,
               URL(string: origin)?.xanhCanonicalOrigin == expectedOrigin,
               URL(string: formActionOrigin)?.xanhCanonicalOrigin == expectedOrigin,
-              !id.isEmpty,
-              id.utf8.count <= 128,
-              id.unicodeScalars.allSatisfy({
-                  let value = $0.value
-                  return (value >= 48 && value <= 57)
-                      || (value >= 65 && value <= 90)
-                      || (value >= 97 && value <= 122)
-                      || value == 45
-                      || value == 95
-              }),
-              username.utf8.count <= 1_024,
-              !password.isEmpty,
-              password.utf8.count <= 4_096,
-              Self.validField(usernameField),
-              Self.validField(passwordField),
+              XanhCredentialPolicy.isValidID(id),
+              XanhCredentialPolicy.isValidUsername(username),
+              XanhCredentialPolicy.isValidPassword(password),
+              XanhCredentialPolicy.isValidField(usernameField),
+              XanhCredentialPolicy.isValidField(passwordField),
               timeCreatedEpochMillis >= 0,
               timePasswordChangedEpochMillis >= 0,
               timeLastUsedEpochMillis >= 0,
@@ -233,8 +250,75 @@ public struct XanhCredentialRecord: Codable, Equatable, Identifiable, Sendable {
         return true
     }
 
-    private static func validField(_ value: String) -> Bool {
-        value.utf8.count <= 256
+    public var displayUsername: String {
+        XanhRemoteTabsPolicy.sanitizedDisplayText(
+            username,
+            fallback: "(empty username)",
+            maximumUTF8Bytes: XanhCredentialPolicy.maximumUsernameBytes
+        )
+    }
+}
+
+public struct XanhCredentialDraft: Equatable, Sendable {
+    public let usernameField: String
+    public let passwordField: String
+    public let username: String
+    public let password: String
+
+    public init(
+        usernameField: String = "",
+        passwordField: String = "",
+        username: String,
+        password: String
+    ) {
+        self.usernameField = usernameField
+        self.passwordField = passwordField
+        self.username = username
+        self.password = password
+    }
+
+    public func isAllowed(for context: XanhCredentialContext) -> Bool {
+        context.isAllowed
+            && XanhCredentialPolicy.isValidField(usernameField)
+            && XanhCredentialPolicy.isValidField(passwordField)
+            && XanhCredentialPolicy.isValidUsername(username)
+            && XanhCredentialPolicy.isValidPassword(password)
+    }
+}
+
+public enum XanhCredentialPolicy {
+    public static let maximumResults = 100
+    public static let maximumOutputBytes = 4 * 1_024 * 1_024
+    public static let maximumIDBytes = 128
+    public static let maximumUsernameBytes = 1_024
+    public static let maximumPasswordBytes = 4_096
+    public static let maximumFieldBytes = 256
+
+    public static func isValidID(_ value: String) -> Bool {
+        !value.isEmpty
+            && value.utf8.count <= maximumIDBytes
+            && value.unicodeScalars.allSatisfy {
+                let scalar = $0.value
+                return (scalar >= 48 && scalar <= 57)
+                    || (scalar >= 65 && scalar <= 90)
+                    || (scalar >= 97 && scalar <= 122)
+                    || scalar == 45
+                    || scalar == 95
+            }
+    }
+
+    public static func isValidUsername(_ value: String) -> Bool {
+        value.utf8.count <= maximumUsernameBytes && !value.contains("\0")
+    }
+
+    public static func isValidPassword(_ value: String) -> Bool {
+        !value.isEmpty
+            && value.utf8.count <= maximumPasswordBytes
+            && !value.contains("\0")
+    }
+
+    public static func isValidField(_ value: String) -> Bool {
+        value.utf8.count <= maximumFieldBytes
             && value.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
     }
 }

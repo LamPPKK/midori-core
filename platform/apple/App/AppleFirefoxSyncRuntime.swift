@@ -216,21 +216,36 @@ private final class AppleFirefoxSyncRuntime: XanhFirefoxSyncRuntime, @unchecked 
     }
     func lockVault() throws { try runtime.lockVault() }
     func credentials(context: XanhCredentialContext) throws -> [XanhCredentialRecord] {
-        try runtime.credentials(context: map(context)).map {
-            XanhCredentialRecord(
-                id: $0.id,
-                origin: $0.origin,
-                formActionOrigin: $0.formActionOrigin,
-                usernameField: $0.usernameField,
-                passwordField: $0.passwordField,
-                username: $0.username,
-                password: $0.password,
-                timeCreatedEpochMillis: $0.timeCreatedEpochMillis,
-                timePasswordChangedEpochMillis: $0.timePasswordChangedEpochMillis,
-                timeLastUsedEpochMillis: $0.timeLastUsedEpochMillis,
-                timesUsed: $0.timesUsed
-            )
-        }
+        try runtime.credentials(context: map(context)).map(map)
+    }
+    func addCredential(
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord {
+        try map(runtime.addCredential(credential: NewCredential(
+            context: map(context),
+            usernameField: draft.usernameField,
+            passwordField: draft.passwordField,
+            username: draft.username,
+            password: draft.password
+        )))
+    }
+    func updateCredential(
+        id: String,
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord {
+        try map(runtime.updateCredential(credential: CredentialUpdate(
+            id: id,
+            context: map(context),
+            usernameField: draft.usernameField,
+            passwordField: draft.passwordField,
+            username: draft.username,
+            password: draft.password
+        )))
+    }
+    func deleteCredential(id: String, context: XanhCredentialContext) throws -> Bool {
+        try runtime.deleteCredential(id: id, context: map(context))
     }
     func touchCredential(id: String, context: XanhCredentialContext) throws {
         try runtime.touchCredential(id: id, context: map(context))
@@ -249,6 +264,22 @@ private final class AppleFirefoxSyncRuntime: XanhFirefoxSyncRuntime, @unchecked 
             frameOrigin: frameOrigin,
             isPrivate: context.isPrivate,
             userSelected: context.userSelected
+        )
+    }
+
+    private func map(_ record: CredentialRecord) -> XanhCredentialRecord {
+        XanhCredentialRecord(
+            id: record.id,
+            origin: record.origin,
+            formActionOrigin: record.formActionOrigin,
+            usernameField: record.usernameField,
+            passwordField: record.passwordField,
+            username: record.username,
+            password: record.password,
+            timeCreatedEpochMillis: record.timeCreatedEpochMillis,
+            timePasswordChangedEpochMillis: record.timePasswordChangedEpochMillis,
+            timeLastUsedEpochMillis: record.timeLastUsedEpochMillis,
+            timesUsed: record.timesUsed
         )
     }
 

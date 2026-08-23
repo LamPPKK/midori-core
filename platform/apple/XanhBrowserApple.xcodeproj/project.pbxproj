@@ -34,6 +34,8 @@
 		8EE258E982707E0ECCEEFB69 /* ExternalNavigationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE9D73F5942246919E5C9E8 /* ExternalNavigationPolicy.swift */; };
 		900D10CE058A495DAB2E1290 /* FirefoxSyncViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0372C9AEFC9B07F831F257B9 /* FirefoxSyncViewModel.swift */; };
 		9D20E1406B5C633E322E6DDE /* BrowserCredentialBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */; };
+		B315813F4EE737FC2B52B0E8 /* FirefoxPasswordsLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F9BBF66073A0AA95631563 /* FirefoxPasswordsLibraryView.swift */; };
+		B62C9539A252918B878AE2C1 /* FirefoxPasswordsLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F9BBF66073A0AA95631563 /* FirefoxPasswordsLibraryView.swift */; };
 		BA6B112E7A36845519A0EE9C /* FirefoxSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660CDE3438A2918EC8CD9AD0 /* FirefoxSyncCoordinator.swift */; };
 		BE9D2E23490CFD3DCAB9FF84 /* FirefoxSyncBindingPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */; };
 		C2640D548B127955DFA328FF /* BrowserCredentialBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */; };
@@ -69,6 +71,7 @@
 		D9E1BFF0DEF3D7822C6FB9DA /* WebContentProcessRecoveryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContentProcessRecoveryPolicy.swift; sourceTree = "<group>"; };
 		DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxSyncBindingPlaceholder.swift; sourceTree = "<group>"; };
 		EB98C73205558CF4F34E1412 /* Bookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bookmark.swift; sourceTree = "<group>"; };
+		F9F9BBF66073A0AA95631563 /* FirefoxPasswordsLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxPasswordsLibraryView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -124,6 +127,7 @@
 				BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */,
 				2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */,
 				A594809F854069BC05EA45F9 /* BrowserView.swift */,
+				F9F9BBF66073A0AA95631563 /* FirefoxPasswordsLibraryView.swift */,
 				C5207C3CE089306008181AE1 /* FirefoxPlacesLibraryView.swift */,
 				8A0E902F84E8351D788D173C /* FirefoxSyncSettingsView.swift */,
 				0372C9AEFC9B07F831F257B9 /* FirefoxSyncViewModel.swift */,
@@ -234,6 +238,7 @@
 				4DC0E34E124A7AE833A79C6D /* BrowserSession.swift in Sources */,
 				52BFFF6AE82166622BFAEB29 /* BrowserView.swift in Sources */,
 				EF914522599747A991C65581 /* ExternalNavigationPolicy.swift in Sources */,
+				B62C9539A252918B878AE2C1 /* FirefoxPasswordsLibraryView.swift in Sources */,
 				F926EA08BC497535DB4067EE /* FirefoxPlaces.swift in Sources */,
 				2867D7A0095CD6C4C9FBA48D /* FirefoxPlacesLibraryView.swift in Sources */,
 				4822D7D173F0764E391C7218 /* FirefoxSyncBindingPlaceholder.swift in Sources */,
@@ -259,6 +264,7 @@
 				F027B1CBBE9EE01FB40E30B4 /* BrowserSession.swift in Sources */,
 				1DB62C900352197CF302FB45 /* BrowserView.swift in Sources */,
 				8EE258E982707E0ECCEEFB69 /* ExternalNavigationPolicy.swift in Sources */,
+				B315813F4EE737FC2B52B0E8 /* FirefoxPasswordsLibraryView.swift in Sources */,
 				3368C26FDB64ADFA84C73728 /* FirefoxPlaces.swift in Sources */,
 				D0035F59D418A325D33951D1 /* FirefoxPlacesLibraryView.swift in Sources */,
 				BE9D2E23490CFD3DCAB9FF84 /* FirefoxSyncBindingPlaceholder.swift in Sources */,

@@ -114,6 +114,39 @@ import Testing
     #expect(!(record.with(password: String(repeating: "x", count: 4_097))).isAllowed(for: context))
 }
 
+@Test func credentialMutationDraftRequiresExplicitExactHTTPSContext() throws {
+    let document = try #require(URL(string: "https://bücher.example:443/login?next=%2F"))
+    let context = try #require(XanhCredentialContext.exactTopLevel(
+        documentURL: document,
+        isPrivate: false,
+        userSelected: true
+    ))
+    #expect(context.canonicalTopFrameOrigin == "https://xn--bcher-kva.example")
+
+    let valid = XanhCredentialDraft(
+        usernameField: "username",
+        passwordField: "password",
+        username: "person@example.org",
+        password: "secret"
+    )
+    #expect(valid.isAllowed(for: context))
+    #expect(!XanhCredentialDraft(
+        username: String(repeating: "u", count: XanhCredentialPolicy.maximumUsernameBytes + 1),
+        password: "secret"
+    ).isAllowed(for: context))
+    #expect(!XanhCredentialDraft(username: "person", password: "secret\0tail").isAllowed(for: context))
+    #expect(XanhCredentialContext.exactTopLevel(
+        documentURL: document,
+        isPrivate: true,
+        userSelected: true
+    ) == nil)
+    #expect(XanhCredentialContext.exactTopLevel(
+        documentURL: try #require(URL(string: "http://example.org/login")),
+        isPrivate: false,
+        userSelected: true
+    ) == nil)
+}
+
 private extension XanhCredentialRecord {
     func with(
         id: String? = nil,

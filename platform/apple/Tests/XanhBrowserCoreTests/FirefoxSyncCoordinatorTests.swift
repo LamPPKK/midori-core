@@ -193,6 +193,49 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
     try await coordinator.touchCredential(id: records[0].id, context: context)
     #expect(runtime.touchCredentialCalls == 1)
 
+    let draft = XanhCredentialDraft(
+        usernameField: "username",
+        passwordField: "password",
+        username: "new@example.org",
+        password: "new-secret"
+    )
+    let added = try await coordinator.addCredential(context: context, draft: draft)
+    #expect(added.id == "added-credential")
+    #expect(runtime.addCredentialCalls == 1)
+    #expect(runtime.lastCredentialDraft == draft)
+
+    let updatedDraft = XanhCredentialDraft(
+        usernameField: "username",
+        passwordField: "password",
+        username: "updated@example.org",
+        password: "updated-secret"
+    )
+    let updated = try await coordinator.updateCredential(
+        id: added.id,
+        context: context,
+        draft: updatedDraft
+    )
+    #expect(updated.id == added.id)
+    #expect(updated.username == "updated@example.org")
+    #expect(runtime.updateCredentialCalls == 1)
+    #expect(try await coordinator.deleteCredential(id: added.id, context: context))
+    #expect(runtime.deleteCredentialCalls == 1)
+
+    let privateContext = XanhCredentialContext(
+        documentURL: context.documentURL,
+        topFrameOrigin: context.topFrameOrigin,
+        frameOrigin: context.frameOrigin,
+        isPrivate: true,
+        userSelected: true
+    )
+    do {
+        _ = try await coordinator.addCredential(context: privateContext, draft: draft)
+        Issue.record("private credential mutations must fail before native storage")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+    #expect(runtime.addCredentialCalls == 1)
+
     runtime.credentialRecords = [XanhCredentialRecord(
         id: "credential-id",
         origin: "https://evil.example",
@@ -522,6 +565,10 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     private(set) var lastDisconnectDeletedLocal = false
     private(set) var isVaultUnlocked = false
     private(set) var touchCredentialCalls = 0
+    private(set) var addCredentialCalls = 0
+    private(set) var updateCredentialCalls = 0
+    private(set) var deleteCredentialCalls = 0
+    private(set) var lastCredentialDraft: XanhCredentialDraft?
     var credentialRecords: [XanhCredentialRecord] = []
     var remoteDevices: [XanhRemoteTabsDevice] = []
     var bookmarksByRoot: [XanhBookmarkRoot: [XanhBookmarkRecord]] = [:]
@@ -624,6 +671,34 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     func credentials(context: XanhCredentialContext) throws -> [XanhCredentialRecord] {
         credentialRecords
     }
+    func addCredential(
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord {
+        addCredentialCalls += 1
+        lastCredentialDraft = draft
+        let record = credentialRecord(id: "added-credential", context: context, draft: draft)
+        credentialRecords.append(record)
+        return record
+    }
+    func updateCredential(
+        id: String,
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) throws -> XanhCredentialRecord {
+        updateCredentialCalls += 1
+        lastCredentialDraft = draft
+        let record = credentialRecord(id: id, context: context, draft: draft)
+        credentialRecords.removeAll { $0.id == id }
+        credentialRecords.append(record)
+        return record
+    }
+    func deleteCredential(id: String, context: XanhCredentialContext) throws -> Bool {
+        deleteCredentialCalls += 1
+        let count = credentialRecords.count
+        credentialRecords.removeAll { $0.id == id }
+        return credentialRecords.count != count
+    }
     func touchCredential(id: String, context: XanhCredentialContext) throws {
         touchCredentialCalls += 1
     }
@@ -632,6 +707,27 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
         lastDisconnectDeletedLocal = deleteLocal
         isVaultUnlocked = false
         state = .disconnected
+    }
+
+    private func credentialRecord(
+        id: String,
+        context: XanhCredentialContext,
+        draft: XanhCredentialDraft
+    ) -> XanhCredentialRecord {
+        let origin = context.canonicalTopFrameOrigin ?? ""
+        return XanhCredentialRecord(
+            id: id,
+            origin: origin,
+            formActionOrigin: origin,
+            usernameField: draft.usernameField,
+            passwordField: draft.passwordField,
+            username: draft.username,
+            password: draft.password,
+            timeCreatedEpochMillis: 1,
+            timePasswordChangedEpochMillis: 1,
+            timeLastUsedEpochMillis: 1,
+            timesUsed: 0
+        )
     }
 }
 

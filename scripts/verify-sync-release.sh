@@ -36,6 +36,9 @@ verify_apple_sync_library() {
   runtime='platform/apple/App/AppleFirefoxSyncRuntime.swift'
   settings='platform/apple/App/FirefoxSyncSettingsView.swift'
   places_ui='platform/apple/App/FirefoxPlacesLibraryView.swift'
+  passwords_ui='platform/apple/App/FirefoxPasswordsLibraryView.swift'
+  contract='platform/apple/Sources/XanhBrowserCore/FirefoxSyncContract.swift'
+  view_model='platform/apple/App/FirefoxSyncViewModel.swift'
   workspace='platform/apple/App/BrowserModel.swift'
   browser='platform/apple/App/BrowserView.swift'
 
@@ -81,6 +84,23 @@ verify_apple_sync_library() {
   grep -F '.disabled(isPrivateContext)' "$places_ui" >/dev/null
   grep -F 'if event == .finished,' "$browser" >/dev/null
   grep -F 'isPrivate: tab.isPrivate' "$browser" >/dev/null
+
+  grep -F 'public struct XanhCredentialDraft:' "$contract" >/dev/null
+  grep -F 'public static let maximumResults = 100' "$contract" >/dev/null
+  grep -F 'public static let maximumOutputBytes = 4 * 1_024 * 1_024' \
+    "$contract" >/dev/null
+  grep -F 'public static func exactTopLevel(' "$contract" >/dev/null
+  grep -F 'public func addCredential(' "$coordinator" >/dev/null
+  grep -F 'public func updateCredential(' "$coordinator" >/dev/null
+  grep -F 'public func deleteCredential(' "$coordinator" >/dev/null
+  grep -F 'try map(runtime.addCredential(credential: NewCredential(' "$runtime" >/dev/null
+  grep -F 'try map(runtime.updateCredential(credential: CredentialUpdate(' "$runtime" >/dev/null
+  grep -F 'try runtime.deleteCredential(id: id, context: map(context))' "$runtime" >/dev/null
+  grep -F 'struct FirefoxPasswordsLibraryView: View' "$passwords_ui" >/dev/null
+  grep -F '.privacySensitive()' "$passwords_ui" >/dev/null
+  grep -F 'Button("Delete password", role: .destructive)' "$passwords_ui" >/dev/null
+  grep -F 'contextProvider() == context' "$view_model" >/dev/null
+  grep -F 'clearCredentialLibrary()' "$browser" >/dev/null
 }
 
 case "$edition" in

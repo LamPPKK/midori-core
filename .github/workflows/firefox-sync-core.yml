@@ -117,6 +117,8 @@ jobs:
           grep -R -F 'credentials' target/bindings/swift
           grep -R -F 'addCredential' target/bindings/kotlin
           grep -R -F 'addCredential' target/bindings/swift
+          grep -R -F 'updateCredential' target/bindings/kotlin
+          grep -R -F 'updateCredential' target/bindings/swift
           grep -R -F 'deleteCredential' target/bindings/kotlin
           grep -R -F 'deleteCredential' target/bindings/swift
           grep -R -F 'generateLocalLoginsKey' target/bindings/kotlin

@@ -1,12 +1,14 @@
 import SwiftUI
 
 @available(iOS 26.0, macOS 26.0, *)
+@MainActor
 struct FirefoxSyncSettingsView: View {
     @Bindable var model: FirefoxSyncViewModel
     let isPrivateContext: Bool
     let canSaveCurrentPage: Bool
     let onSaveCurrentBookmark: () -> Void
     let onOpenLibraryURL: (URL) -> Void
+    let credentialContextProvider: @MainActor @Sendable () -> XanhCredentialContext?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -86,6 +88,15 @@ struct FirefoxSyncSettingsView: View {
                             Text("The vault locks after five minutes idle and whenever Xanh Browser goes to the background.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
+                            NavigationLink {
+                                FirefoxPasswordsLibraryView(
+                                    model: model,
+                                    contextProvider: credentialContextProvider
+                                )
+                            } label: {
+                                Label("Passwords for Current Site", systemImage: "key")
+                            }
+                            .disabled(credentialContextProvider()?.isAllowed != true)
                         }
 
                         Section("Tabs from other devices") {

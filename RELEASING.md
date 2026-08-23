@@ -533,8 +533,16 @@ than repackaging it as a monolithic APK.
    ID/Touch ID/passcode unlock. Cover cancel/retry, exact-origin denial,
    cross-origin frames, forged or oversized messages, stale navigation,
    renderer/process recovery and background vault lock. Confirm private tabs
-   have no credential script or message handler and inspect logs/crash reports
-   for plaintext credentials.
+   have no credential script or message handler. From the native site-password
+   library, add, edit and confirm-delete a credential, proving the selected
+   native login ID and exact HTTPS origin are retained. Reject HTTP/private
+   pages, invalid IDs/fields, usernames over 1,024 bytes, passwords over 4,096
+   bytes, more than 100 returned records and aggregate output over 4 MiB. Switch
+   tab or navigate during LocalAuthentication, query, add, update and delete;
+   stale rows must clear and no operation may be retargeted to the new origin.
+   Background the app with the library/editor open and confirm displayed
+   records are cleared with the vault. Inspect logs/crash reports for plaintext
+   credentials.
 
 Verification: both archives must report the intended bundle ID/version, contain
 no private signing material, pass App Store validation and install from TestFlight

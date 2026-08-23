@@ -59,10 +59,12 @@ int wmain(int argc, wchar_t** argv)
         auto setFailRuntimeOpen = resolve<SetIntProbe>(validModule, "xanh_test_set_fail_runtime_open");
         auto setAccountState = resolve<SetIntProbe>(validModule, "xanh_test_set_account_state");
         auto setOversizedCredentials = resolve<SetIntProbe>(validModule, "xanh_test_set_oversized_credentials");
+        auto setEmptyPersistedState = resolve<SetIntProbe>(validModule, "xanh_test_set_empty_persisted_state");
         auto credentialCallCollision = resolve<KeyWipeProbe>(validModule, "xanh_test_credential_call_collision");
         auto setRuntimeFreedEvent = resolve<SetHandleProbe>(validModule, "xanh_test_set_runtime_freed_event");
         expect(setFailKeyGeneration && setFailRuntimeOpen && setAccountState
-                && setOversizedCredentials && credentialCallCollision && setRuntimeFreedEvent,
+                && setOversizedCredentials && setEmptyPersistedState
+                && credentialCallCollision && setRuntimeFreedEvent,
             "Could not resolve the native runtime contract probes.", assertions);
 
         std::string error;
@@ -141,6 +143,57 @@ int wmain(int argc, wchar_t** argv)
         expect(runtime->takeLastError() == "Invalid account state from native core", "An out-of-range native account state was not diagnosed locally.", assertions);
         setAccountState(2);
 
+        {
+            auto generated = runtime->generateLocalLoginsKey();
+            expect(generated && generated->view() == "fake-logins-key",
+                "The typed runtime did not generate a local Logins key.", assertions);
+        }
+
+        {
+            auto authorizationURL = runtime->beginOAuth();
+            expect(authorizationURL
+                    && authorizationURL->view()
+                        == "https://accounts.example.test/authorization?state=test-state",
+                "OAuth authorization did not return the bounded native URL.", assertions);
+        }
+        expect(runtime->accountState()
+                == XanhNativeSyncRuntime::AccountState::authenticating,
+            "Beginning OAuth did not enter the authenticating state.", assertions);
+        expect(!runtime->completeOAuth(
+                std::string("safe\0forged", 11), "test-state"),
+            "An embedded-NUL OAuth code was accepted.", assertions);
+        expect(runtime->takeLastError() == "Invalid OAuth callback input",
+            "Invalid OAuth callback input was not diagnosed locally.", assertions);
+        expect(runtime->completeOAuth("test-code", "test-state")
+                == XanhNativeSyncRuntime::AccountState::connected,
+            "A valid OAuth callback did not connect the account.", assertions);
+        {
+            auto account = runtime->accountJSON();
+            auto persisted = runtime->persistedState();
+            expect(account && account->view() == "{\"account\":\"test-secret\"}",
+                "Sensitive account JSON was not returned exactly.", assertions);
+            expect(persisted && persisted->view() == "{\"sync\":\"test-secret\"}",
+                "Sensitive persisted Sync state was not returned exactly.", assertions);
+            setEmptyPersistedState(1);
+            auto emptyPersisted = runtime->persistedState();
+            expect(emptyPersisted && emptyPersisted->empty(),
+                "A successful empty persisted state was confused with failure.", assertions);
+            setEmptyPersistedState(0);
+        }
+        constexpr std::string_view allEngines =
+            "[\"bookmarks\",\"history\",\"tabs\",\"passwords\"]";
+        {
+            auto syncResult = runtime->sync(1, allEngines);
+            expect(syncResult
+                    && syncResult->view()
+                        == "{\"next_sync_allowed_epoch_seconds\":null,\"status\":\"success\"}",
+                "Manual Sync did not return the bounded native result.", assertions);
+        }
+        expect(!runtime->sync(5, allEngines),
+            "An out-of-range Sync reason was accepted.", assertions);
+        expect(runtime->takeLastError() == "Invalid Sync request input",
+            "Invalid Sync request input was not diagnosed locally.", assertions);
+
         auto secondLibrary = XanhNativeSyncLibrary::loadUnsignedFromPathForTesting(argv[1]);
         auto secondParameters = XanhNativeSyncRuntime::OpenParameters {
             "{}", "C:\\XanhBrowser\\SecondSync", std::nullopt, std::nullopt, std::nullopt
@@ -208,6 +261,10 @@ int wmain(int argc, wchar_t** argv)
         expect(runtime->takeLastError() == "Invalid credential touch input", "A host validation failure was not retained safely.", assertions);
         expect(runtime->lockVault(), "The vault did not lock.", assertions);
         expect(!runtime->vaultUnlocked(), "A locked vault was reported unlocked.", assertions);
+        expect(runtime->disconnect(false), "The native account did not disconnect.", assertions);
+        expect(runtime->accountState()
+                == XanhNativeSyncRuntime::AccountState::disconnected,
+            "Disconnect did not publish the disconnected account state.", assertions);
 
         HANDLE runtimeFreedEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         expect(runtimeFreedEvent != nullptr, "Could not create the runtime-free ordering event.", assertions);

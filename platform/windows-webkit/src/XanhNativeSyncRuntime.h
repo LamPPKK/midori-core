@@ -6,22 +6,46 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 class XanhNativeSyncLibrary;
 
 class XanhSensitiveUTF8 {
 public:
     XanhSensitiveUTF8() = default;
-    ~XanhSensitiveUTF8();
+    ~XanhSensitiveUTF8() { clear(); }
 
-    static XanhSensitiveUTF8 take(std::string&&);
+    static XanhSensitiveUTF8 take(std::string&& value)
+    {
+        try {
+            auto result = copyOf(value);
+            wipe(value);
+            return result;
+        } catch (...) {
+            wipe(value);
+            throw;
+        }
+    }
 
-    XanhSensitiveUTF8(XanhSensitiveUTF8&&);
-    XanhSensitiveUTF8& operator=(XanhSensitiveUTF8&&);
+    XanhSensitiveUTF8(XanhSensitiveUTF8&& other) noexcept
+        : m_data(std::move(other.m_data))
+        , m_size(std::exchange(other.m_size, 0))
+    {
+    }
+    XanhSensitiveUTF8& operator=(XanhSensitiveUTF8&& other) noexcept
+    {
+        if (this != &other) {
+            clear();
+            m_data = std::move(other.m_data);
+            m_size = std::exchange(other.m_size, 0);
+        }
+        return *this;
+    }
     XanhSensitiveUTF8(const XanhSensitiveUTF8&) = delete;
     XanhSensitiveUTF8& operator=(const XanhSensitiveUTF8&) = delete;
 
@@ -33,8 +57,36 @@ public:
 
 private:
     friend class XanhNativeSyncRuntime;
-    static XanhSensitiveUTF8 copyOf(std::string_view);
-    void clear();
+    static void wipe(std::string& value)
+    {
+        if (!value.empty()) {
+            volatile char* output = value.data();
+            for (std::size_t index = 0; index < value.size(); ++index)
+                output[index] = 0;
+        }
+        value.clear();
+    }
+    static XanhSensitiveUTF8 copyOf(std::string_view value)
+    {
+        XanhSensitiveUTF8 result;
+        if (value.empty())
+            return result;
+        result.m_data = std::make_unique<char[]>(value.size() + 1);
+        std::memcpy(result.m_data.get(), value.data(), value.size());
+        result.m_data[value.size()] = '\0';
+        result.m_size = value.size();
+        return result;
+    }
+    void clear()
+    {
+        if (m_data && m_size) {
+            volatile char* output = m_data.get();
+            for (std::size_t index = 0; index < m_size; ++index)
+                output[index] = 0;
+        }
+        m_data.reset();
+        m_size = 0;
+    }
     std::unique_ptr<char[]> m_data;
     std::size_t m_size { 0 };
 };
@@ -67,6 +119,15 @@ public:
 
     std::optional<AccountState> initialize();
     std::optional<AccountState> accountState();
+    std::optional<XanhSensitiveUTF8> beginOAuth();
+    std::optional<AccountState> completeOAuth(
+        std::string_view code, std::string_view state);
+    std::optional<XanhSensitiveUTF8> accountJSON();
+    std::optional<XanhSensitiveUTF8> persistedState();
+    std::optional<XanhSensitiveUTF8> generateLocalLoginsKey();
+    std::optional<XanhSensitiveUTF8> sync(
+        std::int32_t reason, std::string_view enginesJSON);
+    bool disconnect(bool deleteLocal);
     bool vaultUnlocked();
     bool unlockVault(std::string_view localLoginsKey);
     bool lockVault();
@@ -81,6 +142,10 @@ public:
     static constexpr std::size_t maximumCredentialContextBytes = 64 * 1024;
     static constexpr std::size_t maximumCredentialOutputBytes = 4 * 1024 * 1024;
     static constexpr std::size_t maximumCredentialIDBytes = 128;
+    static constexpr std::size_t maximumOAuthURLBytes = 64 * 1024;
+    static constexpr std::size_t maximumOAuthComponentBytes = 8192;
+    static constexpr std::size_t maximumEnginesJSONBytes = 4096;
+    static constexpr std::size_t maximumSyncResultBytes = 64 * 1024;
     static constexpr std::size_t maximumErrorBytes = 64 * 1024;
 
 private:

@@ -95,7 +95,11 @@ public sealed class NativeFirefoxSync : IFirefoxSyncRuntime
         (FirefoxAccountState)Checked(NativeMethods.CompleteOAuth(_handle, code, state));
 
     public string AccountJson() => NativeMethods.TakeOwned(NativeMethods.AccountJson(_handle));
-    public string? PersistedState() => NativeMethods.TakeOptional(NativeMethods.PersistedState(_handle));
+    public string? PersistedState()
+    {
+        var state = NativeMethods.TakeOwned(NativeMethods.PersistedState(_handle));
+        return state.Length == 0 ? null : state;
+    }
     public bool VaultUnlocked => NativeMethods.VaultUnlocked(_handle);
 
     public void UnlockVault(string localLoginsKey)

@@ -36,6 +36,9 @@ $nativeSyncRuntimeHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNa
 $nativeSyncRuntimeImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeSyncRuntime.cpp")).Path
 $nativeCredentialPickerHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeCredentialPicker.h")).Path
 $nativeCredentialPickerImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeCredentialPicker.cpp")).Path
+$oauthCallbackHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhOAuthCallback.h")).Path
+$oauthCallbackImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhOAuthCallback.cpp")).Path
+$syncResultHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhSyncResult.h")).Path
 $windowsHelloHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.h")).Path
 $windowsHelloImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.cpp")).Path
 $mainIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/MiniBrowser.ico"
@@ -57,6 +60,9 @@ $nativeSyncRuntimeHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/w
 $nativeSyncRuntimeImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeSyncRuntime.cpp"
 $nativeCredentialPickerHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeCredentialPicker.h"
 $nativeCredentialPickerImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeCredentialPicker.cpp"
+$oauthCallbackHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhOAuthCallback.h"
+$oauthCallbackImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhOAuthCallback.cpp"
+$syncResultHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhSyncResult.h"
 $windowsHelloHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.h"
 $windowsHelloImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.cpp"
 
@@ -117,6 +123,8 @@ if ((Test-Path $portableBackupHeaderDestination) -or (Test-Path $portableBackupI
     -or (Test-Path $nativeSyncLibraryHeaderDestination) -or (Test-Path $nativeSyncLibraryImplementationDestination)
     -or (Test-Path $nativeSyncRuntimeHeaderDestination) -or (Test-Path $nativeSyncRuntimeImplementationDestination)
     -or (Test-Path $nativeCredentialPickerHeaderDestination) -or (Test-Path $nativeCredentialPickerImplementationDestination)
+    -or (Test-Path $oauthCallbackHeaderDestination) -or (Test-Path $oauthCallbackImplementationDestination)
+    -or (Test-Path $syncResultHeaderDestination)
     -or (Test-Path $windowsHelloHeaderDestination)
     -or (Test-Path $windowsHelloImplementationDestination)) {
     throw "The pinned WebKit source unexpectedly contains Xanh host sources. Use a clean exact checkout."
@@ -150,6 +158,9 @@ $nativeSyncRuntimeHeaderHash = $null
 $nativeSyncRuntimeImplementationHash = $null
 $nativeCredentialPickerHeaderHash = $null
 $nativeCredentialPickerImplementationHash = $null
+$oauthCallbackHeaderHash = $null
+$oauthCallbackImplementationHash = $null
+$syncResultHeaderHash = $null
 $windowsHelloHeaderHash = $null
 $windowsHelloImplementationHash = $null
 
@@ -202,6 +213,12 @@ try {
     Copy-Item $nativeCredentialPickerHeader $nativeCredentialPickerHeaderDestination
     $copiedSourceFiles += $nativeCredentialPickerImplementationDestination
     Copy-Item $nativeCredentialPickerImplementation $nativeCredentialPickerImplementationDestination
+    $copiedSourceFiles += $oauthCallbackHeaderDestination
+    Copy-Item $oauthCallbackHeader $oauthCallbackHeaderDestination
+    $copiedSourceFiles += $oauthCallbackImplementationDestination
+    Copy-Item $oauthCallbackImplementation $oauthCallbackImplementationDestination
+    $copiedSourceFiles += $syncResultHeaderDestination
+    Copy-Item $syncResultHeader $syncResultHeaderDestination
     $copiedSourceFiles += $windowsHelloHeaderDestination
     Copy-Item $windowsHelloHeader $windowsHelloHeaderDestination
     $copiedSourceFiles += $windowsHelloImplementationDestination
@@ -223,6 +240,9 @@ try {
     $nativeSyncRuntimeImplementationHash = (Get-FileHash $nativeSyncRuntimeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $nativeCredentialPickerHeaderHash = (Get-FileHash $nativeCredentialPickerHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $nativeCredentialPickerImplementationHash = (Get-FileHash $nativeCredentialPickerImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $oauthCallbackHeaderHash = (Get-FileHash $oauthCallbackHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $oauthCallbackImplementationHash = (Get-FileHash $oauthCallbackImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $syncResultHeaderHash = (Get-FileHash $syncResultHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $windowsHelloHeaderHash = (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $windowsHelloImplementationHash = (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     Copy-Item $icon $mainIcon -Force
@@ -284,6 +304,12 @@ try {
         -or (Get-FileHash $nativeCredentialPickerImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeCredentialPickerImplementationHash
         -or (Get-FileHash $nativeCredentialPickerHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeCredentialPickerHeaderHash
         -or (Get-FileHash $nativeCredentialPickerImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeCredentialPickerImplementationHash
+        -or (Get-FileHash $oauthCallbackHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $oauthCallbackHeaderHash
+        -or (Get-FileHash $oauthCallbackImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $oauthCallbackImplementationHash
+        -or (Get-FileHash $oauthCallbackHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $oauthCallbackHeaderHash
+        -or (Get-FileHash $oauthCallbackImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $oauthCallbackImplementationHash
+        -or (Get-FileHash $syncResultHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $syncResultHeaderHash
+        -or (Get-FileHash $syncResultHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $syncResultHeaderHash
         -or (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
         -or (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloImplementationHash
         -or (Get-FileHash $windowsHelloHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
@@ -328,6 +354,9 @@ try {
         "Native Sync runtime implementation SHA-256: $nativeSyncRuntimeImplementationHash"
         "Native credential picker header SHA-256: $nativeCredentialPickerHeaderHash"
         "Native credential picker implementation SHA-256: $nativeCredentialPickerImplementationHash"
+        "OAuth callback parser header SHA-256: $oauthCallbackHeaderHash"
+        "OAuth callback parser implementation SHA-256: $oauthCallbackImplementationHash"
+        "Sync result parser header SHA-256: $syncResultHeaderHash"
         "Windows Hello header SHA-256: $windowsHelloHeaderHash"
         "Windows Hello implementation SHA-256: $windowsHelloImplementationHash"
         "Architecture: x64"

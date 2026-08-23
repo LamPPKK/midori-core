@@ -27,6 +27,7 @@ public:
         return m_data ? std::wstring_view(m_data.get(), m_size) : std::wstring_view();
     }
     bool empty() const { return !m_size; }
+    static XanhSensitiveWide take(std::wstring&&);
     static std::optional<XanhSensitiveWide> fromUTF8(std::string_view);
     static std::optional<XanhSensitiveWide> forNativeLabel(std::wstring_view);
 

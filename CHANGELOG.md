@@ -230,6 +230,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   and renderer/window lifecycle changes, and locks after five minutes or when
   Xanh loses activation. The default preview still packages neither the native
   DLL nor account provisioning, so release gates remain closed.
+- Wired WinCairo's system-browser OAuth callback, account-state persistence,
+  all-engine manual Sync and keep/delete disconnect actions through that typed
+  runtime. The host registers a per-user edition-specific protocol only on an
+  explicit sign-in, keeps the native profile single-process, forwards a bounded
+  callback from the protocol-launched process to the identical running
+  executable and then only to the window that began OAuth; a closed initiator is
+  not replaced by another window. Callback acknowledgement now follows an atomic
+  authenticating-state/single-flight reservation, closing duplicate-callback and
+  competing-operation races. Callbacks delivered after the OAuth-owning process
+  exits fail closed because the upstream PKCE verifier is memory-only. OAuth is
+  strictly parsed outside WebKit. Manual Sync requires
+  foreground Windows Hello before opening the Logins engine, runs without the
+  picker state mutex, and requests all four engines. Network and destructive
+  work stays off the WebKit UI thread; generation-tokened UI messages cannot be
+  retargeted to a reused window, and write-ahead disconnect resumes the same
+  choice after restart.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

@@ -358,7 +358,7 @@ pub extern "C" fn xanh_sync_runtime_persisted_state(runtime: *mut c_void) -> *mu
             Ok(runtime) => runtime
                 .persisted_sync_state()
                 .map(owned_string)
-                .unwrap_or(ptr::null_mut()),
+                .unwrap_or_else(|| owned_string("")),
             Err(error) => {
                 set_last_error(error);
                 ptr::null_mut()
@@ -368,6 +368,7 @@ pub extern "C" fn xanh_sync_runtime_persisted_state(runtime: *mut c_void) -> *mu
     #[cfg(not(feature = "mozilla"))]
     {
         let _ = runtime;
+        set_last_error("xanh-sync-core was built without the mozilla feature");
         ptr::null_mut()
     }
 }
@@ -1173,6 +1174,20 @@ mod tests {
         xanh_sync_string_free(pointer);
         assert_eq!(message, "Mozilla Application Services operation failed");
         assert!(!message.contains("super-secret"));
+    }
+
+    #[cfg(not(feature = "mozilla"))]
+    #[test]
+    fn persisted_state_without_mozilla_is_an_explicit_failure() {
+        let state = xanh_sync_runtime_persisted_state(ptr::null_mut());
+        assert!(state.is_null());
+        let error = xanh_sync_last_error();
+        assert!(!error.is_null());
+        let message = unsafe { CStr::from_ptr(error) }
+            .to_string_lossy()
+            .into_owned();
+        xanh_sync_string_free(error);
+        assert!(message.contains("without the mozilla feature"));
     }
 
     #[test]

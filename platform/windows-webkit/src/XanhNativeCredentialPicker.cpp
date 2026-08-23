@@ -14,6 +14,7 @@
 
 #include "XanhCredentialRecords.h"
 #include "XanhDpapiSecretStore.h"
+#include "XanhOAuthCallback.h"
 #include "XanhNativeSyncLibrary.h"
 #include "XanhNativeSyncRuntime.h"
 #include "XanhWindowsHello.h"
@@ -25,6 +26,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -35,6 +37,8 @@ constexpr wchar_t tokenServerEnvironment[] = L"XANH_WINCAIRO_FXA_TOKEN_SERVER_UR
 constexpr wchar_t clientIDEnvironment[] = L"XANH_WINCAIRO_FXA_CLIENT_ID";
 constexpr std::size_t maximumEnvironmentCharacters = 8192;
 constexpr ULONGLONG vaultTimeoutMilliseconds = 5 * 60 * 1000;
+constexpr std::string_view allSyncEngines =
+    "[\"bookmarks\",\"history\",\"tabs\",\"passwords\"]";
 
 void secureClear(std::string& value)
 {
@@ -154,7 +158,7 @@ bool isHTTPSURL(std::wstring_view value)
         && XanhNavigationPolicy::isAllowedWebURL(value);
 }
 
-std::optional<std::string> configurationJSON()
+std::optional<std::string> configurationJSON(std::wstring& accountOrigin)
 {
     auto accounts = environment(accountsEnvironment);
     auto tokenServer = environment(tokenServerEnvironment);
@@ -162,11 +166,16 @@ std::optional<std::string> configurationJSON()
     if (!accounts || !tokenServer || !clientID || clientID->empty()
         || !isHTTPSURL(*accounts) || !isHTTPSURL(*tokenServer))
         return std::nullopt;
+    auto canonicalAccountOrigin =
+        XanhCredentialBridgePolicy::canonicalHTTPSOrigin(*accounts);
+    if (!canonicalAccountOrigin)
+        return std::nullopt;
     auto accountsUTF8 = utf8(*accounts);
     auto tokenServerUTF8 = utf8(*tokenServer);
     auto clientIDUTF8 = utf8(*clientID);
     if (!accountsUTF8 || !tokenServerUTF8 || !clientIDUTF8)
         return std::nullopt;
+    accountOrigin = std::move(*canonicalAccountOrigin);
     return "{\"server\":{\"kind\":\"self-hosted\",\"accounts_url\":"
         + jsonString(*accountsUTF8) + ",\"token_server_url\":"
         + jsonString(*tokenServerUTF8) + "},\"client_id\":"
@@ -318,7 +327,7 @@ struct XanhNativeCredentialPicker::Impl {
         return true;
     }
 
-    bool prepareLocalLoginsKey(const XanhNativeSyncLibrary& library)
+    bool prepareLocalLoginsKey()
     {
         auto stored = store.read(XanhDpapiSecretStore::Secret::loginsKey);
         if (stored.status == XanhDpapiSecretStore::Status::success
@@ -341,17 +350,87 @@ struct XanhNativeCredentialPicker::Impl {
         if (!profile || !removeUnreadableLogins(*profile))
             return false;
 
-        std::string error;
-        auto generated = XanhNativeSyncRuntime::generateLocalLoginsKey(library, error);
-        secureClear(error);
+        auto generated = runtime->generateLocalLoginsKey();
         return generated && isValidLocalLoginsKey(generated->view())
             && store.write(XanhDpapiSecretStore::Secret::loginsKey, generated->view())
                 == XanhDpapiSecretStore::Status::success;
     }
 
+    bool persistRuntimeStateLocked()
+    {
+        if (!runtime)
+            return false;
+        auto account = runtime->accountJSON();
+        if (!account || account->empty())
+            return false;
+        auto persisted = runtime->persistedState();
+        if (!persisted)
+            return false;
+        auto status = persisted->empty()
+            ? store.remove(XanhDpapiSecretStore::Secret::syncState)
+            : store.write(XanhDpapiSecretStore::Secret::syncState,
+                persisted->view());
+        if (status != XanhDpapiSecretStore::Status::success)
+            return false;
+        // Account state contains the connected refresh credentials. Commit it
+        // last so a failed Sync-state write cannot resurrect a sign-in that the
+        // UI reported as failed.
+        return store.write(XanhDpapiSecretStore::Secret::accountState,
+                   account->view())
+            == XanhDpapiSecretStore::Status::success;
+    }
+
+    bool finishDisconnectLocked(bool deleteLocal)
+    {
+        if (!runtime)
+            return false;
+        std::vector<XanhDpapiSecretStore::Secret> secrets {
+            XanhDpapiSecretStore::Secret::accountState,
+            XanhDpapiSecretStore::Secret::syncState,
+            XanhDpapiSecretStore::Secret::schedule,
+        };
+        if (deleteLocal) {
+            secrets.push_back(XanhDpapiSecretStore::Secret::loginsKey);
+            secrets.push_back(XanhDpapiSecretStore::Secret::engineSelection);
+        }
+        for (auto secret : secrets) {
+            if (store.remove(secret) != XanhDpapiSecretStore::Status::success)
+                return false;
+        }
+        if (store.remove(XanhDpapiSecretStore::Secret::disconnectIntent)
+            != XanhDpapiSecretStore::Status::success)
+            return false;
+        pendingDisconnect.reset();
+        oauthOwner = nullptr;
+        oauthBoundToWindow = false;
+        runtime.reset();
+        accountOrigin.clear();
+        profile.reset();
+        initialize();
+        return true;
+    }
+
     void initialize()
     {
-        auto configuration = configurationJSON();
+        auto disconnect = store.read(
+            XanhDpapiSecretStore::Secret::disconnectIntent);
+        if (disconnect.status == XanhDpapiSecretStore::Status::success) {
+            if (disconnect.value == "keep-local")
+                pendingDisconnect = false;
+            else if (disconnect.value == "delete-local")
+                pendingDisconnect = true;
+            else {
+                secureClear(disconnect.value);
+                return;
+            }
+        } else if (disconnect.status != XanhDpapiSecretStore::Status::notFound) {
+            secureClear(disconnect.value);
+            return;
+        }
+        secureClear(disconnect.value);
+
+        std::wstring configuredAccountOrigin;
+        auto configuration = configurationJSON(configuredAccountOrigin);
         if (!configuration || !timer)
             return;
         auto library = XanhNativeSyncLibrary::loadFromApplicationDirectory();
@@ -361,7 +440,7 @@ struct XanhNativeCredentialPicker::Impl {
         if (!profile)
             return;
         auto profileUTF8 = utf8(profile->wstring());
-        if (!profileUTF8 || !prepareLocalLoginsKey(*library))
+        if (!profileUTF8)
             return;
 
         std::optional<XanhSensitiveUTF8> account;
@@ -369,6 +448,7 @@ struct XanhNativeCredentialPicker::Impl {
         if (!loadStoredSecret(XanhDpapiSecretStore::Secret::accountState, account)
             || !loadStoredSecret(XanhDpapiSecretStore::Secret::syncState, syncState))
             return;
+        bool hadAccount = account.has_value();
 
         XanhNativeSyncRuntime::OpenParameters parameters {
             std::move(*configuration), std::move(*profileUTF8), std::nullopt,
@@ -381,6 +461,14 @@ struct XanhNativeCredentialPicker::Impl {
         if (!opened || !opened->initialize())
             return;
         runtime = std::move(opened);
+        accountOrigin = std::move(configuredAccountOrigin);
+        if (pendingDisconnect) {
+            auto deleteLocal = *pendingDisconnect;
+            if (runtime->disconnect(deleteLocal))
+                finishDisconnectLocked(deleteLocal);
+        }
+        else if (hadAccount && !prepareLocalLoginsKey())
+            runtime.reset();
     }
 
     static void CALLBACK timerFired(PTP_CALLBACK_INSTANCE, void* context, PTP_TIMER)
@@ -447,7 +535,9 @@ struct XanhNativeCredentialPicker::Impl {
                 return;
             }
             vaultDeadline = 0;
-            if (!runtime->lockVault())
+            if (operationActive)
+                vaultLockPending = true;
+            else if (!runtime->lockVault())
                 runtime.reset();
             dialog = activeDialog;
         }
@@ -501,6 +591,54 @@ struct XanhNativeCredentialPicker::Impl {
         return std::move(completion);
     }
 
+    SyncCompletion takeSyncCompletionLocked(
+        std::uint64_t expectedGeneration)
+    {
+        if (!operationActive || generation != expectedGeneration
+            || !syncCompletion)
+            return { };
+        operationActive = false;
+        operationOwner = nullptr;
+        presencePending = false;
+        hello.reset();
+        return std::move(syncCompletion);
+    }
+
+    bool applyPendingVaultLockLocked()
+    {
+        if (!vaultLockPending)
+            return true;
+        vaultLockPending = false;
+        cancelTimerLocked();
+        if (runtime && !runtime->lockVault()) {
+            runtime.reset();
+            return false;
+        }
+        return true;
+    }
+
+    void completeSync(
+        std::uint64_t expectedGeneration,
+        std::optional<SyncStatus> result)
+    {
+        SyncCompletion callback;
+        {
+            std::scoped_lock lock(mutex);
+            if (!operationActive || generation != expectedGeneration
+                || !syncCompletion)
+                return;
+            if (!applyPendingVaultLockLocked())
+                result.reset();
+            callback = takeSyncCompletionLocked(expectedGeneration);
+        }
+        if (!callback)
+            return;
+        try {
+            callback(std::move(result));
+        } catch (...) {
+        }
+    }
+
     void completeRequest(
         std::uint64_t expectedGeneration,
         std::optional<XanhCredential> result)
@@ -514,6 +652,7 @@ struct XanhNativeCredentialPicker::Impl {
     }
 
     std::wstring storageRoot;
+    std::wstring accountOrigin;
     XanhDpapiSecretStore store;
     std::optional<std::filesystem::path> profile;
     std::unique_ptr<XanhNativeSyncRuntime> runtime;
@@ -521,12 +660,19 @@ struct XanhNativeCredentialPicker::Impl {
     std::mutex mutex;
     std::shared_ptr<XanhWindowsHello> hello;
     XanhCredentialPickerCompletion completion;
+    SyncCompletion syncCompletion;
     std::uint64_t generation { 0 };
     ULONGLONG vaultDeadline { 0 };
     HWND activeOwner { nullptr };
+    HWND operationOwner { nullptr };
+    HWND oauthOwner { nullptr };
     HWND activeDialog { nullptr };
     bool requestActive { false };
     bool presencePending { false };
+    bool operationActive { false };
+    bool vaultLockPending { false };
+    bool oauthBoundToWindow { false };
+    std::optional<bool> pendingDisconnect;
 };
 
 XanhNativeCredentialPicker::XanhNativeCredentialPicker()
@@ -563,6 +709,7 @@ void XanhNativeCredentialPicker::pick(
     {
         std::scoped_lock lock(m_impl->mutex);
         accepted = m_impl->runtime && m_impl->profile && !m_impl->requestActive
+            && !m_impl->operationActive && !m_impl->pendingDisconnect
             && ownerWindow && IsWindow(ownerWindow)
             && GetForegroundWindow() == ownerWindow && IsWindowVisible(ownerWindow)
             && !IsIconic(ownerWindow);
@@ -721,23 +868,59 @@ void XanhNativeCredentialPicker::cancel(HWND ownerWindow)
     XanhCredentialPickerCompletion completion;
     {
         std::scoped_lock lock(m_impl->mutex);
-        if (!m_impl->requestActive || m_impl->activeOwner != ownerWindow)
-            return;
-        if (++m_impl->generation == 0)
-            ++m_impl->generation;
-        m_impl->requestActive = false;
-        m_impl->activeOwner = nullptr;
-        m_impl->presencePending = false;
-        hello = std::exchange(m_impl->hello, { });
-        completion = std::move(m_impl->completion);
-        dialog = m_impl->activeDialog;
-        m_impl->activeDialog = nullptr;
+        if (m_impl->requestActive && m_impl->activeOwner == ownerWindow) {
+            if (++m_impl->generation == 0)
+                ++m_impl->generation;
+            m_impl->requestActive = false;
+            m_impl->activeOwner = nullptr;
+            m_impl->presencePending = false;
+            hello = std::exchange(m_impl->hello, { });
+            completion = std::move(m_impl->completion);
+            dialog = m_impl->activeDialog;
+            m_impl->activeDialog = nullptr;
+        }
     }
     if (hello)
         hello->cancel();
     if (dialog)
         PostMessageW(dialog, TDM_CLICK_BUTTON, IDCANCEL, 0);
     invokeCompletion(std::move(completion), std::nullopt);
+}
+
+void XanhNativeCredentialPicker::windowClosed(HWND ownerWindow)
+{
+    cancel(ownerWindow);
+    std::shared_ptr<XanhWindowsHello> hello;
+    SyncCompletion syncCompletion;
+    {
+        std::scoped_lock lock(m_impl->mutex);
+        if (m_impl->oauthBoundToWindow && m_impl->oauthOwner == ownerWindow)
+            m_impl->oauthOwner = nullptr;
+        if (m_impl->operationActive
+            && m_impl->operationOwner == ownerWindow
+            && m_impl->syncCompletion) {
+            if (m_impl->presencePending) {
+                if (++m_impl->generation == 0)
+                    ++m_impl->generation;
+                m_impl->operationActive = false;
+                m_impl->operationOwner = nullptr;
+                m_impl->presencePending = false;
+                hello = std::exchange(m_impl->hello, { });
+                syncCompletion = std::move(m_impl->syncCompletion);
+            } else {
+                m_impl->operationOwner = nullptr;
+                m_impl->vaultLockPending = true;
+            }
+        }
+    }
+    if (hello)
+        hello->cancel();
+    if (syncCompletion) {
+        try {
+            syncCompletion(std::nullopt);
+        } catch (...) {
+        }
+    }
 }
 
 void XanhNativeCredentialPicker::applicationActivationChanged(
@@ -752,6 +935,9 @@ void XanhNativeCredentialPicker::applicationActivationChanged(
     {
         std::scoped_lock lock(m_impl->mutex);
         if (m_impl->requestActive && m_impl->activeOwner == ownerWindow
+            && m_impl->presencePending && !remainsInsideXanh)
+            return;
+        if (m_impl->operationActive && m_impl->operationOwner == ownerWindow
             && m_impl->presencePending && !remainsInsideXanh)
             return;
         if (m_impl->requestActive && m_impl->activeOwner == ownerWindow
@@ -771,7 +957,9 @@ void XanhNativeCredentialPicker::applicationActivationChanged(
         }
         if (!remainsInsideXanh) {
             m_impl->cancelTimerLocked();
-            if (m_impl->runtime && !m_impl->runtime->lockVault())
+            if (m_impl->operationActive)
+                m_impl->vaultLockPending = true;
+            else if (m_impl->runtime && !m_impl->runtime->lockVault())
                 m_impl->runtime.reset();
         }
     }
@@ -780,4 +968,313 @@ void XanhNativeCredentialPicker::applicationActivationChanged(
     if (dialog)
         PostMessageW(dialog, TDM_CLICK_BUTTON, IDCANCEL, 0);
     invokeCompletion(std::move(completion), std::nullopt);
+}
+
+bool XanhNativeCredentialPicker::canBeginOAuth(HWND ownerWindow)
+{
+    std::scoped_lock lock(m_impl->mutex);
+    return m_impl->runtime && !m_impl->requestActive
+        && !m_impl->operationActive && !m_impl->pendingDisconnect
+        && !m_impl->oauthBoundToWindow
+        && ownerWindow && isCurrentProcessWindow(ownerWindow)
+        && GetForegroundWindow() == ownerWindow;
+}
+
+std::optional<XanhSensitiveWide> XanhNativeCredentialPicker::beginOAuth(
+    HWND ownerWindow)
+{
+    {
+        std::scoped_lock lock(m_impl->mutex);
+        if (!m_impl->runtime || m_impl->requestActive || m_impl->operationActive
+            || m_impl->pendingDisconnect || m_impl->oauthBoundToWindow
+            || !ownerWindow
+            || !isCurrentProcessWindow(ownerWindow)
+            || GetForegroundWindow() != ownerWindow)
+            return std::nullopt;
+        m_impl->operationActive = true;
+        m_impl->operationOwner = nullptr;
+        m_impl->vaultLockPending = false;
+    }
+    try {
+        auto url = m_impl->runtime->beginOAuth();
+        auto wide = url ? XanhSensitiveWide::fromUTF8(url->view()) : std::nullopt;
+        auto origin = wide
+            ? XanhCredentialBridgePolicy::canonicalHTTPSOrigin(wide->view())
+            : std::nullopt;
+        std::scoped_lock lock(m_impl->mutex);
+        bool valid = wide && origin && *origin == m_impl->accountOrigin
+            && m_impl->persistRuntimeStateLocked();
+        bool lockApplied = m_impl->applyPendingVaultLockLocked();
+        valid = valid && lockApplied;
+        m_impl->operationActive = false;
+        if (!valid) {
+            m_impl->oauthOwner = nullptr;
+            m_impl->oauthBoundToWindow = false;
+            m_impl->runtime.reset();
+            return std::nullopt;
+        }
+        m_impl->oauthOwner = ownerWindow;
+        m_impl->oauthBoundToWindow = true;
+        return wide;
+    } catch (...) {
+        std::scoped_lock lock(m_impl->mutex);
+        m_impl->applyPendingVaultLockLocked();
+        m_impl->operationActive = false;
+        m_impl->oauthOwner = nullptr;
+        m_impl->oauthBoundToWindow = false;
+        m_impl->runtime.reset();
+        return std::nullopt;
+    }
+}
+
+bool XanhNativeCredentialPicker::abandonOAuth(HWND ownerWindow)
+{
+    std::scoped_lock lock(m_impl->mutex);
+    if (!m_impl->runtime || m_impl->requestActive || m_impl->operationActive
+        || m_impl->pendingDisconnect || !m_impl->oauthBoundToWindow
+        || m_impl->oauthOwner != ownerWindow)
+        return false;
+    m_impl->oauthOwner = nullptr;
+    m_impl->oauthBoundToWindow = false;
+    m_impl->runtime.reset();
+    m_impl->initialize();
+    return m_impl->runtime != nullptr;
+}
+
+bool XanhNativeCredentialPicker::canHandleOAuthCallback(HWND ownerWindow)
+{
+    std::scoped_lock lock(m_impl->mutex);
+    if (!m_impl->runtime || m_impl->requestActive || m_impl->operationActive
+        || m_impl->pendingDisconnect || !ownerWindow
+        || !isCurrentProcessWindow(ownerWindow))
+        return false;
+    return m_impl->oauthBoundToWindow
+        && m_impl->oauthOwner == ownerWindow
+        && m_impl->runtime->accountState()
+        == XanhNativeSyncRuntime::AccountState::authenticating;
+}
+
+bool XanhNativeCredentialPicker::completeOAuth(
+    HWND ownerWindow, std::wstring_view callbackURL,
+    OAuthCompletion completion)
+{
+    auto callback = XanhOAuthCallbackParser::parse(callbackURL);
+    if (!callback || !completion)
+        return false;
+    std::uint64_t operationGeneration = 0;
+    {
+        std::scoped_lock lock(m_impl->mutex);
+        if (!m_impl->runtime || m_impl->requestActive || m_impl->operationActive
+            || m_impl->pendingDisconnect || !ownerWindow
+            || !isCurrentProcessWindow(ownerWindow)
+            || !m_impl->oauthBoundToWindow
+            || m_impl->oauthOwner != ownerWindow
+            || m_impl->runtime->accountState()
+                != XanhNativeSyncRuntime::AccountState::authenticating)
+            return false;
+        m_impl->operationActive = true;
+        m_impl->operationOwner = nullptr;
+        m_impl->vaultLockPending = false;
+        if (++m_impl->generation == 0)
+            ++m_impl->generation;
+        operationGeneration = m_impl->generation;
+    }
+    try {
+        auto sharedCompletion =
+            std::make_shared<OAuthCompletion>(std::move(completion));
+        std::thread([service = shared_from_this(),
+                        callback = std::move(*callback),
+                        sharedCompletion,
+                        operationGeneration]() mutable {
+            auto& impl = *service->m_impl;
+            bool success = false;
+            try {
+                auto state = impl.runtime->completeOAuth(
+                    callback.code.view(), callback.state.view());
+                std::scoped_lock lock(impl.mutex);
+                success = impl.operationActive
+                    && impl.generation == operationGeneration
+                    && state
+                    && *state == XanhNativeSyncRuntime::AccountState::connected
+                    && impl.prepareLocalLoginsKey();
+                bool lockApplied = impl.applyPendingVaultLockLocked();
+                success = success && lockApplied;
+                if (success)
+                    success = impl.persistRuntimeStateLocked();
+                impl.operationActive = false;
+                if (!success)
+                    impl.runtime.reset();
+                impl.oauthOwner = nullptr;
+                impl.oauthBoundToWindow = false;
+            } catch (...) {
+                std::scoped_lock lock(impl.mutex);
+                impl.applyPendingVaultLockLocked();
+                impl.operationActive = false;
+                impl.oauthOwner = nullptr;
+                impl.oauthBoundToWindow = false;
+                impl.runtime.reset();
+            }
+            try {
+                (*sharedCompletion)(success);
+            } catch (...) {
+            }
+        }).detach();
+        return true;
+    } catch (...) {
+        std::scoped_lock lock(m_impl->mutex);
+        m_impl->applyPendingVaultLockLocked();
+        m_impl->operationActive = false;
+        // Thread creation failed before native state was consumed. Keep the
+        // owner binding so the browser can deliver the callback again.
+        return false;
+    }
+}
+
+void XanhNativeCredentialPicker::syncNow(
+    HWND ownerWindow, SyncCompletion completion)
+{
+    if (!completion)
+        return;
+    std::uint64_t generation = 0;
+    std::shared_ptr<XanhWindowsHello> hello;
+    bool accepted = false;
+    {
+        std::scoped_lock lock(m_impl->mutex);
+        accepted = m_impl->runtime && !m_impl->requestActive
+            && !m_impl->operationActive && !m_impl->pendingDisconnect
+            && ownerWindow && IsWindow(ownerWindow)
+            && GetForegroundWindow() == ownerWindow
+            && IsWindowVisible(ownerWindow) && !IsIconic(ownerWindow)
+            && m_impl->runtime->accountState()
+                == XanhNativeSyncRuntime::AccountState::connected;
+        if (accepted) {
+            m_impl->operationActive = true;
+            m_impl->operationOwner = ownerWindow;
+            m_impl->vaultLockPending = false;
+            m_impl->presencePending = true;
+            if (++m_impl->generation == 0)
+                ++m_impl->generation;
+            generation = m_impl->generation;
+            m_impl->syncCompletion = std::move(completion);
+            m_impl->cancelTimerLocked();
+            m_impl->hello = std::make_shared<XanhWindowsHello>(ownerWindow);
+            hello = m_impl->hello;
+        }
+    }
+    if (!accepted) {
+        try {
+            completion(std::nullopt);
+        } catch (...) {
+        }
+        return;
+    }
+
+    try {
+        hello->verify(L"Unlock passwords before Firefox Sync",
+            [weak = weak_from_this(), ownerWindow, generation](bool verified) {
+                auto service = weak.lock();
+                if (!service)
+                    return;
+                auto& impl = *service->m_impl;
+                {
+                    std::unique_lock lock(impl.mutex);
+                    bool current = impl.operationActive
+                        && impl.generation == generation
+                        && impl.operationOwner == ownerWindow
+                        && impl.syncCompletion;
+                    if (current) {
+                        impl.presencePending = false;
+                        impl.hello.reset();
+                    }
+                    if (!verified || !current || !IsWindow(ownerWindow)
+                        || GetForegroundWindow() != ownerWindow
+                        || !impl.unlockVaultLocked()) {
+                        lock.unlock();
+                        impl.completeSync(generation, std::nullopt);
+                        return;
+                    }
+                }
+
+                try {
+                    std::thread([service = std::move(service), generation] {
+                        auto& impl = *service->m_impl;
+                        std::optional<SyncStatus> status;
+                        try {
+                            auto result = impl.runtime->sync(1, allSyncEngines);
+                            status = result
+                                ? XanhSyncResultParser::parse(result->view())
+                                : std::nullopt;
+                            std::scoped_lock lock(impl.mutex);
+                            if (status) {
+                                bool canCommit = impl.operationActive
+                                    && impl.generation == generation
+                                    && impl.applyPendingVaultLockLocked()
+                                    && impl.persistRuntimeStateLocked();
+                                if (!canCommit)
+                                    status.reset();
+                            }
+                            if (!status)
+                                impl.runtime.reset();
+                        } catch (...) {
+                            std::scoped_lock lock(impl.mutex);
+                            impl.runtime.reset();
+                            status.reset();
+                        }
+                        impl.completeSync(generation, std::move(status));
+                    }).detach();
+                } catch (...) {
+                    impl.completeSync(generation, std::nullopt);
+                }
+            });
+    } catch (...) {
+        m_impl->completeSync(generation, std::nullopt);
+    }
+}
+
+bool XanhNativeCredentialPicker::disconnect(bool deleteLocal)
+{
+    {
+        std::scoped_lock lock(m_impl->mutex);
+        if (!m_impl->runtime || m_impl->requestActive || m_impl->operationActive
+            || (m_impl->pendingDisconnect
+                && *m_impl->pendingDisconnect != deleteLocal))
+            return false;
+        m_impl->operationActive = true;
+        m_impl->operationOwner = nullptr;
+        m_impl->vaultLockPending = false;
+        if (!m_impl->pendingDisconnect) {
+            auto intent = deleteLocal ? "delete-local" : "keep-local";
+            if (m_impl->store.write(
+                    XanhDpapiSecretStore::Secret::disconnectIntent, intent)
+                != XanhDpapiSecretStore::Status::success) {
+                m_impl->operationActive = false;
+                return false;
+            }
+            m_impl->pendingDisconnect = deleteLocal;
+        }
+    }
+    try {
+        bool nativeSuccess = m_impl->runtime->disconnect(deleteLocal);
+        std::scoped_lock lock(m_impl->mutex);
+        bool success = nativeSuccess
+            && m_impl->finishDisconnectLocked(deleteLocal);
+        bool lockApplied = m_impl->applyPendingVaultLockLocked();
+        success = success && lockApplied;
+        m_impl->operationActive = false;
+        return success;
+    } catch (...) {
+        std::scoped_lock lock(m_impl->mutex);
+        m_impl->applyPendingVaultLockLocked();
+        m_impl->operationActive = false;
+        return false;
+    }
+}
+
+std::optional<XanhNativeSyncRuntime::AccountState>
+XanhNativeCredentialPicker::accountState()
+{
+    std::scoped_lock lock(m_impl->mutex);
+    if (!m_impl->runtime || m_impl->operationActive || m_impl->pendingDisconnect)
+        return std::nullopt;
+    return m_impl->runtime->accountState();
 }

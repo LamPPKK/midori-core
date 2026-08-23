@@ -31,6 +31,12 @@ using RuntimeOpen = decltype(&xanh_sync_runtime_open);
 using RuntimeFree = decltype(&xanh_sync_runtime_free);
 using RuntimeInitialize = decltype(&xanh_sync_runtime_initialize);
 using RuntimeAccountState = decltype(&xanh_sync_runtime_account_state);
+using RuntimeBeginOAuth = decltype(&xanh_sync_runtime_begin_oauth);
+using RuntimeCompleteOAuth = decltype(&xanh_sync_runtime_complete_oauth);
+using RuntimeAccountJSON = decltype(&xanh_sync_runtime_account_json);
+using RuntimePersistedState = decltype(&xanh_sync_runtime_persisted_state);
+using RuntimeSync = decltype(&xanh_sync_runtime_sync);
+using RuntimeDisconnect = decltype(&xanh_sync_runtime_disconnect);
 using RuntimeVaultUnlocked = decltype(&xanh_sync_runtime_vault_unlocked);
 using RuntimeUnlockVault = decltype(&xanh_sync_runtime_unlock_vault);
 using RuntimeLockVault = decltype(&xanh_sync_runtime_lock_vault);
@@ -144,65 +150,18 @@ std::string takeNativeError(LastError lastError, StringFree stringFree)
 
 } // namespace
 
-XanhSensitiveUTF8 XanhSensitiveUTF8::take(std::string&& value)
-{
-    try {
-        auto result = copyOf(value);
-        ::clear(value);
-        return result;
-    } catch (...) {
-        ::clear(value);
-        throw;
-    }
-}
-
-XanhSensitiveUTF8 XanhSensitiveUTF8::copyOf(std::string_view value)
-{
-    XanhSensitiveUTF8 result;
-    if (value.empty())
-        return result;
-    result.m_data = std::make_unique<char[]>(value.size() + 1);
-    std::memcpy(result.m_data.get(), value.data(), value.size());
-    result.m_data[value.size()] = '\0';
-    result.m_size = value.size();
-    return result;
-}
-
-XanhSensitiveUTF8::~XanhSensitiveUTF8()
-{
-    clear();
-}
-
-XanhSensitiveUTF8::XanhSensitiveUTF8(XanhSensitiveUTF8&& other)
-    : m_data(std::move(other.m_data))
-    , m_size(std::exchange(other.m_size, 0))
-{
-}
-
-XanhSensitiveUTF8& XanhSensitiveUTF8::operator=(XanhSensitiveUTF8&& other)
-{
-    if (this != &other) {
-        clear();
-        m_data = std::move(other.m_data);
-        m_size = std::exchange(other.m_size, 0);
-    }
-    return *this;
-}
-
-void XanhSensitiveUTF8::clear()
-{
-    if (m_data && m_size)
-        SecureZeroMemory(m_data.get(), m_size);
-    m_data.reset();
-    m_size = 0;
-}
-
 struct XanhNativeSyncRuntime::Impl {
     std::unique_ptr<XanhNativeSyncLibrary> library;
     void* runtime { nullptr };
     RuntimeFree runtimeFree { nullptr };
     RuntimeInitialize runtimeInitialize { nullptr };
     RuntimeAccountState runtimeAccountState { nullptr };
+    RuntimeBeginOAuth runtimeBeginOAuth { nullptr };
+    RuntimeCompleteOAuth runtimeCompleteOAuth { nullptr };
+    RuntimeAccountJSON runtimeAccountJSON { nullptr };
+    RuntimePersistedState runtimePersistedState { nullptr };
+    RuntimeSync runtimeSync { nullptr };
+    RuntimeDisconnect runtimeDisconnect { nullptr };
     RuntimeVaultUnlocked runtimeVaultUnlocked { nullptr };
     RuntimeUnlockVault runtimeUnlockVault { nullptr };
     RuntimeLockVault runtimeLockVault { nullptr };
@@ -219,7 +178,8 @@ struct XanhNativeSyncRuntime::Impl {
             runtimeFree(runtime);
     }
 
-    std::optional<XanhSensitiveUTF8> takeSensitive(char* value, std::size_t maximumBytes)
+    std::optional<XanhSensitiveUTF8> takeSensitive(
+        char* value, std::size_t maximumBytes, std::string_view invalidMessage)
     {
         if (!value)
             return std::nullopt;
@@ -228,7 +188,7 @@ struct XanhNativeSyncRuntime::Impl {
         if (!length) {
             // Only wipe the prefix that the bounded scan proved readable.
             owned.wipe(maximumBytes + 1);
-            setError("Oversized credential output from native core");
+            setError(std::string(invalidMessage));
             return std::nullopt;
         }
         owned.wipe(*length);
@@ -282,6 +242,12 @@ std::unique_ptr<XanhNativeSyncRuntime> XanhNativeSyncRuntime::open(
     impl->runtimeFree = resolve<RuntimeFree>(module, "xanh_sync_runtime_free");
     impl->runtimeInitialize = resolve<RuntimeInitialize>(module, "xanh_sync_runtime_initialize");
     impl->runtimeAccountState = resolve<RuntimeAccountState>(module, "xanh_sync_runtime_account_state");
+    impl->runtimeBeginOAuth = resolve<RuntimeBeginOAuth>(module, "xanh_sync_runtime_begin_oauth");
+    impl->runtimeCompleteOAuth = resolve<RuntimeCompleteOAuth>(module, "xanh_sync_runtime_complete_oauth");
+    impl->runtimeAccountJSON = resolve<RuntimeAccountJSON>(module, "xanh_sync_runtime_account_json");
+    impl->runtimePersistedState = resolve<RuntimePersistedState>(module, "xanh_sync_runtime_persisted_state");
+    impl->runtimeSync = resolve<RuntimeSync>(module, "xanh_sync_runtime_sync");
+    impl->runtimeDisconnect = resolve<RuntimeDisconnect>(module, "xanh_sync_runtime_disconnect");
     impl->runtimeVaultUnlocked = resolve<RuntimeVaultUnlocked>(module, "xanh_sync_runtime_vault_unlocked");
     impl->runtimeUnlockVault = resolve<RuntimeUnlockVault>(module, "xanh_sync_runtime_unlock_vault");
     impl->runtimeLockVault = resolve<RuntimeLockVault>(module, "xanh_sync_runtime_lock_vault");
@@ -332,6 +298,20 @@ std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::generateLocalLoginsKey(
         std::string_view(owned.get(), *length));
 }
 
+std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::generateLocalLoginsKey()
+{
+    std::scoped_lock lock(m_impl->mutex);
+    std::string error;
+    auto result = generateLocalLoginsKey(*m_impl->library, error);
+    if (result)
+        m_impl->clearError();
+    else
+        m_impl->setError(error.empty()
+                ? "Could not generate a local Logins key" : error);
+    clear(error);
+    return result;
+}
+
 XanhNativeSyncRuntime::XanhNativeSyncRuntime(std::unique_ptr<Impl> impl)
     : m_impl(std::move(impl))
 {
@@ -365,6 +345,116 @@ std::optional<XanhNativeSyncRuntime::AccountState> XanhNativeSyncRuntime::accoun
     else
         m_impl->captureNativeError();
     return state;
+}
+
+std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::beginOAuth()
+{
+    std::scoped_lock lock(m_impl->mutex);
+    char* nativeResult = m_impl->runtimeBeginOAuth(m_impl->runtime);
+    if (!nativeResult) {
+        m_impl->captureNativeError();
+        return std::nullopt;
+    }
+    auto result = m_impl->takeSensitive(
+        nativeResult, maximumOAuthURLBytes,
+        "Invalid OAuth URL from native core");
+    if (result)
+        m_impl->clearError();
+    return result;
+}
+
+std::optional<XanhNativeSyncRuntime::AccountState>
+XanhNativeSyncRuntime::completeOAuth(
+    std::string_view code, std::string_view state)
+{
+    if (!isBoundedCStringInput(code, maximumOAuthComponentBytes, false)
+        || !isBoundedCStringInput(state, maximumOAuthComponentBytes, false)) {
+        std::scoped_lock lock(m_impl->mutex);
+        m_impl->setError("Invalid OAuth callback input");
+        return std::nullopt;
+    }
+    auto codeCopy = XanhSensitiveUTF8::copyOf(code);
+    auto stateCopy = XanhSensitiveUTF8::copyOf(state);
+    std::scoped_lock lock(m_impl->mutex);
+    auto rawState = m_impl->runtimeCompleteOAuth(
+        m_impl->runtime, codeCopy.view().data(), stateCopy.view().data());
+    auto result = ::accountState(rawState);
+    if (result)
+        m_impl->clearError();
+    else if (rawState >= 0)
+        m_impl->setError("Invalid account state from native core");
+    else
+        m_impl->captureNativeError();
+    return result;
+}
+
+std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::accountJSON()
+{
+    std::scoped_lock lock(m_impl->mutex);
+    char* nativeResult = m_impl->runtimeAccountJSON(m_impl->runtime);
+    if (!nativeResult) {
+        m_impl->captureNativeError();
+        return std::nullopt;
+    }
+    auto result = m_impl->takeSensitive(
+        nativeResult, maximumOpenSecretBytes,
+        "Invalid account state from native core");
+    if (result)
+        m_impl->clearError();
+    return result;
+}
+
+std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::persistedState()
+{
+    std::scoped_lock lock(m_impl->mutex);
+    char* nativeResult = m_impl->runtimePersistedState(m_impl->runtime);
+    if (!nativeResult) {
+        m_impl->captureNativeError();
+        return std::nullopt;
+    }
+    auto result = m_impl->takeSensitive(
+        nativeResult, maximumOpenSecretBytes,
+        "Invalid persisted Sync state from native core");
+    if (result)
+        m_impl->clearError();
+    return result;
+}
+
+std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::sync(
+    std::int32_t reason, std::string_view enginesJSON)
+{
+    if (reason < 0 || reason > 4
+        || !isBoundedCStringInput(
+            enginesJSON, maximumEnginesJSONBytes, false)) {
+        std::scoped_lock lock(m_impl->mutex);
+        m_impl->setError("Invalid Sync request input");
+        return std::nullopt;
+    }
+    std::string engines(enginesJSON);
+    std::scoped_lock lock(m_impl->mutex);
+    char* nativeResult = m_impl->runtimeSync(
+        m_impl->runtime, reason, engines.c_str());
+    if (!nativeResult) {
+        m_impl->captureNativeError();
+        return std::nullopt;
+    }
+    auto result = m_impl->takeSensitive(
+        nativeResult, maximumSyncResultBytes,
+        "Invalid Sync result from native core");
+    if (result)
+        m_impl->clearError();
+    return result;
+}
+
+bool XanhNativeSyncRuntime::disconnect(bool deleteLocal)
+{
+    std::scoped_lock lock(m_impl->mutex);
+    bool result = m_impl->runtimeDisconnect(m_impl->runtime, deleteLocal);
+    if (result)
+        m_impl->clearError();
+    else
+        m_impl->captureNativeError();
+    return result;
 }
 
 bool XanhNativeSyncRuntime::vaultUnlocked()
@@ -420,7 +510,9 @@ std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::credentialsJSON(std::str
         m_impl->captureNativeError();
         return std::nullopt;
     }
-    auto result = m_impl->takeSensitive(nativeResult, maximumCredentialOutputBytes);
+    auto result = m_impl->takeSensitive(
+        nativeResult, maximumCredentialOutputBytes,
+        "Oversized credential output from native core");
     if (result)
         m_impl->clearError();
     return result;

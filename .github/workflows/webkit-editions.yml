@@ -106,6 +106,7 @@ jobs:
             Source/WebKit/UIProcess/API/C/WKUserScriptRef.cpp
             Source/WebKit/UIProcess/API/C/WKUserScriptRef.h
             Source/WebKit/UIProcess/WebPageProxy.cpp
+            Tools/MiniBrowser/win/BrowserWindow.h
             Tools/MiniBrowser/win/CMakeLists.txt
             Tools/MiniBrowser/win/MainWindow.cpp
             Tools/MiniBrowser/win/MainWindow.h
@@ -113,6 +114,7 @@ jobs:
             Tools/MiniBrowser/win/MiniBrowserLibResource.h
             Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
             Tools/MiniBrowser/win/WebKitBrowserWindow.h
+            Tools/MiniBrowser/win/WinMain.cpp
           )
           for file in "${files[@]}"; do
             mkdir -p "_webkit/$(dirname "${file}")"
@@ -142,6 +144,9 @@ jobs:
           cp platform/windows-webkit/src/XanhNativeSyncRuntime.cpp _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhNativeCredentialPicker.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhNativeCredentialPicker.cpp _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhOAuthCallback.h _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhOAuthCallback.cpp _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhSyncResult.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhWindowsHello.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhWindowsHello.cpp _webkit/Tools/MiniBrowser/win/
           grep -F 'OUTPUT_NAME "XanhBrowser.WebKit"' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
@@ -151,6 +156,7 @@ jobs:
           grep -F 'XanhNativeSyncRuntime.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhCredentialRecords.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhNativeCredentialPicker.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
+          grep -F 'XanhOAuthCallback.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'crypt32' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhWindowsHello.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'windowsapp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
@@ -191,6 +197,31 @@ jobs:
           grep -F 'm_nativeCredentialPicker = XanhNativeCredentialPicker::shared()' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
           grep -F 'picker->cancel(mainWnd)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
           grep -F 'applicationActivationChanged(' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'beginFirefoxSync()' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'syncFirefoxSync()' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'disconnectFirefoxSync(true)' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'xanh-browser-wincairo:' _webkit/Tools/MiniBrowser/win/WinMain.cpp
+          grep -F 'CreateMutexW(nullptr, FALSE, mutexName.c_str())' _webkit/Tools/MiniBrowser/win/WinMain.cpp
+          grep -F 'SendMessageTimeoutW(primary, WM_COPYDATA' _webkit/Tools/MiniBrowser/win/WinMain.cpp
+          grep -F 'case WM_COPYDATA:' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'routeFirefoxSyncCallback(std::move(incoming))' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'ShowWindow(activationWindow, SW_RESTORE)' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'canHandleFirefoxSyncCallback()' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F 'case XanhFirefoxSyncResultMessage:' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
+          grep -F '|| token != static_cast<WPARAM>(m_syncPresentationToken))' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'registerFirefoxSyncProtocol()' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'if (!m_nativeCredentialPicker->canBeginOAuth(m_hMainWnd))' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'return m_nativeCredentialPicker->completeOAuth(' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'ownerWindow, callback.view(), [ownerWindow, token](bool success)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'm_nativeCredentialPicker->abandonOAuth(m_hMainWnd)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'Thread construction must never unwind through the Win32 window procedure.' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'm_nativeCredentialPicker->syncNow(ownerWindow' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'm_nativeCredentialPicker->windowClosed(m_hMainWnd)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          cmp platform/windows-webkit/src/XanhNavigationPolicy.h _webkit/Tools/MiniBrowser/win/XanhNavigationPolicy.h
+          if grep -F 'XanhSyncWindowLifetime' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.h; then
+            echo 'WinCairo background results must use UI-thread messages with generation tokens' >&2
+            exit 1
+          fi
           grep -F 'WKXanhUserContentControllerAddScriptMessageHandlerInWorld' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
           grep -F 'WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
           grep -F "if (event.isTrusted && event.isPrimary && event.button === 0) requestCredential(event.target)" _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
@@ -231,6 +262,17 @@ jobs:
             platform/windows-webkit/tests/XanhCredentialRecordsTest.cpp \
             -o /tmp/xanh-credential-records-test
           /tmp/xanh-credential-records-test
+          c++ -std=c++17 -Wall -Wextra -Werror \
+            -I _webkit/Tools/MiniBrowser/win \
+            _webkit/Tools/MiniBrowser/win/XanhOAuthCallback.cpp \
+            platform/windows-webkit/tests/XanhOAuthCallbackTest.cpp \
+            -o /tmp/xanh-oauth-callback-test
+          /tmp/xanh-oauth-callback-test
+          c++ -std=c++17 -Wall -Wextra -Werror \
+            -I _webkit/Tools/MiniBrowser/win \
+            platform/windows-webkit/tests/XanhSyncResultTest.cpp \
+            -o /tmp/xanh-sync-result-test
+          /tmp/xanh-sync-result-test
 
   windows-wincairo-portable-backup:
     runs-on: windows-latest

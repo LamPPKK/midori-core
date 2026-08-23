@@ -49,7 +49,7 @@ runtime files cannot leak into a new artifact.
 The reviewed source deltas also expose **Export encrypted backup** and **Import
 encrypted backup** in the File menu and connect the validating credential
 bridge to MiniBrowser. The build script temporarily copies the standalone CNG
-codec plus seventeen credential-bridge/parser/DPAPI/native-runtime/picker/Windows-Hello sources
+codec plus twenty credential-bridge/parser/DPAPI/native-runtime/picker/Windows-Hello sources
 into the pinned tree, records every source hash in `ENGINE.txt`, and removes the
 files while restoring the checkout.
 Export places the selected window first and includes up to 49 other
@@ -145,6 +145,43 @@ exact-origin credential records into move-only wipeable wide buffers, presents
 usernames in a native command-link dialog, touches only the selected native ID,
 and locks after five minutes or immediately on external deactivation. Navigation,
 renderer termination and window teardown cancel the request exactly once.
+If an already-authorized native Sync is in flight, deactivation cannot interrupt
+the core transaction; the picker records the lock request and enforces it before
+publishing completion.
+
+The File menu also exposes **Firefox Sync Sign In**, **Firefox Sync Now** and
+the keep-local/remove-local disconnect choices. Sign-in registers the
+`xanh-browser-wincairo://accounts/oauth` handler for the current Windows user,
+opens Accounts in the system browser and parses the returned code/state outside
+WebKit with strict size, schema, percent-encoding and UTF-8 checks. A per-user
+process lock prevents two MiniBrowser processes from opening the same native
+profile. The protocol-created process verifies the existing window belongs to
+the identical executable, forwards only one bounded callback over `WM_COPYDATA`
+and exits before constructing WebKit or the Sync runtime. Within the owner
+process, the callback is routed only to the native window that began OAuth; a
+closed initiator is never replaced by another open window, and the abandoned
+in-memory flow remains quarantined until the process restarts. Application Services
+keeps the PKCE verifier only in process memory, so a callback arriving after the
+owning process exited is rejected and the user must start sign-in again. Callback
+delivery is acknowledged only after the picker
+has atomically revalidated that state and reserved the single-flight operation,
+so a duplicate callback or competing Sync/disconnect cannot be accepted in the
+handoff window.
+
+Sign-in completion, manual Sync and disconnect run away from WebKit's UI
+thread. **Firefox Sync Now** requires the originating window to be foreground,
+verifies Windows Hello, opens the local Logins store with the DPAPI-protected
+key and only then requests bookmarks, history, tabs and passwords together.
+The picker never holds its state mutex while the network Sync runs; a timeout or
+external deactivation records a pending vault lock and applies it before the
+operation completes. Result UI is posted back to the native UI thread and is
+accepted only by the originating window's generation token, so a destroyed or
+reused HWND cannot receive it. Account and Sync state are persisted through
+DPAPI, while a write-ahead disconnect intent makes the chosen cleanup idempotent
+across restart. Server partial/network/auth/backoff results are shown without
+exposing native diagnostics or OAuth values. These controls remain unavailable
+in the ordinary artifact because it still omits the configured Mozilla-enabled
+native DLL.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /

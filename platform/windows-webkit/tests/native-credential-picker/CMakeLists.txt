@@ -13,6 +13,7 @@ add_executable(XanhNativeCredentialPickerContractTest
     ../../src/XanhNativeCredentialPicker.cpp
     ../../src/XanhNativeSyncLibrary.cpp
     ../../src/XanhNativeSyncRuntime.cpp
+    ../../src/XanhOAuthCallback.cpp
     ../../src/XanhWindowsHello.cpp
     XanhNativeCredentialPickerContractTest.cpp
 )

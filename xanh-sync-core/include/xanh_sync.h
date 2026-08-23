@@ -41,6 +41,9 @@ int32_t xanh_sync_runtime_account_state(void *runtime);
 char *xanh_sync_runtime_begin_oauth(void *runtime);
 int32_t xanh_sync_runtime_complete_oauth(void *runtime, const char *code, const char *state);
 char *xanh_sync_runtime_account_json(void *runtime);
+/* A successful runtime with no persisted Sync state returns an allocated empty
+ * string. NULL is reserved for failure, consistently with the other owned
+ * string functions. */
 char *xanh_sync_runtime_persisted_state(void *runtime);
 bool xanh_sync_runtime_unlock_vault(void *runtime, const char *local_logins_key);
 bool xanh_sync_runtime_lock_vault(void *runtime);

@@ -39,6 +39,33 @@ int main()
         "The unconfigured picker did not complete exactly once.");
     expect(!returnedCredential,
         "The unconfigured picker returned a credential.");
+    expect(!picker->canBeginOAuth(nullptr),
+        "The unconfigured picker reported OAuth readiness.");
+    expect(!picker->beginOAuth(nullptr),
+        "The unconfigured picker started OAuth.");
+    expect(!picker->abandonOAuth(nullptr),
+        "The unconfigured picker abandoned an OAuth flow.");
+    expect(!picker->canHandleOAuthCallback(nullptr),
+        "The unconfigured picker claimed an OAuth callback owner.");
+    unsigned oauthCompletions = 0;
+    expect(!picker->completeOAuth(nullptr,
+               L"xanh-browser-wincairo://accounts/oauth?code=a&state=b",
+               [&](bool) { ++oauthCompletions; }),
+        "The unconfigured picker accepted an OAuth callback.");
+    expect(oauthCompletions == 0,
+        "A rejected OAuth callback invoked an async completion.");
+    unsigned syncCompletions = 0;
+    bool syncReturnedStatus = true;
+    picker->syncNow(nullptr, [&](auto status) {
+        ++syncCompletions;
+        syncReturnedStatus = status.has_value();
+    });
+    expect(syncCompletions == 1 && !syncReturnedStatus,
+        "The unconfigured picker started Sync or failed to complete once.");
+    expect(!picker->disconnect(false),
+        "The unconfigured picker disconnected a nonexistent runtime.");
+    expect(!picker->accountState(),
+        "The unconfigured picker exposed an account state.");
 
     picker->cancel(nullptr);
     picker->applicationActivationChanged(nullptr, false, nullptr);

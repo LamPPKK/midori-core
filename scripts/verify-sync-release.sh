@@ -718,6 +718,7 @@ case "$edition" in
     test -f platform/windows-webkit/patches/xanh-browser-webkit.patch
     test -f platform/windows-webkit/patches/xanh-credential-bridge.patch
     test -f platform/windows-webkit/src/XanhCredentialBridgePolicy.h
+    test -f platform/windows-webkit/src/XanhNavigationPolicy.h
     test -f platform/windows-webkit/src/XanhCredentialPickerTypes.h
     test -f platform/windows-webkit/src/XanhCredentialBridge.h
     test -f platform/windows-webkit/src/XanhCredentialBridge.cpp
@@ -731,10 +732,15 @@ case "$edition" in
     test -f platform/windows-webkit/src/XanhNativeSyncRuntime.cpp
     test -f platform/windows-webkit/src/XanhNativeCredentialPicker.h
     test -f platform/windows-webkit/src/XanhNativeCredentialPicker.cpp
+    test -f platform/windows-webkit/src/XanhOAuthCallback.h
+    test -f platform/windows-webkit/src/XanhOAuthCallback.cpp
+    test -f platform/windows-webkit/src/XanhSyncResult.h
     test -f platform/windows-webkit/src/XanhWindowsHello.h
     test -f platform/windows-webkit/src/XanhWindowsHello.cpp
     test -f platform/windows-webkit/tests/XanhCredentialBridgePolicyTest.cpp
     test -f platform/windows-webkit/tests/XanhCredentialRecordsTest.cpp
+    test -f platform/windows-webkit/tests/XanhOAuthCallbackTest.cpp
+    test -f platform/windows-webkit/tests/XanhSyncResultTest.cpp
     test -f platform/windows-webkit/tests/windows-hello/CMakeLists.txt
     test -f platform/windows-webkit/tests/windows-hello/XanhWindowsHelloContractTest.cpp
     test -f platform/windows-webkit/tests/dpapi-secret-store/CMakeLists.txt
@@ -799,7 +805,11 @@ case "$edition" in
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    XanhNativeCredentialPicker.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    XanhOAuthCallback.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    XanhWindowsHello.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    advapi32' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    crypt32' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
@@ -823,6 +833,53 @@ case "$edition" in
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+        thisWindow->browserWindow()->applicationActivationChanged(' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+            thisWindow->browserWindow()->beginFirefoxSync();' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    HANDLE processMutex = mutexName.empty()' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+        auto primary = waitForPrimaryWindow(hInstance);' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    return SendMessageTimeoutW(primary, WM_COPYDATA, 0,' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    case WM_COPYDATA: {' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+        if (data->dwData == XanhOAuthCallbackCopyData)' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+            activationWindow = routeFirefoxSyncCallback(std::move(incoming));' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+        ShowWindow(activationWindow, SW_RESTORE);' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+                && window->browserWindow()->canHandleFirefoxSyncCallback();' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    case XanhFirefoxSyncResultMessage:' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+        || token != static_cast<WPARAM>(m_syncPresentationToken))' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+static bool registerFirefoxSyncProtocol()' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    wincairo_sync_available_line=$(grep -nF '+    if (!m_nativeCredentialPicker->canBeginOAuth(m_hMainWnd)) {' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch | cut -d: -f1)
+    wincairo_sync_register_line=$(grep -nF '+    if (!registerFirefoxSyncProtocol()) {' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch | cut -d: -f1)
+    if [[ ! "$wincairo_sync_available_line" =~ ^[0-9]+$ \
+      || ! "$wincairo_sync_register_line" =~ ^[0-9]+$ \
+      || "$wincairo_sync_available_line" -ge "$wincairo_sync_register_line" ]]; then
+      echo 'WinCairo must reject unavailable Sync before mutating protocol registration' >&2
+      exit 1
+    fi
+    grep -F '+    return m_nativeCredentialPicker->completeOAuth(' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+        ownerWindow, callback.view(), [ownerWindow, token](bool success) {' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+        auto message = m_nativeCredentialPicker->abandonOAuth(m_hMainWnd)' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    // Thread construction must never unwind through the Win32 window procedure.' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    if grep -F 'XanhSyncWindowLifetime' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null; then
+      echo 'WinCairo background results must use UI-thread messages with generation tokens' >&2
+      exit 1
+    fi
     grep -F 'WKXanhUserContentControllerAddScriptMessageHandlerInWorld' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
     grep -F 'WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld' \
@@ -835,6 +892,8 @@ case "$edition" in
       platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
     grep -F 'using XanhCredentialPicker = std::function<void(' \
       platform/windows-webkit/src/XanhCredentialPickerTypes.h >/dev/null
+    grep -F 'inline constexpr size_t maximumURLCharacters = 8192;' \
+      platform/windows-webkit/src/XanhNavigationPolicy.h >/dev/null
     grep -F 'std::weak_ptr<Lifetime> lifetime = m_lifetime;' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
     grep -F 'auto asyncSequence = token ? m_asyncGate.begin() : std::nullopt;' \
@@ -993,6 +1052,16 @@ case "$edition" in
       platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
     grep -F 'maximumCredentialOutputBytes = 4 * 1024 * 1024' \
       platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
+    grep -F 'std::optional<XanhSensitiveUTF8> beginOAuth();' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
+    grep -F 'std::optional<AccountState> completeOAuth(' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
+    grep -F 'std::optional<XanhSensitiveUTF8> sync(' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
+    grep -F 'std::optional<XanhSensitiveUTF8> generateLocalLoginsKey();' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
+    grep -F 'bool disconnect(bool deleteLocal);' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
     if [[ "$(grep -Fc 'XanhSensitiveUTF8::copyOf(contextJSON)' \
       platform/windows-webkit/src/XanhNativeSyncRuntime.cpp)" -ne 2 ]]; then
       echo 'WinCairo must keep both native credential-context copies in wipeable buffers' >&2
@@ -1022,10 +1091,64 @@ case "$edition" in
       platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
     grep -F 'A documented native account state was not mapped exactly.' \
       platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'The typed runtime did not generate a local Logins key.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'A successful empty persisted state was confused with failure.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
     grep -F 'An out-of-range native account state was accepted.' \
       platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
     grep -F 'The unconfigured picker did not complete exactly once.' \
       platform/windows-webkit/tests/native-credential-picker/XanhNativeCredentialPickerContractTest.cpp >/dev/null
+    grep -F 'The unconfigured picker started OAuth.' \
+      platform/windows-webkit/tests/native-credential-picker/XanhNativeCredentialPickerContractTest.cpp >/dev/null
+    grep -F 'The unconfigured picker started Sync or failed to complete once.' \
+      platform/windows-webkit/tests/native-credential-picker/XanhNativeCredentialPickerContractTest.cpp >/dev/null
+    grep -F 'void syncNow(HWND ownerWindow, SyncCompletion);' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.h >/dev/null
+    grep -F 'std::optional<XanhSensitiveWide> beginOAuth(HWND ownerWindow);' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.h >/dev/null
+    grep -F 'bool canBeginOAuth(HWND ownerWindow);' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.h >/dev/null
+    grep -F 'bool abandonOAuth(HWND ownerWindow);' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.h >/dev/null
+    grep -F 'using OAuthCompletion = std::function<void(bool)>;' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.h >/dev/null
+    grep -F 'HWND ownerWindow, std::wstring_view callbackURL, OAuthCompletion);' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.h >/dev/null
+    grep -F 'void windowClosed(HWND ownerWindow);' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.h >/dev/null
+    grep -F 'hello->verify(L"Unlock passwords before Firefox Sync"' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F 'std::thread([service = std::move(service), generation]' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F 'if (operationActive)' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F 'vaultLockPending = true;' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F '|| !m_impl->oauthBoundToWindow' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F '|| m_impl->oauthOwner != ownerWindow' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F '!= XanhNativeSyncRuntime::AccountState::authenticating)' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F 'std::thread([service = shared_from_this(),' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F '&& impl.generation == operationGeneration' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F '&& !m_impl->oauthBoundToWindow' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F '// Account state contains the connected refresh credentials. Commit it' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F 'syncCompletion = std::move(m_impl->syncCompletion);' \
+      platform/windows-webkit/src/XanhNativeCredentialPicker.cpp >/dev/null
+    grep -F '.unwrap_or_else(|| owned_string(""))' \
+      xanh-sync-core/src/ffi.rs >/dev/null
+    grep -F '../../src/XanhOAuthCallback.cpp' \
+      platform/windows-webkit/tests/native-credential-picker/CMakeLists.txt >/dev/null
+    grep -F 'A control-bearing OAuth code was accepted.' \
+      platform/windows-webkit/tests/XanhOAuthCallbackTest.cpp >/dev/null
+    grep -F "The core's canonical key order was rejected." \
+      platform/windows-webkit/tests/XanhSyncResultTest.cpp >/dev/null
     grep -F 'platform/windows-webkit/tests/native-credential-picker' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F 'ctest --test-dir _build/wincairo-native-credential-picker' \
@@ -1144,6 +1267,12 @@ case "$edition" in
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$nativeCredentialPickerImplementation \$nativeCredentialPickerImplementationDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$oauthCallbackHeader \$oauthCallbackHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$oauthCallbackImplementation \$oauthCallbackImplementationDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$syncResultHeader \$syncResultHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloHeader \$windowsHelloHeaderDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloImplementation \$windowsHelloImplementationDestination" \
@@ -1181,6 +1310,18 @@ case "$edition" in
     grep -F "Get-FileHash \$nativeCredentialPickerImplementationDestination -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Get-FileHash \$nativeCredentialPickerImplementation -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'OAuth callback parser implementation SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$oauthCallbackImplementationDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$oauthCallbackImplementation -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Sync result parser header SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$syncResultHeaderDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$syncResultHeader -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Get-FileHash \$nativeSyncRuntimeHeaderDestination -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
@@ -1225,6 +1366,12 @@ case "$edition" in
     grep -F 'cp xanh-sync-core/include/xanh_sync.h _webkit/Tools/MiniBrowser/win/' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F 'cp platform/windows-webkit/src/XanhNativeSyncRuntime.cpp _webkit/Tools/MiniBrowser/win/' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'cp platform/windows-webkit/src/XanhOAuthCallback.cpp _webkit/Tools/MiniBrowser/win/' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'cp platform/windows-webkit/src/XanhSyncResult.h _webkit/Tools/MiniBrowser/win/' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'Tools/MiniBrowser/win/WinMain.cpp' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F '| Windows WebKit/WinCairo preview | Yes' \
       docs/PORTABLE_BACKUP.md >/dev/null

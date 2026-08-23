@@ -428,6 +428,28 @@ std::optional<XanhSensitiveWide> XanhSensitiveWide::fromUTF8(std::string_view va
     }
 }
 
+XanhSensitiveWide XanhSensitiveWide::take(std::wstring&& value)
+{
+    XanhSensitiveWide result;
+    try {
+        if (!value.empty()) {
+            result.m_data = std::make_unique<wchar_t[]>(value.size() + 1);
+            std::memcpy(result.m_data.get(), value.data(),
+                value.size() * sizeof(wchar_t));
+            result.m_data[value.size()] = L'\0';
+            result.m_size = value.size();
+            secureZero(value.data(), value.size() * sizeof(wchar_t));
+            value.clear();
+        }
+        return result;
+    } catch (...) {
+        if (!value.empty())
+            secureZero(value.data(), value.size() * sizeof(wchar_t));
+        value.clear();
+        throw;
+    }
+}
+
 std::optional<XanhSensitiveWide> XanhSensitiveWide::forNativeLabel(
     std::wstring_view value)
 {

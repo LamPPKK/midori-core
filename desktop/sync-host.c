@@ -538,7 +538,13 @@ persist_sync_state (XanhSyncHost *self,
                     GError      **error)
 {
     gchar *state = xanh_sync_runtime_persisted_state (runtime);
-    gboolean result = store_secret (self, "sync-state", state, cancellable, error);
+    gboolean result;
+    if (state == NULL) {
+        g_propagate_error (error, core_error ("Cannot serialize Firefox Sync state"));
+        return FALSE;
+    }
+    result = store_secret (self, "sync-state", *state != '\0' ? state : NULL,
+                           cancellable, error);
     xanh_sync_string_free (state);
     return result;
 }

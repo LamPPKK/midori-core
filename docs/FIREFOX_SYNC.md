@@ -66,6 +66,7 @@ cannot claim another edition's OAuth response:
 - macOS: `xanh-browser-macos://accounts/oauth`
 - iOS/iPadOS: `xanh-browser-ios://accounts/oauth`
 - Windows WebView2: `xanh-browser-windows://accounts/oauth`
+- Windows WebKit/WinCairo preview: `xanh-browser-wincairo://accounts/oauth`
 
 Mozilla-hosted Accounts is preferred. Self-hosted mode requires an HTTPS
 Accounts URL, HTTPS Token Server URL and a client ID issued by that deployment.
@@ -364,15 +365,33 @@ registers a main-frame-only isolated credential bridge that binds a random tab
 ID and document challenge to the exact committed HTTPS URL, rejects unknown
 fields or bounds violations, and invalidates requests across provisional, same-
 document and renderer lifecycle changes. Its picker boundary is asynchronous,
-single-flight and lifetime-weak so Windows Hello can complete before native
+    single-flight and lifetime-weak so Windows Hello can complete before native
 selection UI is shown; navigation, renderer termination and teardown cancel
 stale completions. The process-wide picker is now wired to Windows Hello, DPAPI,
 the typed C ABI runtime and a strict exact-origin credential-record parser. It
 uses move-only wipeable secret buffers, presents only usernames, touches the
 chosen native ID and locks after five minutes or external deactivation. It
-still returns `unavailable` unless a candidate provides explicit self-hosted
-public configuration, readable protected state and the signed Mozilla-enabled
-core. WinCairo therefore remains blocked until that package and its interop,
+defers only a lock requested during an already-authorized native Sync, then
+enforces that lock before publishing completion. It
+also wires strict system-browser OAuth, all-engine manual Sync and restart-safe
+keep/delete disconnect actions. A per-user process lock keeps the native profile
+single-owner: an OAuth-launched process verifies the identical executable,
+forwards one bounded callback over `WM_COPYDATA`, and exits before opening WebKit
+or the runtime. The owner process routes it only to the window that began OAuth;
+closing that window cannot retarget the callback to another window, and a new
+sign-in remains blocked until process restart discards the abandoned PKCE flow. The picker
+atomically reserves callback completion before IPC acknowledges delivery, so a
+duplicate callback or competing operation fails closed. A callback delivered
+after the owning process exited is also rejected: Application Services does not
+persist the in-flight PKCE verifier, so the user must restart sign-in. Manual Sync requires foreground Windows Hello and unlocks the
+Logins engine before requesting all four engines. Network Sync runs without the
+picker state mutex; deactivation/timeout records a pending vault lock that is
+enforced before completion. OAuth and destructive work never execute in WebKit;
+account/Sync state and the disconnect intent use DPAPI, while result UI returns
+to the UI thread and must match the originating window generation. It still returns
+`unavailable` unless a candidate provides explicit self-hosted public
+configuration, a working protected store and the signed Mozilla-enabled core.
+WinCairo therefore remains blocked until that package and its interop,
 device and security evidence pass. The DPAPI store uses
 fixed, 4 MiB-bounded current-user slots under LocalAppData, slot-specific
 entropy, an inner SHA-256 envelope, reparse-point rejection and flushed atomic

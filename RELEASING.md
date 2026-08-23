@@ -723,6 +723,42 @@ on another and confirm the first thread still receives its own diagnostic. The
 ABI types must come from the exact `xanh_sync.h` whose SHA-256 appears in
 `ENGINE.txt`; a manually duplicated function signature is not acceptable
 evidence.
+For the configured WinCairo candidate, register the exact
+`xanh-browser-wincairo://accounts/oauth` redirect to the signed executable and
+verify an interactive system-browser login from a clean Windows user profile.
+Test valid and malformed callbacks, duplicate/unknown query keys, encoded
+controls and invalid UTF-8. Exit the owning process between OAuth start and
+completion; the callback must be rejected without resetting an existing account,
+and a fresh interactive sign-in must succeed afterward because the PKCE verifier
+is intentionally not persisted by Application Services.
+Race two identical callbacks against manual Sync and disconnect; exactly one
+operation may reserve the authenticating account, and the protocol launcher may
+receive success only after that reservation succeeds.
+Launch the callback while the original browser remains open and confirm the
+second process verifies/forwards to that exact executable and exits without
+opening WebKit, the profile or a second native runtime. Confirm an ordinary
+second launch also activates/forwards to the sole per-user process, and that a
+missing/hung/spoofed target fails closed. With two native windows open, close
+the OAuth initiator before delivery and confirm the callback is rejected rather
+than retargeted to the other window; the second window must not start a replacement
+OAuth flow until the process has restarted and discarded the abandoned PKCE flow.
+Close the owner while the Sync Windows Hello
+prompt is pending and confirm the prompt is canceled and its completion fires
+exactly once. Run manual Sync for all four engines,
+require foreground Windows Hello, and verify the Logins engine is actually open
+rather than silently filtered. Delay the network response while switching focus
+and exercising menus; the UI must remain responsive, no second operation may
+start, and the pending vault lock must be applied before completion. Exercise
+success, partial, network,
+authentication and server-backoff results without logging native diagnostics or
+tokens. Kill the process before and after native keep-local/delete-local
+disconnect, then confirm the durable intent resumes only the original choice,
+account/Sync state is removed, and delete-local also removes the Logins key and
+native databases. Close the initiating window while each background operation
+is pending and confirm no result is retargeted to a different or reused window.
+Exercise both a nonempty and an allocated-empty successful persisted-state
+result, and a true `NULL` failure; only the empty success may remove the DPAPI
+Sync-state slot.
 The pre-load navigation-action policy must also reject overlong/malformed URLs,
 userinfo, invalid ports, script-created external navigation and every external
 redirect. Verify that only a direct user gesture can delegate bounded `mailto:`

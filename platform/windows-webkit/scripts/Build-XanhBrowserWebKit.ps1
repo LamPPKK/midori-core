@@ -24,6 +24,8 @@ $portableBackupImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/X
 $credentialBridgePolicy = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridgePolicy.h")).Path
 $credentialBridgeHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.h")).Path
 $credentialBridgeImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.cpp")).Path
+$windowsHelloHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.h")).Path
+$windowsHelloImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.cpp")).Path
 $mainIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/MiniBrowser.ico"
 $smallIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/small.ico"
 $portableBackupHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhPortableBackup.h"
@@ -31,6 +33,8 @@ $portableBackupImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrow
 $credentialBridgePolicyDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridgePolicy.h"
 $credentialBridgeHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.h"
 $credentialBridgeImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.cpp"
+$windowsHelloHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.h"
+$windowsHelloImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.cpp"
 
 if ($releaseTag -ne "webkitgtk-$minimumVersion") {
     throw "WinCairo release tag $releaseTag does not match the shared WebKit stable baseline $minimumVersion."
@@ -82,7 +86,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 if ((Test-Path $portableBackupHeaderDestination) -or (Test-Path $portableBackupImplementationDestination)
     -or (Test-Path $credentialBridgePolicyDestination) -or (Test-Path $credentialBridgeHeaderDestination)
-    -or (Test-Path $credentialBridgeImplementationDestination)) {
+    -or (Test-Path $credentialBridgeImplementationDestination) -or (Test-Path $windowsHelloHeaderDestination)
+    -or (Test-Path $windowsHelloImplementationDestination)) {
     throw "The pinned WebKit source unexpectedly contains Xanh host sources. Use a clean exact checkout."
 }
 
@@ -102,6 +107,8 @@ $portableBackupImplementationHash = $null
 $credentialBridgePolicyHash = $null
 $credentialBridgeHeaderHash = $null
 $credentialBridgeImplementationHash = $null
+$windowsHelloHeaderHash = $null
+$windowsHelloImplementationHash = $null
 
 try {
     & git -C $sourceRoot apply --ignore-space-change $patch
@@ -128,11 +135,17 @@ try {
     Copy-Item $credentialBridgeHeader $credentialBridgeHeaderDestination
     $copiedSourceFiles += $credentialBridgeImplementationDestination
     Copy-Item $credentialBridgeImplementation $credentialBridgeImplementationDestination
+    $copiedSourceFiles += $windowsHelloHeaderDestination
+    Copy-Item $windowsHelloHeader $windowsHelloHeaderDestination
+    $copiedSourceFiles += $windowsHelloImplementationDestination
+    Copy-Item $windowsHelloImplementation $windowsHelloImplementationDestination
     $portableBackupHeaderHash = (Get-FileHash $portableBackupHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $portableBackupImplementationHash = (Get-FileHash $portableBackupImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgePolicyHash = (Get-FileHash $credentialBridgePolicyDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgeHeaderHash = (Get-FileHash $credentialBridgeHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgeImplementationHash = (Get-FileHash $credentialBridgeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $windowsHelloHeaderHash = (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $windowsHelloImplementationHash = (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     Copy-Item $icon $mainIcon -Force
     Copy-Item $icon $smallIcon -Force
 
@@ -167,7 +180,11 @@ try {
         -or (Get-FileHash $credentialBridgeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash
         -or (Get-FileHash $credentialBridgePolicy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgePolicyHash
         -or (Get-FileHash $credentialBridgeHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeHeaderHash
-        -or (Get-FileHash $credentialBridgeImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash) {
+        -or (Get-FileHash $credentialBridgeImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash
+        -or (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
+        -or (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloImplementationHash
+        -or (Get-FileHash $windowsHelloHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
+        -or (Get-FileHash $windowsHelloImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloImplementationHash) {
         throw "Xanh host sources changed during the WebKit build. Discard this build and retry from a stable checkout."
     }
 
@@ -196,6 +213,8 @@ try {
         "Credential bridge policy SHA-256: $credentialBridgePolicyHash"
         "Credential bridge header SHA-256: $credentialBridgeHeaderHash"
         "Credential bridge implementation SHA-256: $credentialBridgeImplementationHash"
+        "Windows Hello header SHA-256: $windowsHelloHeaderHash"
+        "Windows Hello implementation SHA-256: $windowsHelloImplementationHash"
         "Architecture: x64"
         "Built: $([DateTimeOffset]::UtcNow.ToString('O'))"
     ) | Set-Content (Join-Path $output "ENGINE.txt") -Encoding UTF8

@@ -130,8 +130,12 @@ jobs:
           cp platform/windows-webkit/src/XanhCredentialBridgePolicy.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhCredentialBridge.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhCredentialBridge.cpp _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhWindowsHello.h _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhWindowsHello.cpp _webkit/Tools/MiniBrowser/win/
           grep -F 'OUTPUT_NAME "XanhBrowser.WebKit"' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhPortableBackup.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
+          grep -F 'XanhWindowsHello.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
+          grep -F 'windowsapp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'IDM_EXPORT_PORTABLE_BACKUP' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
           grep -F 'IDM_IMPORT_PORTABLE_BACKUP' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
           grep -F 'Export encrypted backup...' _webkit/Tools/MiniBrowser/win/MiniBrowserLib.rc
@@ -211,10 +215,20 @@ jobs:
           -S platform/windows-webkit/tests/portable-backup
           -B _build/wincairo-portable-backup
           -A x64
+      - name: Configure Windows Hello owner-window contract
+        run: >-
+          cmake
+          -S platform/windows-webkit/tests/windows-hello
+          -B _build/wincairo-windows-hello
+          -A x64
       - name: Build portable-backup golden-vector tests
         run: cmake --build _build/wincairo-portable-backup --config Release --parallel
+      - name: Build Windows Hello owner-window contract
+        run: cmake --build _build/wincairo-windows-hello --config Release --parallel
       - name: Run portable-backup golden-vector tests
         run: ctest --test-dir _build/wincairo-portable-backup -C Release --output-on-failure
+      - name: Run Windows Hello owner-window contract
+        run: ctest --test-dir _build/wincairo-windows-hello -C Release --output-on-failure
 
   dependency-review:
     if: github.event_name == 'pull_request'

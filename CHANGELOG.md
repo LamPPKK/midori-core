@@ -204,6 +204,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   can use the required owner-window interop without blocking WebKit's UI
   thread. Concurrent, replayed, navigated, renderer-terminated and teardown-
   stale completions now fail closed before any credential reply.
+- Added a cancellable C++/WinRT Windows Hello helper that uses the desktop
+  owner-HWND interop, generation-checks late completions and fails invalid
+  windows closed. It is compiled into WinCairo but remains disconnected until
+  the native Sync vault/picker is packaged.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

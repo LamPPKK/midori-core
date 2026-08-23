@@ -49,8 +49,8 @@ runtime files cannot leak into a new artifact.
 The reviewed source deltas also expose **Export encrypted backup** and **Import
 encrypted backup** in the File menu and connect the validating credential
 bridge to MiniBrowser. The build script temporarily copies the standalone CNG
-codec and three credential-bridge sources into the pinned tree, records every
-source hash in `ENGINE.txt`, and removes the files while restoring the checkout.
+codec plus five credential-bridge/Windows-Hello sources into the pinned tree,
+records every source hash in `ENGINE.txt`, and removes the files while restoring the checkout.
 Export places the selected window first and includes up to 49 other
 regular HTTP(S) windows. Import authenticates and validates the complete file
 before opening any new regular windows; cookie/credential/form stores, cache
@@ -88,6 +88,13 @@ callback, so every validated request receives `unavailable` and no secret is
 filled. Sync remains blocked until the DPAPI/Windows Hello vault, packaged
 native core and reviewed picker are connected; the validating bridge must not
 be treated as a substitute.
+
+The build also compiles a cancellable C++/WinRT Windows Hello helper using the
+desktop `IUserConsentVerifierInterop::RequestVerificationForWindowAsync` owner-
+HWND API. It generation-checks completion and catches every activation/device
+error as denial. The helper is not wired to the bridge yet, and because that
+interop requires Windows build 22000, password access must fail closed on older
+Windows releases.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /

@@ -720,7 +720,11 @@ case "$edition" in
     test -f platform/windows-webkit/src/XanhCredentialBridgePolicy.h
     test -f platform/windows-webkit/src/XanhCredentialBridge.h
     test -f platform/windows-webkit/src/XanhCredentialBridge.cpp
+    test -f platform/windows-webkit/src/XanhWindowsHello.h
+    test -f platform/windows-webkit/src/XanhWindowsHello.cpp
     test -f platform/windows-webkit/tests/XanhCredentialBridgePolicyTest.cpp
+    test -f platform/windows-webkit/tests/windows-hello/CMakeLists.txt
+    test -f platform/windows-webkit/tests/windows-hello/XanhWindowsHelloContractTest.cpp
     grep -F '+WK_EXPORT WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+WK_EXPORT bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld' \
@@ -766,6 +770,10 @@ case "$edition" in
     test -f platform/windows-webkit/tests/XanhNavigationPolicyTest.cpp
     grep -F '+    XanhCredentialBridge.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    XanhWindowsHello.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    windowsapp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    navigationClient.didStartProvisionalNavigation = didStartProvisionalNavigation;' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    navigationClient.didCommitNavigation = didCommitNavigation;' \
@@ -808,6 +816,22 @@ case "$edition" in
       platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
     grep -F 'return makeReply({ { L"status", L"unavailable" }' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F '::IUserConsentVerifierInterop::RequestVerificationForWindowAsync' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F 'auto operation = winrt::capture<ConsentOperation>(' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F 'state->operation = operation;' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F 'state->generation != generation' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F 'operation.Cancel();' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F '!IsWindow(m_state->ownerWindow)' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F 'GetForegroundWindow() != m_state->ownerWindow' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F 'character <= 0x1F || character == 0x7F' \
+      platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
     grep -F '+    navigationClient.webProcessDidTerminate = webProcessDidTerminate;' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+    navigationClient.didFinishNavigation = didFinishNavigation;' \
@@ -889,7 +913,13 @@ case "$edition" in
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$credentialBridgeImplementation \$credentialBridgeImplementationDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$windowsHelloHeader \$windowsHelloHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$windowsHelloImplementation \$windowsHelloImplementationDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F 'Credential bridge implementation SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Windows Hello implementation SHA-256:' \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F 'ls-files --others --exclude-standard' \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
@@ -914,6 +944,8 @@ case "$edition" in
     grep -F 'patches/xanh-credential-bridge.patch' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F 'XanhCredentialBridgePolicyTest.cpp' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'platform/windows-webkit/tests/windows-hello' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F '| Windows WebKit/WinCairo preview | Yes' \
       docs/PORTABLE_BACKUP.md >/dev/null

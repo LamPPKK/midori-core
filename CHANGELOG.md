@@ -219,6 +219,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   and probes/wipes a generated key to reject builds without Mozilla support.
   The host does not instantiate it or package a DLL yet, so Sync remains
   unavailable.
+- Added a typed WinCairo native Sync runtime adapter whose signatures come from
+  the packaged C ABI header. It owns the validated DLL/runtime lifetime,
+  serializes credential operations, bounds and NUL-checks inputs, range-checks
+  account states, preserves native open/key-generation errors and keeps runtime
+  diagnostics associated with their calling thread, and wipes generated Logins
+  keys and returned credential JSON with exception-safe native ownership and
+  non-SSO host buffers. MiniBrowser still does not instantiate the adapter until
+  its picker and signed native package are ready.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

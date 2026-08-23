@@ -132,14 +132,18 @@ jobs:
           cp platform/windows-webkit/src/XanhCredentialBridge.cpp _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhDpapiSecretStore.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhDpapiSecretStore.cpp _webkit/Tools/MiniBrowser/win/
+          cp xanh-sync-core/include/xanh_sync.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhNativeSyncLibrary.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhNativeSyncLibrary.cpp _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhNativeSyncRuntime.h _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhNativeSyncRuntime.cpp _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhWindowsHello.h _webkit/Tools/MiniBrowser/win/
           cp platform/windows-webkit/src/XanhWindowsHello.cpp _webkit/Tools/MiniBrowser/win/
           grep -F 'OUTPUT_NAME "XanhBrowser.WebKit"' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhPortableBackup.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhDpapiSecretStore.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhNativeSyncLibrary.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
+          grep -F 'XanhNativeSyncRuntime.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'crypt32' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhWindowsHello.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'windowsapp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt

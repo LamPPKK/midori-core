@@ -701,6 +701,18 @@ loader alone is not packaging evidence: the production candidate must include
 an architecture-matched Mozilla-enabled DLL and its complete native dependency
 closure, expected publisher identity, hashes, SBOM and signature; accepting any
 OS-trusted publisher at load time is not a release identity check.
+Confirm the same contract test also opens exactly one typed adapter from the
+validated loader, rejects embedded-NUL/oversized inputs, maps only the four
+documented account states, serializes vault/credential calls, wipes local
+Logins keys and credential JSON before native release, rejects malformed login
+IDs, preserves runtime-open/key-generation errors on their calling thread, and
+always frees the runtime before unloading its DLL. Exercise valid secrets and
+the bounded prefix of an oversized native output so exception/early-return
+cleanup is covered. Interleave a failure on one thread with a successful call
+on another and confirm the first thread still receives its own diagnostic. The
+ABI types must come from the exact `xanh_sync.h` whose SHA-256 appears in
+`ENGINE.txt`; a manually duplicated function signature is not acceptable
+evidence.
 The pre-load navigation-action policy must also reject overlong/malformed URLs,
 userinfo, invalid ports, script-created external navigation and every external
 redirect. Verify that only a direct user gesture can delegate bounded `mailto:`

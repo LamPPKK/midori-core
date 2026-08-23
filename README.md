@@ -305,8 +305,14 @@ current-user DPAPI secret store and owner-window Windows Hello helper are now
 compiled but not invoked by the preview. Its compiled DLL loader accepts only
 an exact-name, same-directory native core with a trusted Authenticode signature,
 the expected version and the full C ABI, and rejects builds without Mozilla
-support. No native DLL is packaged by default. Those pieces and the signed
-package remain release-gated.
+support. A typed adapter now owns the validated DLL/runtime together, takes its
+signatures from the packaged C header, bounds all credential-facing inputs and
+wipes generated keys and returned credential JSON through exception-safe native
+owners and non-SSO host buffers. Native open/key-generation failures retain the
+originating thread-local error before the DLL can unload, and runtime failures
+remain associated with their calling thread. No native DLL is
+packaged or instantiated by default. Those pieces and the signed package remain
+release-gated.
 
 ## Encrypted backup and sync
 

@@ -49,8 +49,9 @@ runtime files cannot leak into a new artifact.
 The reviewed source deltas also expose **Export encrypted backup** and **Import
 encrypted backup** in the File menu and connect the validating credential
 bridge to MiniBrowser. The build script temporarily copies the standalone CNG
-codec plus nine credential-bridge/DPAPI/native-loader/Windows-Hello sources into the pinned tree,
-records every source hash in `ENGINE.txt`, and removes the files while restoring the checkout.
+codec plus twelve credential-bridge/DPAPI/native-runtime/Windows-Hello sources
+into the pinned tree, records every source hash in `ENGINE.txt`, and removes the
+files while restoring the checkout.
 Export places the selected window first and includes up to 49 other
 regular HTTP(S) windows. Import authenticates and validates the complete file
 before opening any new regular windows; cookie/credential/form stores, cache
@@ -122,6 +123,20 @@ Trusted-signature validation does not replace release hash, expected-publisher,
 SBOM and dependency-closure review. The preview compiles this loader but does
 not instantiate it or package a native DLL yet, so this prerequisite does not
 enable Sync.
+
+`XanhNativeSyncRuntime` consumes that validated loader so one adapter owns the
+DLL and runtime together. Its function-pointer types come from the exact
+packaged `xanh_sync.h`; configuration, profile, key, account, Sync-state,
+credential-context and credential-ID inputs are bounded and reject embedded
+NUL bytes before crossing the ABI. Calls are serialized, account states are
+range-checked, and generated keys plus returned credential JSON use move-only
+non-SSO buffers. An exception-safe owner wipes the complete valid Rust value,
+or the complete bounded prefix inspected before rejecting an oversized value,
+before `xanh_sync_string_free`; the host copy is wiped at destruction. Native
+open/key-generation errors are retained on the originating thread before the
+DLL may unload, and runtime diagnostics are isolated by calling thread. The
+adapter is compiled and contract-tested but is not constructed by MiniBrowser
+yet.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /

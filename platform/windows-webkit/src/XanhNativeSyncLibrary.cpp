@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <softpub.h>
 #include <wintrust.h>
+#include "xanh_sync.h"
 
 #include <algorithm>
 #include <array>
@@ -24,9 +25,9 @@ constexpr wchar_t nativeLibraryName[] = L"xanh_sync_core.dll";
 constexpr std::size_t maximumVersionBytes = 128;
 constexpr std::size_t maximumGeneratedKeyBytes = 4096;
 
-using CoreVersion = char* (*)();
-using StringFree = void (*)(char*);
-using GenerateLocalLoginsKey = char* (*)();
+using CoreVersion = decltype(&xanh_sync_core_version);
+using StringFree = decltype(&xanh_sync_string_free);
+using GenerateLocalLoginsKey = decltype(&xanh_sync_generate_local_logins_key);
 
 constexpr std::array requiredExports {
     "xanh_sync_core_version",
@@ -170,6 +171,35 @@ std::optional<std::size_t> boundedCStringLength(const char* value, std::size_t m
     return std::nullopt;
 }
 
+class NativeOwnedString {
+public:
+    NativeOwnedString(char* value, StringFree stringFree)
+        : m_value(value)
+        , m_stringFree(stringFree)
+    {
+    }
+
+    ~NativeOwnedString()
+    {
+        if (!m_value)
+            return;
+        if (m_wipeBytes)
+            SecureZeroMemory(m_value, m_wipeBytes);
+        m_stringFree(m_value);
+    }
+
+    NativeOwnedString(const NativeOwnedString&) = delete;
+    NativeOwnedString& operator=(const NativeOwnedString&) = delete;
+
+    char* get() const { return m_value; }
+    void wipe(std::size_t bytes) { m_wipeBytes = bytes; }
+
+private:
+    char* m_value { nullptr };
+    StringFree m_stringFree { nullptr };
+    std::size_t m_wipeBytes { 0 };
+};
+
 } // namespace
 
 struct XanhNativeSyncLibrary::Impl {
@@ -229,28 +259,24 @@ std::unique_ptr<XanhNativeSyncLibrary> XanhNativeSyncLibrary::loadFromPath(std::
     auto stringFree = resolve<StringFree>(impl->module, "xanh_sync_string_free");
     auto generateKey = resolve<GenerateLocalLoginsKey>(impl->module, "xanh_sync_generate_local_logins_key");
 
-    char* ownedVersion = coreVersion();
-    if (!ownedVersion)
+    NativeOwnedString ownedVersion(coreVersion(), stringFree);
+    if (!ownedVersion.get())
         return nullptr;
-    auto versionLength = boundedCStringLength(ownedVersion, maximumVersionBytes);
-    if (!versionLength || !*versionLength) {
-        stringFree(ownedVersion);
+    auto versionLength = boundedCStringLength(ownedVersion.get(), maximumVersionBytes);
+    if (!versionLength || !*versionLength)
         return nullptr;
-    }
-    impl->version.assign(ownedVersion, *versionLength);
-    stringFree(ownedVersion);
+    impl->version.assign(ownedVersion.get(), *versionLength);
     if (impl->version != expectedCoreVersion)
         return nullptr;
 
     // A portable build exposes the same symbols but cannot generate a Logins
     // key. Probe and immediately wipe one key to require the Mozilla backend.
-    char* generatedKey = generateKey();
-    if (!generatedKey)
+    NativeOwnedString generatedKey(generateKey(), stringFree);
+    if (!generatedKey.get())
         return nullptr;
-    auto keyLength = boundedCStringLength(generatedKey, maximumGeneratedKeyBytes + 1);
+    auto keyLength = boundedCStringLength(generatedKey.get(), maximumGeneratedKeyBytes + 1);
     bool validKey = keyLength && *keyLength > 0 && *keyLength <= maximumGeneratedKeyBytes;
-    SecureZeroMemory(generatedKey, keyLength ? *keyLength : maximumGeneratedKeyBytes + 1);
-    stringFree(generatedKey);
+    generatedKey.wipe(keyLength ? *keyLength : maximumGeneratedKeyBytes + 1);
     if (!validKey)
         return nullptr;
 
@@ -260,4 +286,9 @@ std::unique_ptr<XanhNativeSyncLibrary> XanhNativeSyncLibrary::loadFromPath(std::
 const std::string& XanhNativeSyncLibrary::version() const
 {
     return m_impl->version;
+}
+
+void* XanhNativeSyncLibrary::moduleHandleForRuntime() const
+{
+    return m_impl->module;
 }

@@ -724,6 +724,8 @@ case "$edition" in
     test -f platform/windows-webkit/src/XanhDpapiSecretStore.cpp
     test -f platform/windows-webkit/src/XanhNativeSyncLibrary.h
     test -f platform/windows-webkit/src/XanhNativeSyncLibrary.cpp
+    test -f platform/windows-webkit/src/XanhNativeSyncRuntime.h
+    test -f platform/windows-webkit/src/XanhNativeSyncRuntime.cpp
     test -f platform/windows-webkit/src/XanhWindowsHello.h
     test -f platform/windows-webkit/src/XanhWindowsHello.cpp
     test -f platform/windows-webkit/tests/XanhCredentialBridgePolicyTest.cpp
@@ -782,6 +784,8 @@ case "$edition" in
     grep -F '+    XanhDpapiSecretStore.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    XanhNativeSyncLibrary.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    XanhNativeSyncRuntime.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    XanhWindowsHello.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
@@ -907,14 +911,62 @@ case "$edition" in
         <(printf '%s\n' "$native_sync_loader_exports") >&2 || true
       exit 1
     fi
-    grep -F 'SecureZeroMemory(generatedKey' \
+    grep -F 'generatedKey.wipe(keyLength ? *keyLength : maximumGeneratedKeyBytes + 1);' \
       platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F '#include "xanh_sync.h"' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F 'using RuntimeOpen = decltype(&xanh_sync_runtime_open);' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'std::unique_ptr<XanhNativeSyncLibrary> library;' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'std::scoped_lock lock(m_impl->mutex);' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F "value.find('\\0') == std::string_view::npos" \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'std::unique_ptr<char[]> m_data;' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
+    grep -F 'value.wipe(XanhNativeSyncRuntime::maximumErrorBytes + 1);' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'owned.wipe(maximumBytes + 1);' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'error = impl->takeError();' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'std::unordered_map<std::thread::id, std::string> hostLastErrors;' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'hostLastErrors[std::this_thread::get_id()] = takeError();' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.cpp >/dev/null
+    grep -F 'maximumCredentialOutputBytes = 4 * 1024 * 1024' \
+      platform/windows-webkit/src/XanhNativeSyncRuntime.h >/dev/null
     grep -F 'Portable core without Mozilla backend was accepted.' \
       platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
     grep -F 'Native core with a missing C ABI export was accepted.' \
       platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
     grep -F 'Unsigned fake library passed production Authenticode verification.' \
       platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'An embedded-NUL runtime configuration was accepted.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'Credential JSON was not wiped before native release.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'The inspected prefix of oversized credential JSON was not wiped.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'Native credential calls overlapped despite adapter serialization.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'A calling thread lost its native error to another thread.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'The runtime was not freed while its owning DLL was still loaded.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'Key-generation failure lost its native error.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'The singleton runtime rejection lost its native error.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'A documented native account state was not mapped exactly.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'An out-of-range native account state was accepted.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F '../../../../xanh-sync-core/include' \
+      platform/windows-webkit/tests/native-sync-library/CMakeLists.txt >/dev/null
+    grep -F '../../src/XanhNativeSyncRuntime.cpp' \
+      platform/windows-webkit/tests/native-sync-library/CMakeLists.txt >/dev/null
     if grep -F '+    XANH_NATIVE_SYNC_TESTING' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null; then
       echo 'WinCairo production must not compile the unsigned native-library test bypass' >&2
@@ -1009,6 +1061,12 @@ case "$edition" in
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$nativeSyncLibraryImplementation \$nativeSyncLibraryImplementationDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$syncCoreABIHeader \$syncCoreABIHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$nativeSyncRuntimeHeader \$nativeSyncRuntimeHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$nativeSyncRuntimeImplementation \$nativeSyncRuntimeImplementationDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloHeader \$windowsHelloHeaderDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloImplementation \$windowsHelloImplementationDestination" \
@@ -1026,6 +1084,24 @@ case "$edition" in
     grep -F "Get-FileHash \$nativeSyncLibraryImplementationDestination -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Get-FileHash \$nativeSyncLibraryImplementation -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Native Sync C ABI header SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$syncCoreABIHeaderDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$syncCoreABIHeader -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Native Sync runtime header SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Native Sync runtime implementation SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$nativeSyncRuntimeHeaderDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$nativeSyncRuntimeHeader -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$nativeSyncRuntimeImplementationDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$nativeSyncRuntimeImplementation -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F 'Windows Hello implementation SHA-256:' \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
@@ -1058,6 +1134,10 @@ case "$edition" in
     grep -F 'platform/windows-webkit/tests/dpapi-secret-store' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F 'platform/windows-webkit/tests/native-sync-library' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'cp xanh-sync-core/include/xanh_sync.h _webkit/Tools/MiniBrowser/win/' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'cp platform/windows-webkit/src/XanhNativeSyncRuntime.cpp _webkit/Tools/MiniBrowser/win/' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F '| Windows WebKit/WinCairo preview | Yes' \
       docs/PORTABLE_BACKUP.md >/dev/null

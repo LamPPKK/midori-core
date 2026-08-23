@@ -26,9 +26,11 @@ add_fake_sync_core(XanhFakeSyncCoreMissingExport missing-export XANH_FAKE_OMIT_T
 
 add_executable(XanhNativeSyncLibraryContractTest
     ../../src/XanhNativeSyncLibrary.cpp
+    ../../src/XanhNativeSyncRuntime.cpp
     XanhNativeSyncLibraryContractTest.cpp
 )
 target_include_directories(XanhNativeSyncLibraryContractTest PRIVATE ../../src)
+target_include_directories(XanhNativeSyncLibraryContractTest PRIVATE ../../../../xanh-sync-core/include)
 target_compile_features(XanhNativeSyncLibraryContractTest PRIVATE cxx_std_17)
 target_compile_definitions(XanhNativeSyncLibraryContractTest PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE XANH_NATIVE_SYNC_TESTING=1)
 target_compile_options(XanhNativeSyncLibraryContractTest PRIVATE /W4 /WX /permissive-)

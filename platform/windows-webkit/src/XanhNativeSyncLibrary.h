@@ -4,6 +4,8 @@
 #include <string>
 #include <string_view>
 
+class XanhNativeSyncRuntime;
+
 class XanhNativeSyncLibrary {
 public:
     static constexpr std::string_view expectedCoreVersion = "1.0.0-alpha.1";
@@ -24,10 +26,12 @@ public:
     const std::string& version() const;
 
 private:
+    friend class XanhNativeSyncRuntime;
     struct Impl;
 
     explicit XanhNativeSyncLibrary(std::unique_ptr<Impl>);
     static std::unique_ptr<XanhNativeSyncLibrary> loadFromPath(std::wstring, bool requireTrustedSignature);
+    void* moduleHandleForRuntime() const;
 
     std::unique_ptr<Impl> m_impl;
 };

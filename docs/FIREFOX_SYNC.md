@@ -378,7 +378,17 @@ below Windows build 22000. A compiled native-library boundary additionally
 requires a trusted-Authenticode, exact same-directory `xanh_sync_core.dll`, a
 complete C ABI, matching `1.0.0-alpha.1` version and a successful, wiped
 Logins-key probe so a non-Mozilla core fails closed. It is not instantiated and
-no DLL is packaged by default.
+no DLL is packaged by default. A typed native adapter consumes the validated
+loader, owns one runtime, serializes its credential-facing calls, range-checks
+account states and derives function signatures from the exact packaged C ABI
+header. Generated keys and returned credential JSON are held in move-only
+non-SSO buffers. Exception-safe owners wipe each valid native secret—or the
+entire prefix inspected before an oversized result is rejected—before
+`xanh_sync_string_free`, while the host copy is wiped at destruction. Native
+open/key-generation errors are copied on their originating thread before the
+DLL may unload; later runtime diagnostics remain isolated by calling thread.
+The adapter remains disconnected from MiniBrowser until the native picker and
+signed package are ready.
 `scripts/verify-sync-release.sh` is a fail-closed mechanical
 prerequisite check, not an audit substitute. Its Linux production
 mode requires evidence files for the Sync-enabled build, Secret Service,

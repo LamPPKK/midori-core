@@ -344,6 +344,22 @@ public sealed record CredentialAccessContext(
     bool IsPrivate,
     bool UserSelected)
 {
+    public static CredentialAccessContext? ExactTopLevel(
+        Uri documentUri,
+        bool isPrivate,
+        bool userSelected)
+    {
+        if (!IsSecure(documentUri)) return null;
+        var origin = new Uri(CanonicalOrigin(documentUri), UriKind.Absolute);
+        var context = new CredentialAccessContext(
+            documentUri,
+            origin,
+            origin,
+            isPrivate,
+            userSelected);
+        return context.IsAllowed ? context : null;
+    }
+
     public bool IsAllowed => !IsPrivate
         && UserSelected
         && IsSecure(DocumentUri)
@@ -352,20 +368,24 @@ public sealed record CredentialAccessContext(
         && Origin(DocumentUri) == Origin(TopFrameOrigin)
         && Origin(TopFrameOrigin) == Origin(FrameOrigin);
 
-    public string ToNativeJson()
+    internal object ToNativeValue()
     {
         if (!IsAllowed) throw new ArgumentException("Credential context is not allowed.");
-        return JsonSerializer.Serialize(new
+        return new
         {
             document_url = DocumentUri.AbsoluteUri,
             top_frame_origin = CanonicalOrigin(TopFrameOrigin),
             frame_origin = CanonicalOrigin(FrameOrigin),
             is_private = IsPrivate,
             user_selected = UserSelected,
-        });
+        };
     }
 
-    internal string ExpectedOrigin => CanonicalOrigin(DocumentUri);
+    public string ToNativeJson() => JsonSerializer.Serialize(ToNativeValue());
+
+    public string CanonicalTopFrameOrigin => CanonicalOrigin(DocumentUri);
+
+    internal string ExpectedOrigin => CanonicalTopFrameOrigin;
 
     private static bool IsSecure(Uri uri) => uri.IsAbsoluteUri
         && uri.Scheme == Uri.UriSchemeHttps
@@ -411,20 +431,20 @@ public sealed record FirefoxCredentialRecord(
         var expected = context.ExpectedOrigin;
         return IsSecureOrigin(storedOrigin, expected)
             && IsSecureOrigin(actionOrigin, expected)
-            && Encoding.UTF8.GetByteCount(Id) is > 0 and <= 128
-            && Id.All(character => character is >= 'a' and <= 'z'
-                or >= 'A' and <= 'Z'
-                or >= '0' and <= '9'
-                or '-' or '_')
-            && Encoding.UTF8.GetByteCount(Username) <= 1_024
-            && Encoding.UTF8.GetByteCount(Password) is > 0 and <= 4_096
-            && ValidField(UsernameField)
-            && ValidField(PasswordField)
+            && FirefoxCredentialPolicy.IsValidId(Id)
+            && FirefoxCredentialPolicy.IsValidUsername(Username)
+            && FirefoxCredentialPolicy.IsValidPassword(Password)
+            && FirefoxCredentialPolicy.IsValidField(UsernameField)
+            && FirefoxCredentialPolicy.IsValidField(PasswordField)
             && TimeCreatedEpochMillis >= 0
             && TimePasswordChangedEpochMillis >= 0
             && TimeLastUsedEpochMillis >= 0
             && TimesUsed >= 0;
     }
+
+    public string DisplayUsername => FirefoxRemoteTabsPolicy.SanitizeDisplayLabel(
+        Username,
+        "(empty username)");
 
     private static bool IsSecureOrigin(Uri value, string expected) =>
         value.IsAbsoluteUri
@@ -435,7 +455,52 @@ public sealed record FirefoxCredentialRecord(
         && string.IsNullOrEmpty(value.Fragment)
         && value.GetLeftPart(UriPartial.Authority).Equals(expected, StringComparison.OrdinalIgnoreCase);
 
-    private static bool ValidField(string value) => Encoding.UTF8.GetByteCount(value) <= 256
+}
+
+public sealed record FirefoxCredentialDraft(
+    string Username,
+    string Password,
+    string UsernameField = "",
+    string PasswordField = "")
+{
+    public bool IsAllowedFor(CredentialAccessContext context) => context.IsAllowed
+        && FirefoxCredentialPolicy.IsValidUsername(Username)
+        && FirefoxCredentialPolicy.IsValidPassword(Password)
+        && FirefoxCredentialPolicy.IsValidField(UsernameField)
+        && FirefoxCredentialPolicy.IsValidField(PasswordField);
+}
+
+public static class FirefoxCredentialPolicy
+{
+    public const int MaximumInputJsonBytes = 64 * 1_024;
+    public const int MaximumOutputJsonBytes = 4 * 1_024 * 1_024;
+    public const int MaximumResults = 100;
+    public const int MaximumIdBytes = 128;
+    public const int MaximumUsernameBytes = 1_024;
+    public const int MaximumPasswordBytes = 4_096;
+    public const int MaximumFieldBytes = 256;
+
+    public static bool IsValidId(string? value) =>
+        value is not null
+        && Encoding.UTF8.GetByteCount(value) is > 0 and <= MaximumIdBytes
+        && value.All(character => character is >= 'a' and <= 'z'
+            or >= 'A' and <= 'Z'
+            or >= '0' and <= '9'
+            or '-' or '_');
+
+    public static bool IsValidUsername(string? value) =>
+        value is not null
+        && Encoding.UTF8.GetByteCount(value) <= MaximumUsernameBytes
+        && !value.Contains('\0');
+
+    public static bool IsValidPassword(string? value) =>
+        value is not null
+        && Encoding.UTF8.GetByteCount(value) is > 0 and <= MaximumPasswordBytes
+        && !value.Contains('\0');
+
+    public static bool IsValidField(string? value) =>
+        value is not null
+        && Encoding.UTF8.GetByteCount(value) <= MaximumFieldBytes
         && !value.Any(char.IsControl);
 }
 

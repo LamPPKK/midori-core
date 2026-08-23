@@ -27,6 +27,9 @@ public interface IFirefoxSyncRuntime : IDisposable
     void DeleteHistoryVisit(string url, long visitedAtEpochMillis);
     void ClearHistory();
     string CredentialsJson(string contextJson);
+    string AddCredential(string credentialJson);
+    string UpdateCredential(string credentialJson);
+    bool DeleteCredential(string id, string contextJson);
     void TouchCredential(string id, string contextJson);
     void Disconnect(bool deleteLocal);
 }

@@ -654,14 +654,96 @@ public sealed class FirefoxSyncCoordinator : IDisposable
             var contextJson = context.ToNativeJson();
             var value = await Task.Run(
                 () => runtime.CredentialsJson(contextJson), cancellationToken).ConfigureAwait(false);
-            if (Encoding.UTF8.GetByteCount(value) > 4 * 1_024 * 1_024)
+            if (Encoding.UTF8.GetByteCount(value) > FirefoxCredentialPolicy.MaximumOutputJsonBytes)
                 throw new InvalidOperationException("Firefox Sync credential result is too large.");
             var records = JsonSerializer.Deserialize<FirefoxCredentialRecord[]>(value, JsonOptions)
                 ?? throw new InvalidOperationException("Firefox Sync returned an empty credential result.");
-            if (records.Length > 100 || records.Any(record => !record.IsAllowedFor(context)))
+            if (records.Length > FirefoxCredentialPolicy.MaximumResults
+                || records.Any(record => !record.IsAllowedFor(context)))
                 throw new InvalidOperationException("Firefox Sync returned an unsafe credential result.");
             _vaultLastActivity = _clock();
             return records;
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<FirefoxCredentialRecord> AddCredentialAsync(
+        CredentialAccessContext context,
+        FirefoxCredentialDraft draft,
+        CancellationToken cancellationToken = default)
+    {
+        if (!draft.IsAllowedFor(context))
+            throw new ArgumentException("Credential draft or context is not allowed.");
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            RequireUsableVault(runtime);
+            var payload = SerializeCredentialMutation(context, draft);
+            var value = await Task.Run(
+                () => runtime.AddCredential(payload), cancellationToken).ConfigureAwait(false);
+            var record = ParseCredentialMutationResult(value, context);
+            _vaultLastActivity = _clock();
+            await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+            return record;
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<FirefoxCredentialRecord> UpdateCredentialAsync(
+        string id,
+        CredentialAccessContext context,
+        FirefoxCredentialDraft draft,
+        CancellationToken cancellationToken = default)
+    {
+        if (!FirefoxCredentialPolicy.IsValidId(id) || !draft.IsAllowedFor(context))
+            throw new ArgumentException("Credential ID, draft or context is not allowed.");
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            RequireUsableVault(runtime);
+            var payload = SerializeCredentialMutation(context, draft, id);
+            var value = await Task.Run(
+                () => runtime.UpdateCredential(payload), cancellationToken).ConfigureAwait(false);
+            var record = ParseCredentialMutationResult(value, context);
+            if (!record.Id.Equals(id, StringComparison.Ordinal))
+                throw new InvalidOperationException("Firefox Sync changed the selected credential ID.");
+            _vaultLastActivity = _clock();
+            await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+            return record;
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<bool> DeleteCredentialAsync(
+        string id,
+        CredentialAccessContext context,
+        CancellationToken cancellationToken = default)
+    {
+        if (!FirefoxCredentialPolicy.IsValidId(id) || !context.IsAllowed)
+            throw new ArgumentException("Credential ID or context is not allowed.");
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var runtime = RequireRuntime();
+            RequireUsableVault(runtime);
+            var contextJson = context.ToNativeJson();
+            var deleted = await Task.Run(
+                () => runtime.DeleteCredential(id, contextJson), cancellationToken)
+                .ConfigureAwait(false);
+            _vaultLastActivity = _clock();
+            if (deleted) await MarkLocalChangeLockedAsync(cancellationToken).ConfigureAwait(false);
+            return deleted;
         }
         finally
         {
@@ -674,7 +756,8 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         CredentialAccessContext context,
         CancellationToken cancellationToken = default)
     {
-        if (!context.IsAllowed) throw new ArgumentException("Credential context is not allowed.");
+        if (!FirefoxCredentialPolicy.IsValidId(id) || !context.IsAllowed)
+            throw new ArgumentException("Credential ID or context is not allowed.");
         await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -875,6 +958,59 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         if (records.Length > maximumItems || records.Any(record => !isSafe(record)))
             throw new InvalidOperationException($"Firefox Sync returned unsafe {label} data.");
         return records;
+    }
+
+    private static string SerializeCredentialMutation(
+        CredentialAccessContext context,
+        FirefoxCredentialDraft draft,
+        string? id = null)
+    {
+        object payload = id is null
+            ? new
+            {
+                Context = context.ToNativeValue(),
+                draft.UsernameField,
+                draft.PasswordField,
+                draft.Username,
+                draft.Password,
+            }
+            : new
+            {
+                Id = id,
+                Context = context.ToNativeValue(),
+                draft.UsernameField,
+                draft.PasswordField,
+                draft.Username,
+                draft.Password,
+            };
+        var value = JsonSerializer.Serialize(payload, JsonOptions);
+        if (Encoding.UTF8.GetByteCount(value) > FirefoxCredentialPolicy.MaximumInputJsonBytes)
+            throw new ArgumentException("Credential input is too large.");
+        return value;
+    }
+
+    private static FirefoxCredentialRecord ParseCredentialMutationResult(
+        string value,
+        CredentialAccessContext context)
+    {
+        if (Encoding.UTF8.GetByteCount(value) > FirefoxCredentialPolicy.MaximumOutputJsonBytes)
+            throw new InvalidOperationException("Firefox Sync credential result is too large.");
+        FirefoxCredentialRecord record;
+        try
+        {
+            record = JsonSerializer.Deserialize<FirefoxCredentialRecord>(value, JsonOptions)
+                ?? throw new InvalidOperationException(
+                    "Firefox Sync returned no credential mutation result.");
+        }
+        catch (JsonException error)
+        {
+            throw new InvalidOperationException(
+                "Firefox Sync returned malformed credential data.",
+                error);
+        }
+        if (!record.IsAllowedFor(context))
+            throw new InvalidOperationException("Firefox Sync returned an unsafe credential result.");
+        return record;
     }
 
     private Task PersistScheduleAsync(CancellationToken cancellationToken) =>

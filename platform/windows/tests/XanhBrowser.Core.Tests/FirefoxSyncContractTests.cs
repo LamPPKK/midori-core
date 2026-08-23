@@ -102,6 +102,37 @@ public sealed class FirefoxSyncContractTests
     }
 
     [TestMethod]
+    public void CredentialMutationRequiresExplicitExactHttpsContextAndBoundedDraft()
+    {
+        var document = new Uri("https://bücher.example:443/login?next=%2F");
+        var context = CredentialAccessContext.ExactTopLevel(
+            document,
+            isPrivate: false,
+            userSelected: true);
+        Assert.IsNotNull(context);
+        Assert.AreEqual("https://xn--bcher-kva.example", context.CanonicalTopFrameOrigin);
+        var valid = new FirefoxCredentialDraft(
+            "person@example.org",
+            "secret",
+            "username",
+            "password");
+        Assert.IsTrue(valid.IsAllowedFor(context));
+        Assert.IsFalse((valid with
+        {
+            Username = new string('u', FirefoxCredentialPolicy.MaximumUsernameBytes + 1),
+        }).IsAllowedFor(context));
+        Assert.IsFalse((valid with { Password = "secret\0tail" }).IsAllowedFor(context));
+        Assert.IsNull(CredentialAccessContext.ExactTopLevel(
+            document,
+            isPrivate: true,
+            userSelected: true));
+        Assert.IsNull(CredentialAccessContext.ExactTopLevel(
+            new Uri("http://example.org/login"),
+            isPrivate: false,
+            userSelected: true));
+    }
+
+    [TestMethod]
     public void VaultLocksAfterFiveMinutesAndOnDemand()
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(100);

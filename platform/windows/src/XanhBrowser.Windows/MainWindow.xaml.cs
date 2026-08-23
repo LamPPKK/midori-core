@@ -16,9 +16,12 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _vaultTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private Uri? _pendingSyncCallback;
     private bool _credentialDialogOpen;
+    private bool _credentialLibraryOpen;
+    private bool _credentialSurfaceForeground = true;
     private bool _historyClearInProgress;
     private bool _userPresenceInProgress;
     private long _historyClearGeneration;
+    private ContentDialog? _activeCredentialDialog;
 
     public MainWindow()
     {
@@ -27,6 +30,7 @@ public sealed partial class MainWindow : Window
         Closed += MainWindow_Closed;
         Activated += MainWindow_Activated;
         BrowserTabs.Loaded += BrowserTabs_Loaded;
+        BrowserTabs.SelectionChanged += BrowserTabs_SelectionChanged;
         _vaultTimer.Tick += VaultTimer_Tick;
         _vaultTimer.Start();
         AddTab(isPrivate: false);
@@ -222,14 +226,23 @@ public sealed partial class MainWindow : Window
         var tabs = EngineToggle("Tabs", FirefoxSyncEngine.Tabs, snapshot);
         var passwords = EngineToggle("Passwords", FirefoxSyncEngine.Passwords, snapshot);
         var vault = new Button { Content = snapshot.VaultUnlocked ? "Lock password vault" : "Unlock password vault" };
+        var passwordLibrary = new Button
+        {
+            Content = "Passwords for current site",
+            IsEnabled = SelectedBrowser()?.CurrentCredentialContext() is not null,
+        };
         var remoteTabs = new Button { Content = "Show remote tabs" };
         var disconnect = new Button { Content = "Disconnect" };
         var detail = new TextBlock { Text = snapshot.Detail, TextWrapping = TextWrapping.Wrap };
         var disconnectRequested = false;
         var remoteTabsRequested = false;
+        var passwordLibraryRequested = false;
         var content = new StackPanel { Spacing = 8, MinWidth = 360 };
         content.Children.Add(detail);
-        foreach (var control in new Control[] { bookmarks, history, tabs, passwords, vault, remoteTabs, disconnect })
+        foreach (var control in new Control[]
+        {
+            bookmarks, history, tabs, passwords, vault, passwordLibrary, remoteTabs, disconnect,
+        })
             content.Children.Add(control);
         var dialog = new ContentDialog
         {
@@ -265,12 +278,22 @@ public sealed partial class MainWindow : Window
             remoteTabsRequested = true;
             dialog.Hide();
         };
+        passwordLibrary.Click += (_, _) =>
+        {
+            passwordLibraryRequested = true;
+            dialog.Hide();
+        };
         disconnect.Click += (_, _) =>
         {
             disconnectRequested = true;
             dialog.Hide();
         };
         await dialog.ShowAsync();
+        if (passwordLibraryRequested)
+        {
+            await ShowPasswordsLibraryAsync(coordinator);
+            return;
+        }
         if (remoteTabsRequested)
         {
             await ShowRemoteTabsLibraryAsync(coordinator);
@@ -421,7 +444,11 @@ public sealed partial class MainWindow : Window
     };
 
     private void Sync_SnapshotChanged(object? sender, FirefoxSyncHostSnapshot snapshot) =>
-        DispatcherQueue.TryEnqueue(() => UpdateFirefoxSyncUi(snapshot));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!snapshot.VaultUnlocked) DismissCredentialDialog();
+            UpdateFirefoxSyncUi(snapshot);
+        });
 
     private void UpdateFirefoxSyncUi(FirefoxSyncHostSnapshot snapshot)
     {
@@ -505,6 +532,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await _sync.LockVaultIfIdleAsync();
+            if (!_sync.Snapshot.VaultUnlocked) DismissCredentialDialog();
             if (_sync.Snapshot.AccountState == FirefoxAccountState.Connected)
             {
                 await _sync.SyncAsync(FirefoxSyncReason.LocalChange);
@@ -516,19 +544,38 @@ public sealed partial class MainWindow : Window
 
     private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
     {
+        var deactivated = args.WindowActivationState == WindowActivationState.Deactivated;
+        var leftForeground = deactivated && !_userPresenceInProgress;
+        if (deactivated)
+            _credentialSurfaceForeground = false;
+        if (leftForeground)
+        {
+            DismissCredentialDialog();
+        }
+        else if (args.WindowActivationState != WindowActivationState.Deactivated)
+        {
+            _credentialSurfaceForeground = true;
+        }
         if (_sync is null) return;
         try
         {
-            if (args.WindowActivationState == WindowActivationState.Deactivated
-                && !_userPresenceInProgress)
+            if (leftForeground)
+            {
                 await _sync.LockVaultAsync();
-            else if (_sync.Snapshot.AccountState == FirefoxAccountState.Connected)
-                await SyncCurrentTabsAsync(FirefoxSyncReason.Startup);
+            }
+            else if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                if (_sync.Snapshot.AccountState == FirefoxAccountState.Connected)
+                    await SyncCurrentTabsAsync(FirefoxSyncReason.Startup);
+            }
         }
         catch { FirefoxSyncStatus.Text = "Firefox Sync foreground handling needs attention"; }
     }
 
     private void BrowserTabs_AddTabButtonClick(TabView sender, object args) => AddTab(isPrivate: false);
+
+    private void BrowserTabs_SelectionChanged(object sender, SelectionChangedEventArgs args) =>
+        DismissCredentialDialog();
 
     private void NewPrivateTab_Click(object sender, RoutedEventArgs e) => AddTab(isPrivate: true);
 
@@ -867,7 +914,12 @@ public sealed partial class MainWindow : Window
     private async Task<FirefoxCredentialRecord?> ShowCredentialPickerAsync(
         CredentialAccessContext context)
     {
-        if (_credentialDialogOpen || context.IsPrivate || !context.IsAllowed) return null;
+        var state = CurrentCredentialState();
+        if (_credentialDialogOpen || _credentialLibraryOpen
+            || context.IsPrivate || !context.IsAllowed
+            || state is null || state.Value.Context != context)
+            return null;
+        var expectedState = state.Value;
         _credentialDialogOpen = true;
         try
         {
@@ -881,12 +933,11 @@ public sealed partial class MainWindow : Window
                 }
                 finally { _userPresenceInProgress = false; }
             }
+            if (CurrentCredentialState() != expectedState) return null;
             var credentials = await _sync.CredentialsAsync(context);
-            if (credentials.Count == 0) return null;
+            if (credentials.Count == 0 || CurrentCredentialState() != expectedState) return null;
             var labels = credentials
-                .Select(record => string.IsNullOrWhiteSpace(record.Username)
-                    ? "(empty username)"
-                    : record.Username)
+                .Select(record => record.DisplayUsername)
                 .ToList();
             var list = new ListView
             {
@@ -905,19 +956,316 @@ public sealed partial class MainWindow : Window
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Primary,
             };
+            _activeCredentialDialog = dialog;
             if (await dialog.ShowAsync() != ContentDialogResult.Primary
                 || list.SelectedIndex < 0
-                || list.SelectedIndex >= credentials.Count)
+                || list.SelectedIndex >= credentials.Count
+                || CurrentCredentialState() != expectedState)
                 return null;
             var selected = credentials[list.SelectedIndex];
             await _sync.TouchCredentialAsync(selected.Id, context);
-            return selected;
+            return CurrentCredentialState() == expectedState ? selected : null;
         }
         finally
         {
+            _activeCredentialDialog = null;
             _credentialDialogOpen = false;
         }
     }
+
+    private async Task ShowPasswordsLibraryAsync(FirefoxSyncCoordinator coordinator)
+    {
+        var initialState = CurrentCredentialState();
+        if (initialState is null)
+        {
+            await ShowMessageAsync(
+                "Passwords unavailable",
+                "Select a regular HTTPS page before opening its password library.");
+            return;
+        }
+        var browser = initialState.Value.Browser;
+        if (_credentialDialogOpen || _credentialLibraryOpen) return;
+
+        _credentialLibraryOpen = true;
+        void ContextChanged(object? sender, EventArgs args) => DismissCredentialDialog();
+        browser.CredentialContextChanged += ContextChanged;
+        try
+        {
+            if (!coordinator.Snapshot.VaultUnlocked)
+            {
+                _userPresenceInProgress = true;
+                try
+                {
+                    if (!await coordinator.UnlockVaultAsync()) return;
+                }
+                finally { _userPresenceInProgress = false; }
+            }
+            if (CurrentCredentialState(browser) != initialState.Value) return;
+
+            string? detail = null;
+            while (true)
+            {
+                var state = CurrentCredentialState(browser);
+                if (state is null) return;
+                var context = state.Value.Context;
+                IReadOnlyList<FirefoxCredentialRecord> credentials;
+                try
+                {
+                    credentials = await coordinator.CredentialsAsync(context);
+                }
+                catch (Exception)
+                {
+                    if (CurrentCredentialState(browser) is null) return;
+                    await ShowMessageAsync(
+                        "Passwords unavailable",
+                        "The vault or native Logins library rejected the request.");
+                    return;
+                }
+                if (CurrentCredentialState(browser) != state.Value) return;
+
+                var list = new ListView
+                {
+                    ItemsSource = credentials.Select(record => record.DisplayUsername).ToArray(),
+                    SelectionMode = ListViewSelectionMode.Single,
+                    SelectedIndex = credentials.Count == 0 ? -1 : 0,
+                    MaxHeight = 360,
+                    MinWidth = 440,
+                };
+                var add = new Button { Content = "Add password" };
+                var edit = new Button
+                {
+                    Content = "Edit selected",
+                    IsEnabled = credentials.Count > 0,
+                };
+                var delete = new Button
+                {
+                    Content = "Delete selected",
+                    IsEnabled = credentials.Count > 0,
+                };
+                var status = new TextBlock
+                {
+                    Text = detail ?? (credentials.Count == 0
+                        ? "No saved passwords for this exact HTTPS origin."
+                        : $"{credentials.Count} saved login(s) for this exact HTTPS origin."),
+                    TextWrapping = TextWrapping.Wrap,
+                };
+                var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                actions.Children.Add(add);
+                actions.Children.Add(edit);
+                actions.Children.Add(delete);
+                var content = new StackPanel { Spacing = 8 };
+                content.Children.Add(new TextBlock
+                {
+                    Text = $"Exact origin: {context.CanonicalTopFrameOrigin}",
+                    TextWrapping = TextWrapping.Wrap,
+                });
+                content.Children.Add(list);
+                content.Children.Add(actions);
+                content.Children.Add(status);
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = BrowserTabs.XamlRoot,
+                    Title = "Firefox Sync passwords",
+                    Content = content,
+                    CloseButtonText = "Done",
+                };
+                var action = CredentialLibraryAction.None;
+                FirefoxCredentialRecord? SelectedRecord() => list.SelectedIndex is >= 0
+                    && list.SelectedIndex < credentials.Count
+                        ? credentials[list.SelectedIndex]
+                        : null;
+                list.SelectionChanged += (_, _) =>
+                {
+                    var selected = SelectedRecord() is not null;
+                    edit.IsEnabled = selected;
+                    delete.IsEnabled = selected;
+                };
+                add.Click += (_, _) =>
+                {
+                    action = CredentialLibraryAction.Add;
+                    dialog.Hide();
+                };
+                edit.Click += (_, _) =>
+                {
+                    if (SelectedRecord() is null) return;
+                    action = CredentialLibraryAction.Edit;
+                    dialog.Hide();
+                };
+                delete.Click += (_, _) =>
+                {
+                    if (SelectedRecord() is null) return;
+                    action = CredentialLibraryAction.Delete;
+                    dialog.Hide();
+                };
+
+                _activeCredentialDialog = dialog;
+                await dialog.ShowAsync();
+                if (ReferenceEquals(_activeCredentialDialog, dialog))
+                    _activeCredentialDialog = null;
+                if (action == CredentialLibraryAction.None) return;
+                var selectedRecord = SelectedRecord();
+                if (CurrentCredentialState(browser) != state.Value) return;
+
+                try
+                {
+                    switch (action)
+                    {
+                        case CredentialLibraryAction.Add:
+                        {
+                            var draft = await PromptCredentialDraftAsync(
+                                state.Value,
+                                record: null);
+                            if (draft is null) break;
+                            if (CurrentCredentialState(browser) != state.Value) return;
+                            _ = await coordinator.AddCredentialAsync(context, draft);
+                            if (CurrentCredentialState(browser) != state.Value) return;
+                            detail = "Password saved for the exact HTTPS origin.";
+                            break;
+                        }
+                        case CredentialLibraryAction.Edit when selectedRecord is not null:
+                        {
+                            var draft = await PromptCredentialDraftAsync(
+                                state.Value,
+                                selectedRecord);
+                            if (draft is null) break;
+                            if (CurrentCredentialState(browser) != state.Value) return;
+                            _ = await coordinator.UpdateCredentialAsync(
+                                selectedRecord.Id,
+                                context,
+                                draft);
+                            if (CurrentCredentialState(browser) != state.Value) return;
+                            detail = "Password updated by exact login ID.";
+                            break;
+                        }
+                        case CredentialLibraryAction.Delete when selectedRecord is not null:
+                        {
+                            if (!await ConfirmCredentialDeleteAsync(selectedRecord, context)) break;
+                            if (CurrentCredentialState(browser) != state.Value) return;
+                            var deleted = await coordinator.DeleteCredentialAsync(
+                                selectedRecord.Id,
+                                context);
+                            if (CurrentCredentialState(browser) != state.Value) return;
+                            detail = deleted
+                                ? "Password deleted by exact login ID."
+                                : "The selected password no longer exists.";
+                            break;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    detail = "The password operation failed closed.";
+                }
+            }
+        }
+        finally
+        {
+            browser.CredentialContextChanged -= ContextChanged;
+            _activeCredentialDialog = null;
+            _credentialLibraryOpen = false;
+        }
+    }
+
+    private async Task<FirefoxCredentialDraft?> PromptCredentialDraftAsync(
+        CredentialContextState state,
+        FirefoxCredentialRecord? record)
+    {
+        var context = state.Context;
+        var username = new TextBox
+        {
+            Header = "Username",
+            Text = record?.Username ?? "",
+            MaxLength = FirefoxCredentialPolicy.MaximumUsernameBytes,
+        };
+        var password = new PasswordBox
+        {
+            Header = "Password",
+            Password = record?.Password ?? "",
+            MaxLength = FirefoxCredentialPolicy.MaximumPasswordBytes,
+        };
+        var content = new StackPanel { Spacing = 8, MinWidth = 420 };
+        content.Children.Add(new TextBlock
+        {
+            Text = $"This login is restricted to {context.CanonicalTopFrameOrigin}. Passwords remain masked and are never filled without a native user choice.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        content.Children.Add(username);
+        content.Children.Add(password);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = BrowserTabs.XamlRoot,
+            Title = record is null ? "Add password" : "Edit password",
+            Content = content,
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        _activeCredentialDialog = dialog;
+        var result = await dialog.ShowAsync();
+        if (ReferenceEquals(_activeCredentialDialog, dialog)) _activeCredentialDialog = null;
+        if (result != ContentDialogResult.Primary
+            || CurrentCredentialState(state.Browser) != state)
+            return null;
+        var draft = new FirefoxCredentialDraft(
+            username.Text,
+            password.Password,
+            record?.UsernameField ?? "",
+            record?.PasswordField ?? "");
+        return draft.IsAllowedFor(context)
+            ? draft
+            : throw new ArgumentException("The credential fields exceed the shared policy.");
+    }
+
+    private async Task<bool> ConfirmCredentialDeleteAsync(
+        FirefoxCredentialRecord record,
+        CredentialAccessContext context)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = BrowserTabs.XamlRoot,
+            Title = "Delete this saved password?",
+            Content = $"Delete {record.DisplayUsername} by its exact native login ID from {context.CanonicalTopFrameOrigin}?",
+            PrimaryButtonText = "Delete password",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        _activeCredentialDialog = dialog;
+        var result = await dialog.ShowAsync();
+        if (ReferenceEquals(_activeCredentialDialog, dialog)) _activeCredentialDialog = null;
+        return result == ContentDialogResult.Primary;
+    }
+
+    private CredentialContextState? CurrentCredentialState(BrowserTab? expected = null)
+    {
+        if (!_credentialSurfaceForeground) return null;
+        var selected = SelectedBrowser();
+        if (selected is null || expected is not null && !ReferenceEquals(selected, expected))
+            return null;
+        var context = selected.CurrentCredentialContext();
+        return context is null
+            ? null
+            : new CredentialContextState(
+                selected,
+                selected.CredentialContextGeneration,
+                context);
+    }
+
+    private CredentialAccessContext? CurrentCredentialContext() =>
+        CurrentCredentialState()?.Context;
+
+    private void DismissCredentialDialog()
+    {
+        try { _activeCredentialDialog?.Hide(); }
+        catch (Exception) { }
+        _activeCredentialDialog = null;
+    }
+
+    private enum CredentialLibraryAction { None, Add, Edit, Delete }
+
+    private readonly record struct CredentialContextState(
+        BrowserTab Browser,
+        long Generation,
+        CredentialAccessContext Context);
 
     private async void ExportBackup_Click(object sender, RoutedEventArgs e)
     {
@@ -1094,11 +1442,16 @@ public sealed partial class MainWindow : Window
             AttachBrowser(tab, replacement);
         };
         browser.PageVisited += Browser_PageVisited;
+        browser.CredentialContextChanged += (_, _) =>
+        {
+            if (ReferenceEquals(SelectedBrowser(), browser)) DismissCredentialDialog();
+        };
     }
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
         _vaultTimer.Stop();
+        DismissCredentialDialog();
         if (_sync is not null)
         {
             _sync.SnapshotChanged -= Sync_SnapshotChanged;

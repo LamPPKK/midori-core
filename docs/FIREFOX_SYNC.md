@@ -275,7 +275,12 @@ Windows provides the equivalent WinUI coordinator, single-instance protocol
 activation, DPAPI/Windows Hello persistence, a gated exact-origin WebView2
 credential picker and architecture-specific native DLL packaging input. Its
 Sync-enabled host also records regular navigation, publishes bounded regular
-tabs and exposes typed bookmark/history controls over the existing C ABI.
+tabs and exposes typed bookmark/history controls over the existing C ABI. Its
+native site-password library exposes the same bounded Logins CRUD surface only
+for the selected regular tab's exact HTTPS origin. Windows Hello/PIN unlocks the
+vault; add/update/delete revalidate the current tab before and after each dialog
+and native call, preserve the exact selected login ID, mask passwords and
+dismiss credential UI on navigation, tab switch, backgrounding or vault lock.
 Bookmark mutations retain the selected GUID and history deletion retains the
 selected URL/millisecond timestamp; InPrivate tabs never enter these mutations.
 Remote-tab results are decoded into bounded typed device/tab records and can
@@ -287,8 +292,8 @@ The platform boundary tests currently pass locally: 37 Apple tests cover the
 contract, coordinator, typed Places/Remote Tabs, private-data exclusion,
 Logins mutation bounds, navigation/recovery policy and device-only
 Keychain/LocalAuthentication policy,
-while 70 Windows cases cover the contract, coordinator, typed Places/tabs
-boundary, P/Invoke surface and DPAPI/Windows Hello policy. The
+while 71 Windows cases cover the contract, coordinator, typed Places/tabs and
+Logins mutation boundary, P/Invoke surface and DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application
 Services native libraries appear only in the on-demand Sync split.

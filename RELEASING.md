@@ -597,6 +597,14 @@ channels are rejected before a controller or page is created, while Runtime
    native row is clicked. Reject more than 100 devices/500 total tabs, unsafe
    current/history/icon URLs, invalid device kinds and out-of-range timestamps
    without opening any fallback URL.
+   From the native site-password library, add, edit and confirm-delete a login
+   while proving that its exact native ID and current HTTPS origin are retained.
+   Reject HTTP/InPrivate pages, invalid IDs/fields, usernames over 1,024 bytes,
+   passwords over 4,096 bytes, more than 100 records and output over 4 MiB.
+   Navigate, change tab or background during Windows Hello, query, editor,
+   delete confirmation and native mutation; every stale dialog must close and
+   no operation may be retargeted to the new origin. Confirm vault timeout and
+   explicit lock dismiss all displayed credential values.
 3. Sign every executable and package with the dedicated certificate, verify the
    timestamp and signature on a separate clean system, then run Microsoft
    Defender and SmartScreen submission checks.

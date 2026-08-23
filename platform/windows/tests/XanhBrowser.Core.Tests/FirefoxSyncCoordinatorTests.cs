@@ -193,6 +193,36 @@ public sealed class FirefoxSyncCoordinatorTests
         await coordinator.TouchCredentialAsync(records[0].Id, context);
         Assert.AreEqual(1, runtime.TouchCredentialCalls);
 
+        var draft = new FirefoxCredentialDraft(
+            "new@example.org",
+            "new-secret",
+            "username",
+            "password");
+        var added = await coordinator.AddCredentialAsync(context, draft);
+        Assert.AreEqual("added-credential", added.Id);
+        Assert.AreEqual(1, runtime.AddCredentialCalls);
+        Assert.AreEqual(draft, runtime.LastCredentialDraft);
+
+        var updatedDraft = draft with
+        {
+            Username = "updated@example.org",
+            Password = "updated-secret",
+        };
+        var updated = await coordinator.UpdateCredentialAsync(
+            added.Id,
+            context,
+            updatedDraft);
+        Assert.AreEqual(added.Id, updated.Id);
+        Assert.AreEqual("updated@example.org", updated.Username);
+        Assert.AreEqual(1, runtime.UpdateCredentialCalls);
+        Assert.IsTrue(await coordinator.DeleteCredentialAsync(added.Id, context));
+        Assert.AreEqual(1, runtime.DeleteCredentialCalls);
+
+        var privateContext = context with { IsPrivate = true };
+        await Assert.ThrowsExceptionAsync<ArgumentException>(
+            () => coordinator.AddCredentialAsync(privateContext, draft));
+        Assert.AreEqual(1, runtime.AddCredentialCalls);
+
         runtime.CredentialsResult = runtime.CredentialsResult.Replace(
             "https://example.org\",\"form_action_origin",
             "https://evil.example\",\"form_action_origin",
@@ -382,6 +412,10 @@ public sealed class FirefoxSyncCoordinatorTests
         public int SyncCalls { get; private set; }
         public int DisconnectCalls { get; private set; }
         public int TouchCredentialCalls { get; private set; }
+        public int AddCredentialCalls { get; private set; }
+        public int UpdateCredentialCalls { get; private set; }
+        public int DeleteCredentialCalls { get; private set; }
+        public FirefoxCredentialDraft? LastCredentialDraft { get; private set; }
         public int MaximumConcurrentCalls => _maximumConcurrentCalls;
         public bool LastDisconnectDeletedLocal { get; private set; }
         public string BookmarksResult { get; set; } = "[]";
@@ -458,6 +492,29 @@ public sealed class FirefoxSyncCoordinatorTests
 
         public void ClearHistory() { }
         public string CredentialsJson(string contextJson) => CredentialsResult;
+        public string AddCredential(string credentialJson)
+        {
+            AddCredentialCalls++;
+            LastCredentialDraft = ParseCredentialDraft(credentialJson);
+            return CredentialResult("added-credential", LastCredentialDraft);
+        }
+
+        public string UpdateCredential(string credentialJson)
+        {
+            UpdateCredentialCalls++;
+            using var payload = JsonDocument.Parse(credentialJson);
+            LastCredentialDraft = ParseCredentialDraft(payload.RootElement);
+            return CredentialResult(
+                payload.RootElement.GetProperty("id").GetString()!,
+                LastCredentialDraft);
+        }
+
+        public bool DeleteCredential(string id, string contextJson)
+        {
+            DeleteCredentialCalls++;
+            return true;
+        }
+
         public void TouchCredential(string id, string contextJson) => TouchCredentialCalls++;
 
         public void Disconnect(bool deleteLocal)
@@ -469,6 +526,34 @@ public sealed class FirefoxSyncCoordinatorTests
         }
 
         public void Dispose() { }
+
+        private static FirefoxCredentialDraft ParseCredentialDraft(string value)
+        {
+            using var payload = JsonDocument.Parse(value);
+            return ParseCredentialDraft(payload.RootElement);
+        }
+
+        private static FirefoxCredentialDraft ParseCredentialDraft(JsonElement payload) => new(
+            payload.GetProperty("username").GetString()!,
+            payload.GetProperty("password").GetString()!,
+            payload.GetProperty("username_field").GetString()!,
+            payload.GetProperty("password_field").GetString()!);
+
+        private static string CredentialResult(string id, FirefoxCredentialDraft draft) =>
+            JsonSerializer.Serialize(new
+            {
+                id,
+                origin = "https://example.org",
+                form_action_origin = "https://example.org",
+                username_field = draft.UsernameField,
+                password_field = draft.PasswordField,
+                username = draft.Username,
+                password = draft.Password,
+                time_created_epoch_millis = 1,
+                time_password_changed_epoch_millis = 1,
+                time_last_used_epoch_millis = 1,
+                times_used = 0,
+            });
     }
 
     private sealed class FakeSecretStore : IFirefoxSyncSecretStore

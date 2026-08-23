@@ -81,6 +81,15 @@ HTTPS origin and bounded message before asking the native Sync core for its
 already-sanitized credential set. InPrivate tabs never enable web messaging or
 the bridge. WebView2's built-in autofill and password saving remain disabled.
 
+Sync settings also expose a native password library for the currently selected
+regular HTTPS site. It lists at most 100 bounded Logins records, masks password
+values and can add, update or confirm-delete the selected exact native login
+ID. The host requires Windows Hello/PIN-backed vault unlock, re-reads the
+selected tab before and after each dialog/native operation and dismisses the
+credential UI on navigation, tab switch, backgrounding or vault lock. HTTP,
+InPrivate and stale contexts fail before native mutation; username, password,
+field and aggregate JSON limits match the shared Rust contract.
+
 The normal unsigned verification artifact does not carry the Rust native DLL
 and therefore fails closed. Supply an architecture-matched DLL explicitly:
 

@@ -25,17 +25,28 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     private DateTimeOffset _lastUsed = DateTimeOffset.UtcNow;
     private string? _credentialNonce;
     private string? _credentialScriptId;
+    private long _credentialContextGeneration;
+    private bool _credentialDocumentCommitted;
     private ContentDialog? _permissionDialog;
 
     public event EventHandler<string>? TitleChanged;
     public event EventHandler<BrowserRecoveryRequestedEventArgs>? RecoveryRequested;
     public event EventHandler<BrowserPageVisitedEventArgs>? PageVisited;
+    public event EventHandler? CredentialContextChanged;
 
     public bool IsPrivate => _isPrivate;
     public Uri CurrentUri => _currentUri;
     public Uri LastSuccessfulUri => _lastSuccessfulUri;
     public string CurrentTitle => _currentTitle;
     public DateTimeOffset LastUsed => _lastUsed;
+    public long CredentialContextGeneration => _credentialContextGeneration;
+    public CredentialAccessContext? CurrentCredentialContext() =>
+        _credentialDocumentCommitted
+            ? CredentialAccessContext.ExactTopLevel(
+                _currentUri,
+                _isPrivate,
+                userSelected: true)
+            : null;
 
     public BrowserTab(
         bool isPrivate,
@@ -171,6 +182,9 @@ public sealed partial class BrowserTab : UserControl, IDisposable
 
         _processFailed = true;
         _credentialNonce = null;
+        _credentialDocumentCommitted = false;
+        _credentialContextGeneration++;
+        CredentialContextChanged?.Invoke(this, EventArgs.Empty);
         try
         {
             _permissionDialog?.Hide();
@@ -315,6 +329,9 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     {
         LoadProgress.Visibility = Visibility.Visible;
         _credentialNonce = null;
+        _credentialDocumentCommitted = false;
+        _credentialContextGeneration++;
+        CredentialContextChanged?.Invoke(this, EventArgs.Empty);
         if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri)
             && AddressResolver.IsAllowedWebUri(uri))
         {
@@ -459,6 +476,8 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         _lastSuccessfulUri = uri;
         _lastUsed = DateTimeOffset.UtcNow;
         _currentTitle = sender.CoreWebView2?.DocumentTitle ?? _currentTitle;
+        _credentialDocumentCommitted = true;
+        CredentialContextChanged?.Invoke(this, EventArgs.Empty);
         PageVisited?.Invoke(
             this,
             new BrowserPageVisitedEventArgs(_currentUri, _currentTitle, _lastUsed, _isPrivate));
@@ -469,8 +488,14 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         if (Uri.TryCreate(sender.Source, UriKind.Absolute, out var uri)
             && AddressResolver.IsAllowedWebUri(uri))
         {
+            var changed = _currentUri != uri;
             _currentUri = uri;
             AddressBox.Text = uri.AbsoluteUri;
+            if (changed)
+            {
+                _credentialContextGeneration++;
+                CredentialContextChanged?.Invoke(this, EventArgs.Empty);
+            }
         }
     }
 
@@ -573,6 +598,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         TitleChanged = null;
         RecoveryRequested = null;
         PageVisited = null;
+        CredentialContextChanged = null;
         GC.SuppressFinalize(this);
     }
 }

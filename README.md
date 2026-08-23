@@ -375,7 +375,7 @@ write. Its native password library also lists, adds, updates and deletes Logins
 only for the current exact HTTPS origin after LocalAuthentication. Every result
 and exact login ID is revalidated across page/tab changes; private and non-HTTPS
 contexts never reach the native mutation API, and vault/background locking
-clears the displayed credential records. Their ordinary verification artifacts intentionally omit the native
+clears the displayed credential records. These hosts' ordinary verification artifacts intentionally omit the native
 Mozilla runtime, and production remains blocked until the pinned XCFramework/DLL
 and platform interoperability/security evidence are packaged and reviewed. Each
 platform uses its own registered callback scheme.
@@ -387,7 +387,12 @@ Places GUID, history deletion uses the selected canonical URL plus millisecond
 visit timestamp, and remote history is display-only until explicitly opened.
 Remote tabs are parsed through the same bounded native contract, grouped by
 device and remain inert until the user clicks one specific HTTP(S) row.
-InPrivate tabs are rejected before any Places mutation. The ordinary artifact
+Its native site-password library uses Windows Hello/PIN to unlock the vault,
+then lists, adds, updates and confirm-deletes Logins only for the selected
+regular tab's exact HTTPS origin. It retains and revalidates the native login ID
+across every dialog/native boundary; navigation, tab changes, backgrounding or
+vault lock dismiss stale credential rows. InPrivate tabs are rejected before
+any Places or Logins mutation. The ordinary artifact
 still has no local Places runtime, so these library controls remain unavailable
 until an approved or self-hosted Sync configuration and native DLL are present.
 

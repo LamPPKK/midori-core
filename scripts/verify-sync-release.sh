@@ -506,6 +506,12 @@ case "$edition" in
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'public async Task RecordHistoryAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<FirefoxCredentialRecord> AddCredentialAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<FirefoxCredentialRecord> UpdateCredentialAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<bool> DeleteCredentialAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'browser.PageVisited += Browser_PageVisited;' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'await _sync.SyncAsync(FirefoxSyncReason.LocalChange);' \
@@ -515,6 +521,24 @@ case "$edition" in
     grep -F 'coordinator.DeleteHistoryVisitAsync(uri, selected.VisitedAtEpochMillis)' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'clearGeneration != Interlocked.Read(ref _historyClearGeneration)' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'private async Task ShowPasswordsLibraryAsync(' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'CurrentCredentialState(browser) != state.Value' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'public long CredentialContextGeneration =>' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F '_credentialDocumentCommitted' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F '_credentialContextGeneration++;' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'Title = "Delete this saved password?"' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'browser.CredentialContextChanged +=' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'if (!_credentialSurfaceForeground) return null;' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'if (!snapshot.VaultUnlocked) DismissCredentialDialog();' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     sed -n '/ShowRemoteTabsLibraryAsync/,/private static string RemoteDeviceKindLabel/p' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs \
@@ -847,6 +871,12 @@ case "$edition" in
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'public async Task<IReadOnlyList<FirefoxBookmarkRecord>> BookmarksAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<FirefoxCredentialRecord> AddCredentialAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<FirefoxCredentialRecord> UpdateCredentialAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'public async Task<bool> DeleteCredentialAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'browser.PageVisited += Browser_PageVisited;' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'coordinator.DeleteBookmarkAsync(selected.Guid' \
@@ -854,6 +884,24 @@ case "$edition" in
     grep -F 'coordinator.DeleteHistoryVisitAsync(uri, selected.VisitedAtEpochMillis)' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     grep -F 'clearGeneration != Interlocked.Read(ref _historyClearGeneration)' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'private async Task ShowPasswordsLibraryAsync(' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'CurrentCredentialState(browser) != state.Value' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'public long CredentialContextGeneration =>' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F '_credentialDocumentCommitted' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F '_credentialContextGeneration++;' \
+      platform/windows/src/XanhBrowser.Windows/BrowserTab.xaml.cs >/dev/null
+    grep -F 'Title = "Delete this saved password?"' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'browser.CredentialContextChanged +=' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'if (!_credentialSurfaceForeground) return null;' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'if (!snapshot.VaultUnlocked) DismissCredentialDialog();' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
     sed -n '/ShowRemoteTabsLibraryAsync/,/private static string RemoteDeviceKindLabel/p' \
       platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs \

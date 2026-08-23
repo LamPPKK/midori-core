@@ -200,6 +200,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   tab ID and per-document challenge, rejects subframes/forged fields and clears
   request state on navigation or renderer termination. The preview still
   returns `unavailable` until its DPAPI/Windows Hello vault is connected.
+- Made the WinCairo credential-picker boundary asynchronous so Windows Hello
+  can use the required owner-window interop without blocking WebKit's UI
+  thread. Concurrent, replayed, navigated, renderer-terminated and teardown-
+  stale completions now fail closed before any credential reply.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

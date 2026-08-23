@@ -363,10 +363,13 @@ a trusted button-down event, and consumes the gesture once. The host now
 registers a main-frame-only isolated credential bridge that binds a random tab
 ID and document challenge to the exact committed HTTPS URL, rejects unknown
 fields or bounds violations, and invalidates requests across provisional, same-
-document and renderer lifecycle changes. Its picker is intentionally absent and
-all valid requests return `unavailable`; WinCairo therefore remains blocked
-until the DPAPI/Windows Hello vault, packaged native core and reviewed native
-picker pass security tests. `scripts/verify-sync-release.sh` is a fail-closed mechanical
+document and renderer lifecycle changes. Its picker boundary is asynchronous,
+single-flight and lifetime-weak so Windows Hello can complete without blocking
+WebKit's UI thread; navigation, renderer termination and teardown cancel stale
+completions. The picker implementation is intentionally absent and all valid
+requests return `unavailable`; WinCairo therefore remains blocked until the
+DPAPI/Windows Hello vault, packaged native core and reviewed native picker pass
+security tests. `scripts/verify-sync-release.sh` is a fail-closed mechanical
 prerequisite check, not an audit substitute. Its Linux production
 mode requires evidence files for the Sync-enabled build, Secret Service,
 four-engine interoperability, data migration, Flatpak and security review;

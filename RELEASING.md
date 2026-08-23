@@ -673,8 +673,12 @@ main-frame credential bridge, but its picker remains deliberately unavailable.
 Run `XanhCredentialBridgePolicyTest`, then attach a test picker and reject forged
 origin/tab/challenge/request IDs, unknown/oversized fields, subframes, stale
 provisional/same-document requests and renderer-process swaps before any native
-UI or fill. Keep Sync disabled until the DPAPI/Windows Hello vault, packaged
-native core, picker and security evidence are complete.
+UI or fill. The picker must use the desktop owner-window
+`IUserConsentVerifierInterop::RequestVerificationForWindowAsync` path and must
+not block WebKit's UI thread; navigation, renderer termination and teardown
+must cancel an outstanding completion exactly once. Keep Sync disabled until
+the DPAPI/Windows Hello vault, packaged native core, picker and security
+evidence are complete.
 The pre-load navigation-action policy must also reject overlong/malformed URLs,
 userinfo, invalid ports, script-created external navigation and every external
 redirect. Verify that only a direct user gesture can delegate bounded `mailto:`

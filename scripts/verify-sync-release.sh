@@ -786,17 +786,25 @@ case "$edition" in
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
     grep -F 'request.claimedOrigin != *claimedOrigin' \
       platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
-    grep -F 'm_state.isCurrent(*token)' \
+    grep -F 'using Picker = std::function<void(XanhCredentialBridgePolicy::Request, PickerCompletion)>;' \
+      platform/windows-webkit/src/XanhCredentialBridge.h >/dev/null
+    grep -F 'std::weak_ptr<Lifetime> lifetime = m_lifetime;' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
-    grep -F '!m_picker || !m_foregroundCheck || !m_foregroundCheck() || m_requestInFlight' \
+    grep -F 'auto asyncSequence = token ? m_asyncGate.begin() : std::nullopt;' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
-    grep -F '!selected || !m_foregroundCheck() || !m_state.isCurrent(*token)' \
+    grep -F 'm_state.rendererTerminated();' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
-    grep -F 'm_requestInFlight' \
+    grep -F 'cancelPendingRequest();' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F '!selected || !m_foregroundCheck || !m_foregroundCheck() || !m_state.isCurrent(pending->token)' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F '!m_asyncGate.finish(pending->asyncSequence)' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
     grep -F 'inline constexpr size_t maximumRequestsPerDocument = 64;' \
       platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
     grep -F '!m_seenRequestIDs.insert(request.requestID).second' \
+      platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
+    grep -F 'class AsyncRequestGate' \
       platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
     grep -F 'return makeReply({ { L"status", L"unavailable" }' \
       platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null

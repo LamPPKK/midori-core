@@ -121,5 +121,21 @@ int main()
     boundedRequest.requestID = requestIDFor(XanhCredentialBridgePolicy::maximumRequestsPerDocument);
     expect(!boundedState.validate(boundedRequest, true), "A request above the per-document cap was accepted.");
 
+    XanhCredentialBridgePolicy::AsyncRequestGate asyncGate;
+    auto firstAsync = asyncGate.begin();
+    expect(firstAsync.has_value(), "The first asynchronous picker request was rejected.");
+    expect(asyncGate.hasActiveRequest(), "The asynchronous picker request was not tracked.");
+    expect(!asyncGate.begin(), "A concurrent asynchronous picker request was accepted.");
+    expect(asyncGate.finish(*firstAsync), "The live asynchronous picker request was not completed.");
+    expect(!asyncGate.finish(*firstAsync), "An asynchronous picker completion was replayed.");
+    auto canceledAsync = asyncGate.begin();
+    expect(canceledAsync.has_value(), "A request after completion was rejected.");
+    asyncGate.cancel();
+    expect(!asyncGate.hasActiveRequest(), "Cancellation left an asynchronous picker request active.");
+    expect(!asyncGate.finish(*canceledAsync), "A stale completion survived cancellation.");
+    auto reopenedAsync = asyncGate.begin();
+    expect(reopenedAsync.has_value(), "Cancellation did not reopen the asynchronous picker gate.");
+    expect(*reopenedAsync != *canceledAsync, "Cancellation reused a stale asynchronous request token.");
+
     std::cout << "Xanh WinCairo credential bridge policy passed " << assertions << " assertions\n";
 }

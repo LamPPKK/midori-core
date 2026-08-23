@@ -79,12 +79,15 @@ registers a main-frame-only credential request handler in that world. A random
 native tab ID and document challenge are bound to the exact committed,
 userinfo-free HTTPS URL; provisional navigation, same-document URL changes and
 renderer termination invalidate pending requests. The host rejects unknown or
-oversized fields, forged origins, subframes and stale request IDs, and rechecks
-the generation after a native picker returns. The committed preview
-deliberately has no credential picker callback, so every validated request
-receives `unavailable` and no secret is filled. Sync remains blocked until the
-DPAPI/Windows Hello vault, packaged native core and reviewed picker are
-connected; the validating bridge must not be treated as a substitute.
+oversized fields, forged origins, subframes and stale request IDs. Its picker
+boundary is asynchronous, single-flight and lifetime-weak; it rechecks the
+foreground window, committed URL and generation after completion, while
+navigation, renderer termination and teardown complete stale requests as
+`unavailable`. The committed preview deliberately has no credential picker
+callback, so every validated request receives `unavailable` and no secret is
+filled. Sync remains blocked until the DPAPI/Windows Hello vault, packaged
+native core and reviewed picker are connected; the validating bridge must not
+be treated as a substitute.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /
@@ -143,11 +146,11 @@ files and test on clean Windows 10 and Windows 11 systems. Compile and exercise
 the isolated-world C API with forged page-world messages, duplicate handler
 names, invalid world names, navigation/process swaps and repeated teardown;
 page JavaScript must never reach the isolated handler. Also run the committed
-credential-policy suite, then attach a test picker and prove forged origin/tab/
-challenge/request IDs, subframes, provisional loads, same-document navigation
-and renderer termination cannot display or fill a credential. The default
-preview must continue returning `unavailable` until the native vault gate is
-complete.
+credential-policy suite, then attach an asynchronous test picker and prove
+forged origin/tab/challenge/request IDs, concurrent or replayed completions,
+subframes, provisional loads, same-document navigation, renderer termination
+and host teardown cannot display or fill a credential. The default preview
+must continue returning `unavailable` until the native vault gate is complete.
 
 The portable `.xanhbackup` session format is exposed by this preview, the WinUI
 edition and both Android Lite editions. It deliberately excludes cookies,

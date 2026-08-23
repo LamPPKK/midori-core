@@ -256,4 +256,32 @@ private:
     std::unordered_set<std::wstring> m_seenRequestIDs;
 };
 
+class AsyncRequestGate {
+public:
+    std::optional<uint64_t> begin()
+    {
+        if (m_active)
+            return std::nullopt;
+        if (++m_sequence == 0)
+            ++m_sequence;
+        m_active = m_sequence;
+        return m_active;
+    }
+
+    bool finish(uint64_t request)
+    {
+        if (!m_active || *m_active != request)
+            return false;
+        m_active.reset();
+        return true;
+    }
+
+    void cancel() { m_active.reset(); }
+    bool hasActiveRequest() const { return m_active.has_value(); }
+
+private:
+    uint64_t m_sequence { 0 };
+    std::optional<uint64_t> m_active;
+};
+
 } // namespace XanhCredentialBridgePolicy

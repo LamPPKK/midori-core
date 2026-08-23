@@ -177,11 +177,24 @@ WKRetainPtr<WKDictionaryRef> makeReply(
 
 } // namespace
 
+struct XanhCredentialBridge::Lifetime {
+    XanhCredentialBridge* owner { nullptr };
+};
+
+struct XanhCredentialBridge::PendingRequest {
+    uint64_t asyncSequence { };
+    std::wstring requestID;
+    XanhCredentialBridgePolicy::Token token;
+    WKRetainPtr<WKCompletionListenerRef> reply;
+};
+
 XanhCredentialBridge::XanhCredentialBridge(WKPageConfigurationRef configuration, bool isPrivate, Picker picker, ForegroundCheck foregroundCheck)
     : m_state(randomHex(), isPrivate)
     , m_picker(std::move(picker))
     , m_foregroundCheck(std::move(foregroundCheck))
+    , m_lifetime(std::make_shared<Lifetime>())
 {
+    m_lifetime->owner = this;
     if (!configuration || !m_state.isEnabled())
         return;
     auto controller = WKPageConfigurationGetUserContentController(configuration);
@@ -212,6 +225,9 @@ XanhCredentialBridge::XanhCredentialBridge(WKPageConfigurationRef configuration,
 
 XanhCredentialBridge::~XanhCredentialBridge()
 {
+    m_state.rendererTerminated();
+    cancelPendingRequest();
+    m_lifetime->owner = nullptr;
     if (!m_controller)
         return;
     auto name = makeWKString(handlerName);
@@ -220,7 +236,6 @@ XanhCredentialBridge::~XanhCredentialBridge()
         WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld(m_controller.get(), name.get(), world.get());
         WKXanhUserContentControllerRemoveAllUserScriptsInWorld(m_controller.get(), world.get());
     }
-    m_state.rendererTerminated();
 }
 
 void XanhCredentialBridge::attachPage(WKPageRef page)
@@ -231,26 +246,34 @@ void XanhCredentialBridge::attachPage(WKPageRef page)
 
 void XanhCredentialBridge::navigationStarted(WKPageRef page)
 {
-    if (page == m_page)
+    if (page == m_page) {
         m_state.navigationStarted();
+        cancelPendingRequest();
+    }
 }
 
 void XanhCredentialBridge::navigationFinished(WKPageRef page)
 {
-    if (m_enabled && page == m_page)
+    if (m_enabled && page == m_page) {
+        cancelPendingRequest();
         m_state.navigationFinished(activeURL(page));
+    }
 }
 
 void XanhCredentialBridge::activeURLChanged(WKPageRef page)
 {
-    if (m_enabled && page == m_page)
+    if (m_enabled && page == m_page) {
+        cancelPendingRequest();
         m_state.navigationFinished(activeURL(page));
+    }
 }
 
 void XanhCredentialBridge::rendererTerminated(WKPageRef page)
 {
-    if (page == m_page)
+    if (page == m_page) {
         m_state.rendererTerminated();
+        cancelPendingRequest();
+    }
 }
 
 void XanhCredentialBridge::didReceiveScriptMessage(WKScriptMessageRef message, WKCompletionListenerRef reply, const void* context)
@@ -303,37 +326,81 @@ void XanhCredentialBridge::handleScriptMessage(WKScriptMessageRef message, WKCom
         std::move(*documentURL), std::move(*claimedOrigin), std::move(*usernameField), std::move(*passwordField)
     };
     auto token = m_state.validate(request, isMainFrame);
-    if (!token || !m_picker || !m_foregroundCheck || !m_foregroundCheck() || m_requestInFlight) {
+    auto asyncSequence = token ? m_asyncGate.begin() : std::nullopt;
+    if (!token || !asyncSequence || !m_picker || !m_foregroundCheck || !m_foregroundCheck()) {
+        if (asyncSequence)
+            m_asyncGate.cancel();
         finishUnavailable();
         return;
     }
 
-    m_requestInFlight = true;
-    struct RequestGuard {
-        bool& value;
-        ~RequestGuard() { value = false; }
-    } requestGuard { m_requestInFlight };
-    std::optional<Credential> selected;
+    auto pending = std::make_shared<PendingRequest>(PendingRequest {
+        *asyncSequence,
+        requestID,
+        std::move(*token),
+        retainWK(reply),
+    });
+    m_pendingRequest = pending;
+    std::weak_ptr<Lifetime> lifetime = m_lifetime;
+    std::weak_ptr<PendingRequest> weakPending = pending;
     try {
-        selected = m_picker(request);
+        m_picker(std::move(request), [lifetime, weakPending](std::optional<Credential> selected) mutable {
+            auto live = lifetime.lock();
+            auto pendingRequest = weakPending.lock();
+            if (!live || !live->owner || !pendingRequest) {
+                if (selected) {
+                    secureClear(selected->username);
+                    secureClear(selected->password);
+                }
+                return;
+            }
+            live->owner->finishPendingRequest(pendingRequest, std::move(selected));
+        });
     } catch (...) {
-        finishUnavailable();
+        if (m_pendingRequest == pending)
+            cancelPendingRequest();
+    }
+}
+
+void XanhCredentialBridge::finishPendingRequest(
+    const std::shared_ptr<PendingRequest>& pending,
+    std::optional<Credential> selected)
+{
+    if (m_pendingRequest != pending || !m_asyncGate.finish(pending->asyncSequence)) {
+        if (selected) {
+            secureClear(selected->username);
+            secureClear(selected->password);
+        }
         return;
     }
-    if (!selected || !m_foregroundCheck() || !m_state.isCurrent(*token) || activeURL(m_page) != token->documentURL
+    m_pendingRequest.reset();
+
+    if (!selected || !m_foregroundCheck || !m_foregroundCheck() || !m_state.isCurrent(pending->token)
+        || activeURL(m_page) != pending->token.documentURL
         || !XanhCredentialBridgePolicy::isBoundedText(selected->username, XanhCredentialBridgePolicy::maximumUsernameUTF8Bytes)
         || !XanhCredentialBridgePolicy::isBoundedText(selected->password, XanhCredentialBridgePolicy::maximumPasswordUTF8Bytes)) {
         if (selected) {
             secureClear(selected->username);
             secureClear(selected->password);
         }
-        finishUnavailable();
+        auto response = unavailableReply(pending->requestID);
+        WKCompletionListenerComplete(pending->reply.get(), response.get());
         return;
     }
-    auto response = credentialReply(requestID, *selected);
-    WKCompletionListenerComplete(reply, response.get());
+    auto response = credentialReply(pending->requestID, *selected);
+    WKCompletionListenerComplete(pending->reply.get(), response.get());
     secureClear(selected->username);
     secureClear(selected->password);
+}
+
+void XanhCredentialBridge::cancelPendingRequest()
+{
+    auto pending = std::exchange(m_pendingRequest, { });
+    m_asyncGate.cancel();
+    if (!pending)
+        return;
+    auto response = unavailableReply(pending->requestID);
+    WKCompletionListenerComplete(pending->reply.get(), response.get());
 }
 
 WKRetainPtr<WKDictionaryRef> XanhCredentialBridge::unavailableReply(std::wstring_view requestID) const

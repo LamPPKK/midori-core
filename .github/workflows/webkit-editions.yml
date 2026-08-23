@@ -169,9 +169,13 @@ jobs:
           grep -F 'WKXanhUserContentControllerAddScriptMessageHandlerInWorld' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
           grep -F 'WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
           grep -F "if (event.isTrusted && event.isPrimary && event.button === 0) requestCredential(event.target)" _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
-          grep -F '!m_picker || !m_foregroundCheck || !m_foregroundCheck() || m_requestInFlight' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
-          grep -F '!selected || !m_foregroundCheck() || !m_state.isCurrent(*token)' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F 'using Picker = std::function<void(XanhCredentialBridgePolicy::Request, PickerCompletion)>;' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.h
+          grep -F 'std::weak_ptr<Lifetime> lifetime = m_lifetime;' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F 'auto asyncSequence = token ? m_asyncGate.begin() : std::nullopt;' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F '!selected || !m_foregroundCheck || !m_foregroundCheck() || !m_state.isCurrent(pending->token)' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F '!m_asyncGate.finish(pending->asyncSequence)' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
           grep -F 'inline constexpr size_t maximumRequestsPerDocument = 64;' _webkit/Tools/MiniBrowser/win/XanhCredentialBridgePolicy.h
+          grep -F 'class AsyncRequestGate' _webkit/Tools/MiniBrowser/win/XanhCredentialBridgePolicy.h
           if grep -F 'm_isControlledByAutomation' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.h; then
             echo 'WinCairo must read live automation state rather than a stale per-window cache' >&2
             exit 1

@@ -298,9 +298,10 @@ with one external launch per consumed gesture. Unexpected WebProcess
 termination receives at most one bounded back-forward restore when the current
 committed item has no stored HTTP body; form submissions are never restored and
 a repeatedly crashing page cannot form an automatic recovery loop. The
-MiniBrowser now registers a fail-closed, main-frame isolated credential bridge,
-but returns `unavailable` until its native DPAPI/Windows Hello vault and picker
-are connected. Those pieces and the signed package remain release-gated.
+MiniBrowser now registers a fail-closed, main-frame isolated credential bridge
+with a cancellation-safe asynchronous picker boundary, but returns
+`unavailable` until its native DPAPI/Windows Hello vault and picker are
+connected. Those pieces and the signed package remain release-gated.
 
 ## Encrypted backup and sync
 

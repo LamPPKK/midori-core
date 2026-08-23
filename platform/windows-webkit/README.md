@@ -49,7 +49,7 @@ runtime files cannot leak into a new artifact.
 The reviewed source deltas also expose **Export encrypted backup** and **Import
 encrypted backup** in the File menu and connect the validating credential
 bridge to MiniBrowser. The build script temporarily copies the standalone CNG
-codec plus twelve credential-bridge/DPAPI/native-runtime/Windows-Hello sources
+codec plus seventeen credential-bridge/parser/DPAPI/native-runtime/picker/Windows-Hello sources
 into the pinned tree, records every source hash in `ENGINE.txt`, and removes the
 files while restoring the checkout.
 Export places the selected window first and includes up to 49 other
@@ -84,17 +84,19 @@ oversized fields, forged origins, subframes and stale request IDs. Its picker
 boundary is asynchronous, single-flight and lifetime-weak; it rechecks the
 foreground window, committed URL and generation after completion, while
 navigation, renderer termination and teardown complete stale requests as
-`unavailable`. The committed preview deliberately has no credential picker
-callback, so every validated request receives `unavailable` and no secret is
-filled. Sync remains blocked until the compiled DPAPI/Windows Hello primitives,
-packaged native core and reviewed picker are connected; the validating bridge must not
-be treated as a substitute.
+`unavailable`. MiniBrowser now supplies the native picker callback. The picker
+still fails closed unless all three self-hosted public configuration variables
+(`XANH_WINCAIRO_FXA_ACCOUNTS_URL`, `XANH_WINCAIRO_FXA_TOKEN_SERVER_URL` and
+`XANH_WINCAIRO_FXA_CLIENT_ID`), a signed Mozilla-enabled
+`xanh_sync_core.dll`, and readable DPAPI state are present. The normal source
+artifact packages neither that DLL nor account provisioning, so this wiring
+does not make the preview a Sync release by itself.
 
 The build also compiles a cancellable C++/WinRT Windows Hello helper using the
 desktop `IUserConsentVerifierInterop::RequestVerificationForWindowAsync` owner-
 HWND API. It generation-checks completion and catches every activation/device
-error as denial. The helper is not wired to the bridge yet, and because that
-interop requires Windows build 22000, password access must fail closed on older
+error as denial. The picker uses it before opening the vault; because that
+interop requires Windows build 22000, password access fails closed on older
 Windows releases.
 
 The compiled `XanhDpapiSecretStore` provides fixed slots for account state,
@@ -108,8 +110,11 @@ contents and publish it with a replace-existing, write-through same-volume renam
 the API also provides idempotent fixed-slot removal. DPAPI binds confidentiality
 to the Windows user profile, not to the Xanh process; another process already
 running as that user can invoke DPAPI, deny access or delete ciphertext. Callers
-must therefore treat every error as a locked/unavailable vault. The preview compiles this store but does not yet wire
-it to the credential picker or native Sync runtime.
+must therefore treat every error as a locked/unavailable vault. The picker now
+uses this store for account/Sync state and the local Logins key. A missing or
+unreadable key removes only the unreadable local Logins database and creates a
+new protected key so a future authenticated Sync workflow can restore server
+data.
 
 `XanhNativeSyncLibrary` is the fail-closed packaging boundary for that future
 runtime. It accepts only an absolute path to a regular, non-reparse
@@ -120,9 +125,8 @@ reviewed C ABI and exact `1.0.0-alpha.1` version, then probes
 `generate_local_logins_key` to reject a portable Rust build without the
 `mozilla` feature. The probe key is wiped before the core frees it.
 Trusted-signature validation does not replace release hash, expected-publisher,
-SBOM and dependency-closure review. The preview compiles this loader but does
-not instantiate it or package a native DLL yet, so this prerequisite does not
-enable Sync.
+SBOM and dependency-closure review. The picker conditionally instantiates this
+loader, but the default preview still does not package a native DLL.
 
 `XanhNativeSyncRuntime` consumes that validated loader so one adapter owns the
 DLL and runtime together. Its function-pointer types come from the exact
@@ -135,8 +139,12 @@ or the complete bounded prefix inspected before rejecting an oversized value,
 before `xanh_sync_string_free`; the host copy is wiped at destruction. Native
 open/key-generation errors are retained on the originating thread before the
 DLL may unload, and runtime diagnostics are isolated by calling thread. The
-adapter is compiled and contract-tested but is not constructed by MiniBrowser
-yet.
+single process-wide picker constructs this adapter only after every prerequisite
+passes. It unlocks through Windows Hello and DPAPI, parses at most 100 strict
+exact-origin credential records into move-only wipeable wide buffers, presents
+usernames in a native command-link dialog, touches only the selected native ID,
+and locks after five minutes or immediately on external deactivation. Navigation,
+renderer termination and window teardown cancel the request exactly once.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /
@@ -195,11 +203,14 @@ files and test on clean Windows 10 and Windows 11 systems. Compile and exercise
 the isolated-world C API with forged page-world messages, duplicate handler
 names, invalid world names, navigation/process swaps and repeated teardown;
 page JavaScript must never reach the isolated handler. Also run the committed
-credential-policy suite, then attach an asynchronous test picker and prove
+credential-policy and strict-record-parser suites plus the MSVC
+`XanhNativeCredentialPickerContractTest`. Inject controlled picker dependencies
+and prove
 forged origin/tab/challenge/request IDs, concurrent or replayed completions,
 subframes, provisional loads, same-document navigation, renderer termination
 and host teardown cannot display or fill a credential. The default preview
-must continue returning `unavailable` until the native vault gate is complete.
+must continue returning `unavailable` without the signed core, explicit public
+configuration and protected account state.
 
 The portable `.xanhbackup` session format is exposed by this preview, the WinUI
 edition and both Android Lite editions. It deliberately excludes cookies,

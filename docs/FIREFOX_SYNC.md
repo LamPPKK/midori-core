@@ -364,21 +364,26 @@ registers a main-frame-only isolated credential bridge that binds a random tab
 ID and document challenge to the exact committed HTTPS URL, rejects unknown
 fields or bounds violations, and invalidates requests across provisional, same-
 document and renderer lifecycle changes. Its picker boundary is asynchronous,
-single-flight and lifetime-weak so Windows Hello can complete without blocking
-WebKit's UI thread; navigation, renderer termination and teardown cancel stale
-completions. The picker implementation is intentionally absent and all valid
-requests return `unavailable`; WinCairo therefore remains blocked until its
-compiled DPAPI store and Windows Hello helper are wired to a packaged native
-core and reviewed native picker and pass security tests. The DPAPI store uses
+single-flight and lifetime-weak so Windows Hello can complete before native
+selection UI is shown; navigation, renderer termination and teardown cancel
+stale completions. The process-wide picker is now wired to Windows Hello, DPAPI,
+the typed C ABI runtime and a strict exact-origin credential-record parser. It
+uses move-only wipeable secret buffers, presents only usernames, touches the
+chosen native ID and locks after five minutes or external deactivation. It
+still returns `unavailable` unless a candidate provides explicit self-hosted
+public configuration, readable protected state and the signed Mozilla-enabled
+core. WinCairo therefore remains blocked until that package and its interop,
+device and security evidence pass. The DPAPI store uses
 fixed, 4 MiB-bounded current-user slots under LocalAppData, slot-specific
 entropy, an inner SHA-256 envelope, reparse-point rejection and flushed atomic
-replacement; it has no plaintext or machine-scope fallback. Neither primitive
-is invoked by the preview yet, and password access will remain unavailable
+replacement; it has no plaintext or machine-scope fallback. The picker invokes
+both primitives only after configuration and packaging checks; password access remains unavailable
 below Windows build 22000. A compiled native-library boundary additionally
 requires a trusted-Authenticode, exact same-directory `xanh_sync_core.dll`, a
 complete C ABI, matching `1.0.0-alpha.1` version and a successful, wiped
-Logins-key probe so a non-Mozilla core fails closed. It is not instantiated and
-no DLL is packaged by default. A typed native adapter consumes the validated
+Logins-key probe so a non-Mozilla core fails closed. The picker instantiates it
+only when configured; no DLL is packaged by default. A typed native adapter
+consumes the validated
 loader, owns one runtime, serializes its credential-facing calls, range-checks
 account states and derives function signatures from the exact packaged C ABI
 header. Generated keys and returned credential JSON are held in move-only
@@ -387,8 +392,8 @@ entire prefix inspected before an oversized result is rejected—before
 `xanh_sync_string_free`, while the host copy is wiped at destruction. Native
 open/key-generation errors are copied on their originating thread before the
 DLL may unload; later runtime diagnostics remain isolated by calling thread.
-The adapter remains disconnected from MiniBrowser until the native picker and
-signed package are ready.
+MiniBrowser's picker conditionally constructs the adapter, but the ordinary
+artifact lacks the signed native core and protected account provisioning.
 `scripts/verify-sync-release.sh` is a fail-closed mechanical
 prerequisite check, not an audit substitute. Its Linux production
 mode requires evidence files for the Sync-enabled build, Secret Service,

@@ -22,8 +22,11 @@ $icon = (Resolve-Path (Join-Path $repositoryRoot "platform/windows/src/XanhBrows
 $portableBackupHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhPortableBackup.h")).Path
 $portableBackupImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhPortableBackup.cpp")).Path
 $credentialBridgePolicy = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridgePolicy.h")).Path
+$credentialPickerTypes = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialPickerTypes.h")).Path
 $credentialBridgeHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.h")).Path
 $credentialBridgeImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.cpp")).Path
+$credentialRecordsHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialRecords.h")).Path
+$credentialRecordsImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialRecords.cpp")).Path
 $dpapiSecretStoreHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhDpapiSecretStore.h")).Path
 $dpapiSecretStoreImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhDpapiSecretStore.cpp")).Path
 $syncCoreABIHeader = (Resolve-Path (Join-Path $repositoryRoot "xanh-sync-core/include/xanh_sync.h")).Path
@@ -31,6 +34,8 @@ $nativeSyncLibraryHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNa
 $nativeSyncLibraryImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeSyncLibrary.cpp")).Path
 $nativeSyncRuntimeHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeSyncRuntime.h")).Path
 $nativeSyncRuntimeImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeSyncRuntime.cpp")).Path
+$nativeCredentialPickerHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeCredentialPicker.h")).Path
+$nativeCredentialPickerImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhNativeCredentialPicker.cpp")).Path
 $windowsHelloHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.h")).Path
 $windowsHelloImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.cpp")).Path
 $mainIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/MiniBrowser.ico"
@@ -38,8 +43,11 @@ $smallIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/small.ico"
 $portableBackupHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhPortableBackup.h"
 $portableBackupImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhPortableBackup.cpp"
 $credentialBridgePolicyDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridgePolicy.h"
+$credentialPickerTypesDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialPickerTypes.h"
 $credentialBridgeHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.h"
 $credentialBridgeImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.cpp"
+$credentialRecordsHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialRecords.h"
+$credentialRecordsImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialRecords.cpp"
 $dpapiSecretStoreHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhDpapiSecretStore.h"
 $dpapiSecretStoreImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhDpapiSecretStore.cpp"
 $syncCoreABIHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/xanh_sync.h"
@@ -47,6 +55,8 @@ $nativeSyncLibraryHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/w
 $nativeSyncLibraryImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeSyncLibrary.cpp"
 $nativeSyncRuntimeHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeSyncRuntime.h"
 $nativeSyncRuntimeImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeSyncRuntime.cpp"
+$nativeCredentialPickerHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeCredentialPicker.h"
+$nativeCredentialPickerImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhNativeCredentialPicker.cpp"
 $windowsHelloHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.h"
 $windowsHelloImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.cpp"
 
@@ -99,11 +109,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "The Xanh Browser WebKit patch does not apply to the pinned revision."
 }
 if ((Test-Path $portableBackupHeaderDestination) -or (Test-Path $portableBackupImplementationDestination)
-    -or (Test-Path $credentialBridgePolicyDestination) -or (Test-Path $credentialBridgeHeaderDestination)
+    -or (Test-Path $credentialBridgePolicyDestination) -or (Test-Path $credentialPickerTypesDestination)
+    -or (Test-Path $credentialBridgeHeaderDestination)
     -or (Test-Path $credentialBridgeImplementationDestination) -or (Test-Path $dpapiSecretStoreHeaderDestination)
+    -or (Test-Path $credentialRecordsHeaderDestination) -or (Test-Path $credentialRecordsImplementationDestination)
     -or (Test-Path $dpapiSecretStoreImplementationDestination) -or (Test-Path $syncCoreABIHeaderDestination)
     -or (Test-Path $nativeSyncLibraryHeaderDestination) -or (Test-Path $nativeSyncLibraryImplementationDestination)
     -or (Test-Path $nativeSyncRuntimeHeaderDestination) -or (Test-Path $nativeSyncRuntimeImplementationDestination)
+    -or (Test-Path $nativeCredentialPickerHeaderDestination) -or (Test-Path $nativeCredentialPickerImplementationDestination)
     -or (Test-Path $windowsHelloHeaderDestination)
     -or (Test-Path $windowsHelloImplementationDestination)) {
     throw "The pinned WebKit source unexpectedly contains Xanh host sources. Use a clean exact checkout."
@@ -123,8 +136,11 @@ $credentialBridgePatchApplied = $false
 $portableBackupHeaderHash = $null
 $portableBackupImplementationHash = $null
 $credentialBridgePolicyHash = $null
+$credentialPickerTypesHash = $null
 $credentialBridgeHeaderHash = $null
 $credentialBridgeImplementationHash = $null
+$credentialRecordsHeaderHash = $null
+$credentialRecordsImplementationHash = $null
 $dpapiSecretStoreHeaderHash = $null
 $dpapiSecretStoreImplementationHash = $null
 $syncCoreABIHeaderHash = $null
@@ -132,6 +148,8 @@ $nativeSyncLibraryHeaderHash = $null
 $nativeSyncLibraryImplementationHash = $null
 $nativeSyncRuntimeHeaderHash = $null
 $nativeSyncRuntimeImplementationHash = $null
+$nativeCredentialPickerHeaderHash = $null
+$nativeCredentialPickerImplementationHash = $null
 $windowsHelloHeaderHash = $null
 $windowsHelloImplementationHash = $null
 
@@ -156,10 +174,16 @@ try {
     Copy-Item $portableBackupImplementation $portableBackupImplementationDestination
     $copiedSourceFiles += $credentialBridgePolicyDestination
     Copy-Item $credentialBridgePolicy $credentialBridgePolicyDestination
+    $copiedSourceFiles += $credentialPickerTypesDestination
+    Copy-Item $credentialPickerTypes $credentialPickerTypesDestination
     $copiedSourceFiles += $credentialBridgeHeaderDestination
     Copy-Item $credentialBridgeHeader $credentialBridgeHeaderDestination
     $copiedSourceFiles += $credentialBridgeImplementationDestination
     Copy-Item $credentialBridgeImplementation $credentialBridgeImplementationDestination
+    $copiedSourceFiles += $credentialRecordsHeaderDestination
+    Copy-Item $credentialRecordsHeader $credentialRecordsHeaderDestination
+    $copiedSourceFiles += $credentialRecordsImplementationDestination
+    Copy-Item $credentialRecordsImplementation $credentialRecordsImplementationDestination
     $copiedSourceFiles += $dpapiSecretStoreHeaderDestination
     Copy-Item $dpapiSecretStoreHeader $dpapiSecretStoreHeaderDestination
     $copiedSourceFiles += $dpapiSecretStoreImplementationDestination
@@ -174,6 +198,10 @@ try {
     Copy-Item $nativeSyncRuntimeHeader $nativeSyncRuntimeHeaderDestination
     $copiedSourceFiles += $nativeSyncRuntimeImplementationDestination
     Copy-Item $nativeSyncRuntimeImplementation $nativeSyncRuntimeImplementationDestination
+    $copiedSourceFiles += $nativeCredentialPickerHeaderDestination
+    Copy-Item $nativeCredentialPickerHeader $nativeCredentialPickerHeaderDestination
+    $copiedSourceFiles += $nativeCredentialPickerImplementationDestination
+    Copy-Item $nativeCredentialPickerImplementation $nativeCredentialPickerImplementationDestination
     $copiedSourceFiles += $windowsHelloHeaderDestination
     Copy-Item $windowsHelloHeader $windowsHelloHeaderDestination
     $copiedSourceFiles += $windowsHelloImplementationDestination
@@ -181,8 +209,11 @@ try {
     $portableBackupHeaderHash = (Get-FileHash $portableBackupHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $portableBackupImplementationHash = (Get-FileHash $portableBackupImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgePolicyHash = (Get-FileHash $credentialBridgePolicyDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $credentialPickerTypesHash = (Get-FileHash $credentialPickerTypesDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgeHeaderHash = (Get-FileHash $credentialBridgeHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgeImplementationHash = (Get-FileHash $credentialBridgeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $credentialRecordsHeaderHash = (Get-FileHash $credentialRecordsHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $credentialRecordsImplementationHash = (Get-FileHash $credentialRecordsImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $dpapiSecretStoreHeaderHash = (Get-FileHash $dpapiSecretStoreHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $dpapiSecretStoreImplementationHash = (Get-FileHash $dpapiSecretStoreImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $syncCoreABIHeaderHash = (Get-FileHash $syncCoreABIHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -190,6 +221,8 @@ try {
     $nativeSyncLibraryImplementationHash = (Get-FileHash $nativeSyncLibraryImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $nativeSyncRuntimeHeaderHash = (Get-FileHash $nativeSyncRuntimeHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $nativeSyncRuntimeImplementationHash = (Get-FileHash $nativeSyncRuntimeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $nativeCredentialPickerHeaderHash = (Get-FileHash $nativeCredentialPickerHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $nativeCredentialPickerImplementationHash = (Get-FileHash $nativeCredentialPickerImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $windowsHelloHeaderHash = (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $windowsHelloImplementationHash = (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     Copy-Item $icon $mainIcon -Force
@@ -222,11 +255,17 @@ try {
         -or (Get-FileHash $portableBackupHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupHeaderHash
         -or (Get-FileHash $portableBackupImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupImplementationHash
         -or (Get-FileHash $credentialBridgePolicyDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgePolicyHash
+        -or (Get-FileHash $credentialPickerTypesDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialPickerTypesHash
         -or (Get-FileHash $credentialBridgeHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeHeaderHash
         -or (Get-FileHash $credentialBridgeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash
         -or (Get-FileHash $credentialBridgePolicy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgePolicyHash
+        -or (Get-FileHash $credentialPickerTypes -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialPickerTypesHash
         -or (Get-FileHash $credentialBridgeHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeHeaderHash
         -or (Get-FileHash $credentialBridgeImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash
+        -or (Get-FileHash $credentialRecordsHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialRecordsHeaderHash
+        -or (Get-FileHash $credentialRecordsImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialRecordsImplementationHash
+        -or (Get-FileHash $credentialRecordsHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialRecordsHeaderHash
+        -or (Get-FileHash $credentialRecordsImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialRecordsImplementationHash
         -or (Get-FileHash $dpapiSecretStoreHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dpapiSecretStoreHeaderHash
         -or (Get-FileHash $dpapiSecretStoreImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dpapiSecretStoreImplementationHash
         -or (Get-FileHash $dpapiSecretStoreHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dpapiSecretStoreHeaderHash
@@ -241,6 +280,10 @@ try {
         -or (Get-FileHash $nativeSyncRuntimeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeSyncRuntimeImplementationHash
         -or (Get-FileHash $nativeSyncRuntimeHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeSyncRuntimeHeaderHash
         -or (Get-FileHash $nativeSyncRuntimeImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeSyncRuntimeImplementationHash
+        -or (Get-FileHash $nativeCredentialPickerHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeCredentialPickerHeaderHash
+        -or (Get-FileHash $nativeCredentialPickerImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeCredentialPickerImplementationHash
+        -or (Get-FileHash $nativeCredentialPickerHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeCredentialPickerHeaderHash
+        -or (Get-FileHash $nativeCredentialPickerImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeCredentialPickerImplementationHash
         -or (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
         -or (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloImplementationHash
         -or (Get-FileHash $windowsHelloHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
@@ -271,8 +314,11 @@ try {
         "Portable backup header SHA-256: $portableBackupHeaderHash"
         "Portable backup implementation SHA-256: $portableBackupImplementationHash"
         "Credential bridge policy SHA-256: $credentialBridgePolicyHash"
+        "Credential picker types SHA-256: $credentialPickerTypesHash"
         "Credential bridge header SHA-256: $credentialBridgeHeaderHash"
         "Credential bridge implementation SHA-256: $credentialBridgeImplementationHash"
+        "Credential records header SHA-256: $credentialRecordsHeaderHash"
+        "Credential records implementation SHA-256: $credentialRecordsImplementationHash"
         "DPAPI secret-store header SHA-256: $dpapiSecretStoreHeaderHash"
         "DPAPI secret-store implementation SHA-256: $dpapiSecretStoreImplementationHash"
         "Native Sync C ABI header SHA-256: $syncCoreABIHeaderHash"
@@ -280,6 +326,8 @@ try {
         "Native Sync loader implementation SHA-256: $nativeSyncLibraryImplementationHash"
         "Native Sync runtime header SHA-256: $nativeSyncRuntimeHeaderHash"
         "Native Sync runtime implementation SHA-256: $nativeSyncRuntimeImplementationHash"
+        "Native credential picker header SHA-256: $nativeCredentialPickerHeaderHash"
+        "Native credential picker implementation SHA-256: $nativeCredentialPickerImplementationHash"
         "Windows Hello header SHA-256: $windowsHelloHeaderHash"
         "Windows Hello implementation SHA-256: $windowsHelloImplementationHash"
         "Architecture: x64"

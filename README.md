@@ -299,10 +299,12 @@ termination receives at most one bounded back-forward restore when the current
 committed item has no stored HTTP body; form submissions are never restored and
 a repeatedly crashing page cannot form an automatic recovery loop. The
 MiniBrowser now registers a fail-closed, main-frame isolated credential bridge
-with a cancellation-safe asynchronous picker boundary, but returns
-`unavailable` until its native Sync runtime and picker are connected. A bounded
-current-user DPAPI secret store and owner-window Windows Hello helper are now
-compiled but not invoked by the preview. Its compiled DLL loader accepts only
+and connects it to one process-wide native picker. The picker uses an
+owner-window Windows Hello/PIN check, current-user DPAPI state, strict bounded
+exact-origin record parsing, a native username chooser and a five-minute or
+background vault lock. It returns `unavailable` unless self-hosted public
+configuration, readable protected vault state and a signed native core are present.
+Its DLL loader accepts only
 an exact-name, same-directory native core with a trusted Authenticode signature,
 the expected version and the full C ABI, and rejects builds without Mozilla
 support. A typed adapter now owns the validated DLL/runtime together, takes its
@@ -310,8 +312,8 @@ signatures from the packaged C header, bounds all credential-facing inputs and
 wipes generated keys and returned credential JSON through exception-safe native
 owners and non-SSO host buffers. Native open/key-generation failures retain the
 originating thread-local error before the DLL can unload, and runtime failures
-remain associated with their calling thread. No native DLL is
-packaged or instantiated by default. Those pieces and the signed package remain
+remain associated with their calling thread. No native DLL or account setup is
+packaged by default, so the signed package and end-to-end Sync path remain
 release-gated.
 
 ## Encrypted backup and sync

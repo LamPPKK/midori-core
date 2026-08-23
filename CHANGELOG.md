@@ -198,35 +198,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Registered a fail-closed WinCairo credential bridge in the named world. It
   binds bounded requests to the exact committed HTTPS document, random native
   tab ID and per-document challenge, rejects subframes/forged fields and clears
-  request state on navigation or renderer termination. The preview still
-  returns `unavailable` until its DPAPI/Windows Hello vault is connected.
+  request state on navigation or renderer termination.
 - Made the WinCairo credential-picker boundary asynchronous so Windows Hello
   can use the required owner-window interop without blocking WebKit's UI
   thread. Concurrent, replayed, navigated, renderer-terminated and teardown-
   stale completions now fail closed before any credential reply.
 - Added a cancellable C++/WinRT Windows Hello helper that uses the desktop
   owner-HWND interop, generation-checks late completions and fails invalid
-  windows closed. It is compiled into WinCairo but remains disconnected until
-  the native Sync vault/picker is packaged.
+  windows closed.
 - Added a WinCairo current-user DPAPI secret store with six fixed LocalAppData
   slots, slot-specific entropy, a 4 MiB bound, inner integrity validation,
   reparse-point rejection, flushed atomic replacement and idempotent removal.
-  Windows CI exercises tamper, wrong-slot, overwrite and size-limit behavior;
-  the store remains disconnected until the native Sync picker is packaged.
+  Windows CI exercises tamper, wrong-slot, overwrite and size-limit behavior.
 - Added a WinCairo native Sync DLL loader that permits only the exact absolute
   `xanh_sync_core.dll` name, rejects reparse/relative paths and unsigned code,
   restricts dependency search, validates the full C ABI and exact core version,
   and probes/wipes a generated key to reject builds without Mozilla support.
-  The host does not instantiate it or package a DLL yet, so Sync remains
-  unavailable.
+  The default artifact does not package the DLL, so Sync remains unavailable.
 - Added a typed WinCairo native Sync runtime adapter whose signatures come from
   the packaged C ABI header. It owns the validated DLL/runtime lifetime,
   serializes credential operations, bounds and NUL-checks inputs, range-checks
   account states, preserves native open/key-generation errors and keeps runtime
   diagnostics associated with their calling thread, and wipes generated Logins
   keys and returned credential JSON with exception-safe native ownership and
-  non-SSO host buffers. MiniBrowser still does not instantiate the adapter until
-  its picker and signed native package are ready.
+  non-SSO host buffers.
+- Connected WinCairo's isolated bridge to one process-wide native picker. It
+  opens only a signed Mozilla-enabled core with explicit self-hosted public
+  configuration, unlocks the DPAPI Logins key through Windows Hello/PIN,
+  strictly parses bounded exact-origin records into wipeable buffers, presents
+  a native username chooser, touches the chosen ID, cancels across navigation
+  and renderer/window lifecycle changes, and locks after five minutes or when
+  Xanh loses activation. The default preview still packages neither the native
+  DLL nor account provisioning, so release gates remain closed.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

@@ -669,18 +669,28 @@ commit older than the shared `WEBKITGTK_MIN_VERSION` security baseline.
 The source-fork isolated-world C API must compile in the Windows build and pass
 message-world, request/reply, duplicate-handler and teardown tests. Its presence
 alone does not open Sync. The MiniBrowser host now registers the committed
-main-frame credential bridge, but its picker remains deliberately unavailable.
-Run `XanhCredentialBridgePolicyTest`, then attach a test picker and reject forged
+main-frame credential bridge and process-wide native picker. Run
+`XanhCredentialBridgePolicyTest` and `XanhCredentialRecordsTest`, then reject forged
 origin/tab/challenge/request IDs, unknown/oversized fields, subframes, stale
 provisional/same-document requests and renderer-process swaps before any native
-UI or fill. The picker must use the desktop owner-window
+UI or fill. Prove the strict parser rejects unknown order/schema, malformed
+UTF-8/JSON, cross-origin records, controls, unsafe IDs, negative/overflowing
+metadata, more than 100 rows and more than 4 MiB. Run
+`XanhNativeCredentialPickerContractTest` with MSVC to compile and link the real
+picker/runtime/DPAPI/Windows-Hello boundary and prove the unconfigured artifact
+completes unavailable exactly once. The picker must use the desktop owner-window
 `IUserConsentVerifierInterop::RequestVerificationForWindowAsync` path and must
-not block WebKit's UI thread; navigation, renderer termination and teardown
-must cancel an outstanding completion exactly once. The desktop interop starts
-at Windows build 22000, so password access must remain unavailable on older
+complete that asynchronous check before the modal native username chooser;
+navigation, renderer termination and teardown must cancel an outstanding
+completion exactly once. Leaving Xanh must close the chooser and lock the vault,
+and the five-minute deadline must not be bypassable by an old timer callback.
+The desktop interop starts at Windows build 22000, so password access must
+remain unavailable on older
 Windows builds even though the browser itself may still run there. Keep Sync
-disabled until the DPAPI/Windows Hello primitives are connected to the packaged
-native core and picker and all security evidence is complete. Run
+disabled unless the candidate binds reviewed self-hosted Accounts/Token Server
+URLs and client ID, packages the signed Mozilla-enabled core beside the browser,
+provisions protected account state, and completes all interop/security evidence.
+The ordinary source artifact intentionally lacks those prerequisites. Run
 `XanhDpapiSecretStoreContractTest` on Windows x64 and verify all six fixed slots
 round-trip under the current user, plaintext is absent from ciphertext, wrong-
 slot entropy and tampering fail closed, the 4 MiB limit is enforced, overwrite

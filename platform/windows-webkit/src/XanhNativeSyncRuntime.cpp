@@ -412,10 +412,10 @@ std::optional<XanhSensitiveUTF8> XanhNativeSyncRuntime::credentialsJSON(std::str
         m_impl->setError("Invalid credential context");
         return std::nullopt;
     }
-    std::string context(contextJSON);
+    auto context = XanhSensitiveUTF8::copyOf(contextJSON);
     std::scoped_lock lock(m_impl->mutex);
     char* nativeResult = m_impl->runtimeCredentialsJSON(
-        m_impl->runtime, context.c_str());
+        m_impl->runtime, context.view().data());
     if (!nativeResult) {
         m_impl->captureNativeError();
         return std::nullopt;
@@ -435,9 +435,10 @@ bool XanhNativeSyncRuntime::touchCredential(std::string_view id, std::string_vie
         return false;
     }
     std::string idCopy(id);
-    std::string context(contextJSON);
+    auto context = XanhSensitiveUTF8::copyOf(contextJSON);
     std::scoped_lock lock(m_impl->mutex);
-    bool result = m_impl->runtimeTouchCredential(m_impl->runtime, idCopy.c_str(), context.c_str());
+    bool result = m_impl->runtimeTouchCredential(
+        m_impl->runtime, idCopy.c_str(), context.view().data());
     if (result)
         m_impl->clearError();
     else

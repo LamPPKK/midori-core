@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "XanhCredentialBridgePolicy.h"
+#include "XanhCredentialPickerTypes.h"
 
 #include <WebKit/WKRetainPtr.h>
 #include <WebKit/WebKit2_C.h>
@@ -15,15 +15,15 @@
 
 class XanhCredentialBridge {
 public:
-    struct Credential {
-        std::wstring username;
-        std::wstring password;
-    };
-    using PickerCompletion = std::function<void(std::optional<Credential>)>;
-    using Picker = std::function<void(XanhCredentialBridgePolicy::Request, PickerCompletion)>;
+    using Credential = XanhCredential;
+    using PickerCompletion = XanhCredentialPickerCompletion;
+    using Picker = XanhCredentialPicker;
     using ForegroundCheck = std::function<bool()>;
+    using PickerCancellation = std::function<void()>;
 
-    XanhCredentialBridge(WKPageConfigurationRef, bool isPrivate, Picker = { }, ForegroundCheck = { });
+    XanhCredentialBridge(
+        WKPageConfigurationRef, bool isPrivate, Picker = { },
+        ForegroundCheck = { }, PickerCancellation = { });
     ~XanhCredentialBridge();
 
     XanhCredentialBridge(const XanhCredentialBridge&) = delete;
@@ -54,6 +54,7 @@ private:
     XanhCredentialBridgePolicy::AsyncRequestGate m_asyncGate;
     Picker m_picker;
     ForegroundCheck m_foregroundCheck;
+    PickerCancellation m_pickerCancellation;
     std::shared_ptr<Lifetime> m_lifetime;
     std::shared_ptr<PendingRequest> m_pendingRequest;
     bool m_enabled { false };

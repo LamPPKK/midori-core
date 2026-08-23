@@ -33,9 +33,13 @@ WKRetainPtr<WKStringRef> makeWKString(std::wstring_view value)
     if (required <= 0)
         return nullptr;
     std::string utf8(static_cast<size_t>(required), '\0');
-    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), utf8.data(), required, nullptr, nullptr) != required)
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), utf8.data(), required, nullptr, nullptr) != required) {
+        SecureZeroMemory(utf8.data(), utf8.size());
         return nullptr;
-    return adoptWK(WKStringCreateWithUTF8CStringWithLength(utf8.data(), utf8.size()));
+    }
+    auto result = adoptWK(WKStringCreateWithUTF8CStringWithLength(utf8.data(), utf8.size()));
+    SecureZeroMemory(utf8.data(), utf8.size());
+    return result;
 }
 
 std::optional<std::wstring> readWKString(WKTypeRef value, size_t maximumCharacters)
@@ -144,13 +148,6 @@ std::wstring bootstrapSource(std::wstring_view tabID)
     return source.str();
 }
 
-void secureClear(std::wstring& value)
-{
-    if (!value.empty())
-        SecureZeroMemory(value.data(), value.size() * sizeof(wchar_t));
-    value.clear();
-}
-
 WKRetainPtr<WKDictionaryRef> makeReply(
     std::initializer_list<std::pair<std::wstring_view, std::wstring_view>> fields)
 {
@@ -188,10 +185,13 @@ struct XanhCredentialBridge::PendingRequest {
     WKRetainPtr<WKCompletionListenerRef> reply;
 };
 
-XanhCredentialBridge::XanhCredentialBridge(WKPageConfigurationRef configuration, bool isPrivate, Picker picker, ForegroundCheck foregroundCheck)
+XanhCredentialBridge::XanhCredentialBridge(
+    WKPageConfigurationRef configuration, bool isPrivate, Picker picker,
+    ForegroundCheck foregroundCheck, PickerCancellation pickerCancellation)
     : m_state(randomHex(), isPrivate)
     , m_picker(std::move(picker))
     , m_foregroundCheck(std::move(foregroundCheck))
+    , m_pickerCancellation(std::move(pickerCancellation))
     , m_lifetime(std::make_shared<Lifetime>())
 {
     m_lifetime->owner = this;
@@ -347,13 +347,8 @@ void XanhCredentialBridge::handleScriptMessage(WKScriptMessageRef message, WKCom
         m_picker(std::move(request), [lifetime, weakPending](std::optional<Credential> selected) mutable {
             auto live = lifetime.lock();
             auto pendingRequest = weakPending.lock();
-            if (!live || !live->owner || !pendingRequest) {
-                if (selected) {
-                    secureClear(selected->username);
-                    secureClear(selected->password);
-                }
+            if (!live || !live->owner || !pendingRequest)
                 return;
-            }
             live->owner->finishPendingRequest(pendingRequest, std::move(selected));
         });
     } catch (...) {
@@ -366,31 +361,20 @@ void XanhCredentialBridge::finishPendingRequest(
     const std::shared_ptr<PendingRequest>& pending,
     std::optional<Credential> selected)
 {
-    if (m_pendingRequest != pending || !m_asyncGate.finish(pending->asyncSequence)) {
-        if (selected) {
-            secureClear(selected->username);
-            secureClear(selected->password);
-        }
+    if (m_pendingRequest != pending || !m_asyncGate.finish(pending->asyncSequence))
         return;
-    }
     m_pendingRequest.reset();
 
     if (!selected || !m_foregroundCheck || !m_foregroundCheck() || !m_state.isCurrent(pending->token)
         || activeURL(m_page) != pending->token.documentURL
-        || !XanhCredentialBridgePolicy::isBoundedText(selected->username, XanhCredentialBridgePolicy::maximumUsernameUTF8Bytes)
-        || !XanhCredentialBridgePolicy::isBoundedText(selected->password, XanhCredentialBridgePolicy::maximumPasswordUTF8Bytes)) {
-        if (selected) {
-            secureClear(selected->username);
-            secureClear(selected->password);
-        }
+        || !XanhCredentialBridgePolicy::isBoundedText(selected->username.view(), XanhCredentialBridgePolicy::maximumUsernameUTF8Bytes)
+        || !XanhCredentialBridgePolicy::isBoundedText(selected->password.view(), XanhCredentialBridgePolicy::maximumPasswordUTF8Bytes)) {
         auto response = unavailableReply(pending->requestID);
         WKCompletionListenerComplete(pending->reply.get(), response.get());
         return;
     }
     auto response = credentialReply(pending->requestID, *selected);
     WKCompletionListenerComplete(pending->reply.get(), response.get());
-    secureClear(selected->username);
-    secureClear(selected->password);
 }
 
 void XanhCredentialBridge::cancelPendingRequest()
@@ -399,6 +383,12 @@ void XanhCredentialBridge::cancelPendingRequest()
     m_asyncGate.cancel();
     if (!pending)
         return;
+    if (m_pickerCancellation) {
+        try {
+            m_pickerCancellation();
+        } catch (...) {
+        }
+    }
     auto response = unavailableReply(pending->requestID);
     WKCompletionListenerComplete(pending->reply.get(), response.get());
 }
@@ -413,7 +403,7 @@ WKRetainPtr<WKDictionaryRef> XanhCredentialBridge::credentialReply(std::wstring_
     return makeReply({
         { L"status", L"fill" },
         { L"requestId", requestID },
-        { L"username", credential.username },
-        { L"password", credential.password },
+        { L"username", credential.username.view() },
+        { L"password", credential.password.view() },
     });
 }

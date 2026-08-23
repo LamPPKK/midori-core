@@ -26,7 +26,8 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 
 - Push access to this repository and access to its GitHub Actions results
 - Linux with the dependencies listed in [README.md](README.md)
-- JDK 17, Android SDK 36 and an emulator/device matrix for API 26, 30, 33 and 36
+- JDK 17, Android SDK 36, AGP 9.3.1, the Gradle 9.7.1 wrapper and an
+  emulator/device matrix for API 26, 30, 33 and 36
 - AndroidX WebKit 1.17.0 resolved from Google Maven for the Lite System WebView
   artifact; do not substitute an alpha compatibility library in production
 - `flatpak-builder`, `appstreamcli`, GPG and an offline source-release key
@@ -70,11 +71,15 @@ GitHub source-release automation additionally requires
 5. Run `python3 scripts/verify_webkit_latest.py` with network access and confirm
    the shared floor plus WinCairo tag/revision match the newest official stable
    WebKitGTK tag. An odd-minor development tag is never a release substitute.
-6. Run `python3 scripts/verify_androidx_webkit_latest.py` with network access
+6. Run `python3 scripts/verify_android_toolchain_latest.py` with network access
+   and confirm the root plugin pins, wrapper distribution/checksum and wrapper
+   JAR match the newest official stable AGP and Gradle releases. Alpha, beta,
+   RC, nightly and snapshot releases never satisfy this production gate.
+7. Run `python3 scripts/verify_androidx_webkit_latest.py` with network access
    and confirm every Lite/System WebView Gradle module equals the newest stable
    AndroidX WebKit version published in Google Maven. Prereleases never satisfy
    this gate.
-7. Run `python3 scripts/verify_application_services_latest.py` with network
+8. Run `python3 scripts/verify_application_services_latest.py` with network
    access and confirm the lock, Cargo dependency graph, Rust identity constants
    and third-party notice all match Mozilla's newest stable Application Services
    tag and exact official revision. Prerelease, floating and mixed revisions

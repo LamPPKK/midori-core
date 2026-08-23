@@ -206,6 +206,11 @@ page instead of looping.
 
 Use JDK 17 and Android SDK 36:
 
+The Android builds pin Android Gradle Plugin 9.3.1 and the checksum-verified
+Gradle 9.7.1 wrapper. A separate weekly baseline reads the official Google
+Maven and Gradle release endpoints and fails when either stable build-tool pin
+or the checked-in wrapper JAR/distribution checksum becomes stale.
+
 ```sh
 ./gradlew --no-daemon \
   :backup-core:testDebugUnitTest \

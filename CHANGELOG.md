@@ -71,6 +71,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.
+- Added a fail-closed Android build-tool baseline that verifies the newest
+  stable AGP and Gradle releases against official metadata, the pinned
+  distribution checksum and the checked-in wrapper JAR in both repositories.
 - Updated the Windows edition to the stable WebView2 SDK 1.0.4129.50 / Runtime
   151 baseline, added a weekly official-NuGet latest-stable verifier and made
   startup reject old or non-stable Runtime channels before page creation.
@@ -298,7 +301,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `io.github.lamppkk.xanhbrowser.lite` and version code `10000`.
 - Ported the desktop stack to GTK 4, WebKitGTK 6.0, libsoup 3, libpeas 2 and
   GCR 4.
-- Modernized Android builds to JDK 17, Android SDK 36, AGP 9.3, Gradle 9.5,
+- Modernized Android builds to JDK 17, Android SDK 36, AGP 9.3.1, Gradle 9.7.1,
   AndroidX and View Binding.
 - Updated Xanh Browser Lite to the stable AndroidX WebKit 1.17.0 compatibility
   layer used by the serviced System WebView edition.

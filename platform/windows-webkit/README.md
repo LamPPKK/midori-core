@@ -49,7 +49,7 @@ runtime files cannot leak into a new artifact.
 The reviewed source deltas also expose **Export encrypted backup** and **Import
 encrypted backup** in the File menu and connect the validating credential
 bridge to MiniBrowser. The build script temporarily copies the standalone CNG
-codec plus seven credential-bridge/DPAPI/Windows-Hello sources into the pinned tree,
+codec plus nine credential-bridge/DPAPI/native-loader/Windows-Hello sources into the pinned tree,
 records every source hash in `ENGINE.txt`, and removes the files while restoring the checkout.
 Export places the selected window first and includes up to 49 other
 regular HTTP(S) windows. Import authenticates and validates the complete file
@@ -109,6 +109,19 @@ to the Windows user profile, not to the Xanh process; another process already
 running as that user can invoke DPAPI, deny access or delete ciphertext. Callers
 must therefore treat every error as a locked/unavailable vault. The preview compiles this store but does not yet wire
 it to the credential picker or native Sync runtime.
+
+`XanhNativeSyncLibrary` is the fail-closed packaging boundary for that future
+runtime. It accepts only an absolute path to a regular, non-reparse
+`xanh_sync_core.dll` target (the production path is beside the executable),
+requires a trusted Authenticode signature before loading code, and searches for
+dependencies only in the DLL directory and System32. It requires the complete
+reviewed C ABI and exact `1.0.0-alpha.1` version, then probes
+`generate_local_logins_key` to reject a portable Rust build without the
+`mozilla` feature. The probe key is wiped before the core frees it.
+Trusted-signature validation does not replace release hash, expected-publisher,
+SBOM and dependency-closure review. The preview compiles this loader but does
+not instantiate it or package a native DLL yet, so this prerequisite does not
+enable Sync.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /

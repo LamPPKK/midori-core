@@ -691,6 +691,16 @@ DPAPI/store error never falls back to plaintext. Treat same-user code execution
 as outside the store's confidentiality boundary: DPAPI protects against other
 Windows accounts and offline copying, not a process already running as the
 signed-in user.
+Run `XanhNativeSyncLibraryContractTest` with the valid, wrong-version,
+non-Mozilla and missing-export fixture DLLs. Confirm only the absolute,
+regular non-reparse, exact-name `xanh_sync_core.dll` with a trusted Authenticode
+signature is accepted, dependency search is restricted to its directory plus
+System32, every public C ABI symbol is present, the version is exactly
+`1.0.0-alpha.1`, and the generated probe key is wiped before release. This
+loader alone is not packaging evidence: the production candidate must include
+an architecture-matched Mozilla-enabled DLL and its complete native dependency
+closure, expected publisher identity, hashes, SBOM and signature; accepting any
+OS-trusted publisher at load time is not a release identity check.
 The pre-load navigation-action policy must also reject overlong/malformed URLs,
 userinfo, invalid ports, script-created external navigation and every external
 redirect. Verify that only a direct user gesture can delegate bounded `mailto:`

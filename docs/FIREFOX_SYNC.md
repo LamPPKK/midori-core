@@ -374,7 +374,12 @@ fixed, 4 MiB-bounded current-user slots under LocalAppData, slot-specific
 entropy, an inner SHA-256 envelope, reparse-point rejection and flushed atomic
 replacement; it has no plaintext or machine-scope fallback. Neither primitive
 is invoked by the preview yet, and password access will remain unavailable
-below Windows build 22000. `scripts/verify-sync-release.sh` is a fail-closed mechanical
+below Windows build 22000. A compiled native-library boundary additionally
+requires a trusted-Authenticode, exact same-directory `xanh_sync_core.dll`, a
+complete C ABI, matching `1.0.0-alpha.1` version and a successful, wiped
+Logins-key probe so a non-Mozilla core fails closed. It is not instantiated and
+no DLL is packaged by default.
+`scripts/verify-sync-release.sh` is a fail-closed mechanical
 prerequisite check, not an audit substitute. Its Linux production
 mode requires evidence files for the Sync-enabled build, Secret Service,
 four-engine interoperability, data migration, Flatpak and security review;

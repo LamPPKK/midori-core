@@ -302,8 +302,11 @@ MiniBrowser now registers a fail-closed, main-frame isolated credential bridge
 with a cancellation-safe asynchronous picker boundary, but returns
 `unavailable` until its native Sync runtime and picker are connected. A bounded
 current-user DPAPI secret store and owner-window Windows Hello helper are now
-compiled but not invoked by the preview. Those pieces and the signed package
-remain release-gated.
+compiled but not invoked by the preview. Its compiled DLL loader accepts only
+an exact-name, same-directory native core with a trusted Authenticode signature,
+the expected version and the full C ABI, and rejects builds without Mozilla
+support. No native DLL is packaged by default. Those pieces and the signed
+package remain release-gated.
 
 ## Encrypted backup and sync
 

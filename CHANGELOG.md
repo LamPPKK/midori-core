@@ -213,6 +213,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   reparse-point rejection, flushed atomic replacement and idempotent removal.
   Windows CI exercises tamper, wrong-slot, overwrite and size-limit behavior;
   the store remains disconnected until the native Sync picker is packaged.
+- Added a WinCairo native Sync DLL loader that permits only the exact absolute
+  `xanh_sync_core.dll` name, rejects reparse/relative paths and unsigned code,
+  restricts dependency search, validates the full C ABI and exact core version,
+  and probes/wipes a generated key to reject builds without Mozilla support.
+  The host does not instantiate it or package a DLL yet, so Sync remains
+  unavailable.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

@@ -722,6 +722,8 @@ case "$edition" in
     test -f platform/windows-webkit/src/XanhCredentialBridge.cpp
     test -f platform/windows-webkit/src/XanhDpapiSecretStore.h
     test -f platform/windows-webkit/src/XanhDpapiSecretStore.cpp
+    test -f platform/windows-webkit/src/XanhNativeSyncLibrary.h
+    test -f platform/windows-webkit/src/XanhNativeSyncLibrary.cpp
     test -f platform/windows-webkit/src/XanhWindowsHello.h
     test -f platform/windows-webkit/src/XanhWindowsHello.cpp
     test -f platform/windows-webkit/tests/XanhCredentialBridgePolicyTest.cpp
@@ -729,6 +731,9 @@ case "$edition" in
     test -f platform/windows-webkit/tests/windows-hello/XanhWindowsHelloContractTest.cpp
     test -f platform/windows-webkit/tests/dpapi-secret-store/CMakeLists.txt
     test -f platform/windows-webkit/tests/dpapi-secret-store/XanhDpapiSecretStoreContractTest.cpp
+    test -f platform/windows-webkit/tests/native-sync-library/CMakeLists.txt
+    test -f platform/windows-webkit/tests/native-sync-library/FakeXanhSyncCore.cpp
+    test -f platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp
     grep -F '+WK_EXPORT WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+WK_EXPORT bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld' \
@@ -776,9 +781,13 @@ case "$edition" in
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    XanhDpapiSecretStore.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    XanhNativeSyncLibrary.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    XanhWindowsHello.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    crypt32' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    wintrust' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    windowsapp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
@@ -874,6 +883,43 @@ case "$edition" in
       platform/windows-webkit/tests/dpapi-secret-store/XanhDpapiSecretStoreContractTest.cpp >/dev/null
     grep -F 'A secret decrypted in the wrong slot.' \
       platform/windows-webkit/tests/dpapi-secret-store/XanhDpapiSecretStoreContractTest.cpp >/dev/null
+    grep -F 'expectedCoreVersion = "1.0.0-alpha.1"' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.h >/dev/null
+    grep -F 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F 'WinVerifyTrust(trustWindow, &policy, &trustData)' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F 'requireTrustedSignature && !hasTrustedAuthenticodeSignature(*path)' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F 'FILE_FLAG_OPEN_REPARSE_POINT' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F 'if (_wcsicmp(path.filename().c_str(), nativeLibraryName))' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F 'for (const char* name : requiredExports)' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    native_sync_header_exports="$(grep -Eo 'xanh_sync_[a-z0-9_]+' \
+      xanh-sync-core/include/xanh_sync.h | sort -u)"
+    native_sync_loader_exports="$(grep -Eo '"xanh_sync_[a-z0-9_]+"' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp | tr -d '"' | sort -u)"
+    if [[ "$native_sync_header_exports" != "$native_sync_loader_exports" ]]; then
+      echo 'WinCairo native Sync loader exports do not exactly match xanh_sync.h' >&2
+      diff -u <(printf '%s\n' "$native_sync_header_exports") \
+        <(printf '%s\n' "$native_sync_loader_exports") >&2 || true
+      exit 1
+    fi
+    grep -F 'SecureZeroMemory(generatedKey' \
+      platform/windows-webkit/src/XanhNativeSyncLibrary.cpp >/dev/null
+    grep -F 'Portable core without Mozilla backend was accepted.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'Native core with a missing C ABI export was accepted.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    grep -F 'Unsigned fake library passed production Authenticode verification.' \
+      platform/windows-webkit/tests/native-sync-library/XanhNativeSyncLibraryContractTest.cpp >/dev/null
+    if grep -F '+    XANH_NATIVE_SYNC_TESTING' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null; then
+      echo 'WinCairo production must not compile the unsigned native-library test bypass' >&2
+      exit 1
+    fi
     grep -F '+    navigationClient.webProcessDidTerminate = webProcessDidTerminate;' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+    navigationClient.didFinishNavigation = didFinishNavigation;' \
@@ -959,6 +1005,10 @@ case "$edition" in
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$dpapiSecretStoreImplementation \$dpapiSecretStoreImplementationDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$nativeSyncLibraryHeader \$nativeSyncLibraryHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$nativeSyncLibraryImplementation \$nativeSyncLibraryImplementationDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloHeader \$windowsHelloHeaderDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloImplementation \$windowsHelloImplementationDestination" \
@@ -970,6 +1020,12 @@ case "$edition" in
     grep -F "Get-FileHash \$dpapiSecretStoreImplementationDestination -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Get-FileHash \$dpapiSecretStoreImplementation -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Native Sync loader implementation SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$nativeSyncLibraryImplementationDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$nativeSyncLibraryImplementation -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F 'Windows Hello implementation SHA-256:' \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
@@ -1000,6 +1056,8 @@ case "$edition" in
     grep -F 'platform/windows-webkit/tests/windows-hello' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F 'platform/windows-webkit/tests/dpapi-secret-store' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'platform/windows-webkit/tests/native-sync-library' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F '| Windows WebKit/WinCairo preview | Yes' \
       docs/PORTABLE_BACKUP.md >/dev/null

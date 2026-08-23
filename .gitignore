@@ -1,5 +1,7 @@
 _build
 /xanh-sync-core/target/
+/xanh-sync-core/fuzz/artifacts/
+/xanh-sync-core/fuzz/target/
 
 snap/.snapcraft
 parts

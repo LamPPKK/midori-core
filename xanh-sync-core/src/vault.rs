@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::SyncError;
+use crate::{has_explicit_url_userinfo, SyncError};
 
 pub const VAULT_IDLE_TIMEOUT_SECONDS: u64 = 5 * 60;
+pub const MAX_CREDENTIAL_CONTEXT_URL_BYTES: usize = 8_192;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, uniffi::Enum)]
 #[serde(rename_all = "kebab-case", tag = "state")]
@@ -69,11 +70,17 @@ pub fn credential_origin(
 }
 
 fn parse_https_url(value: &str, origin_only: bool) -> Result<Url, SyncError> {
+    if value.len() > MAX_CREDENTIAL_CONTEXT_URL_BYTES {
+        return Err(SyncError::InvalidBridgeMessage(
+            "credential context URL exceeds the shared size limit".into(),
+        ));
+    }
     let url = Url::parse(value).map_err(|_| {
         SyncError::InvalidBridgeMessage("credential context contains an invalid URL".into())
     })?;
     if url.scheme() != "https"
         || url.host_str().is_none()
+        || has_explicit_url_userinfo(value)
         || !url.username().is_empty()
         || url.password().is_some()
         || (origin_only && (url.path() != "/" || url.query().is_some() || url.fragment().is_some()))
@@ -124,10 +131,17 @@ mod tests {
         value.top_frame_origin = "https://user@example.org".into();
         assert!(!credential_access_allowed(&value, unlocked));
         value = context();
+        value.top_frame_origin = "https://@example.org".into();
+        assert!(!credential_access_allowed(&value, unlocked));
+        value = context();
         value.frame_origin = "https://example.org/path".into();
         assert!(!credential_access_allowed(&value, unlocked));
         value = context();
         value.user_selected = false;
+        assert!(!credential_access_allowed(&value, unlocked));
+        value = context();
+        value.document_url =
+            "https://example.org/".to_owned() + &"x".repeat(MAX_CREDENTIAL_CONTEXT_URL_BYTES);
         assert!(!credential_access_allowed(&value, unlocked));
         assert_eq!(
             credential_origin(&context(), unlocked).unwrap(),

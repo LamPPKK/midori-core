@@ -477,6 +477,13 @@ databases, logs and crash output for plaintext secrets and complete independent
 FFI/bridge fuzzing and security review. WPE and WinCairo Sync remain blocked by
 their isolated-bridge/vault guards even if another edition passes.
 
+Run all three committed cargo-fuzz targets against the exact release source and
+retain the corpus plus zero-crash output. `bridge_message` covers untrusted
+isolated-world envelopes and origin binding, `credential_context` covers the
+native vault/origin policy, and `credential_context_ffi` crosses the stable C
+ABI with arbitrary UTF-8/JSON. The weekly CI budget is a regression signal, not
+a substitute for the longer independent security-review campaign.
+
 For Android standard, also complete the password-library matrix in the Android
 repository release checklist. It must reject non-exact/non-HTTPS origins,
 invalid IDs and out-of-bound UTF-8 credential fields before native mutation,

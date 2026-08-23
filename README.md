@@ -340,6 +340,12 @@ Mozilla approval or a documented self-hosted deployment, signed artifacts and
 the interoperability/security matrix remain mandatory. Sync tokens, scoped
 keys and passwords are never included in `.xanhbackup`.
 
+The shared Rust boundary also ships scheduled cargo-fuzz campaigns for isolated
+bridge envelopes, credential context validation and the stable credential C
+ABI. These campaigns reject oversized or ambiguous origin claims before they
+reach a platform vault; production still requires the longer independent
+security review recorded in the release checklist.
+
 The standard Android host applies the shared Logins contract to its Xanh-only
 password library: exact canonical HTTPS origins, ASCII identifiers and bounded
 UTF-8 username/password/field data are enforced before every mutation. A

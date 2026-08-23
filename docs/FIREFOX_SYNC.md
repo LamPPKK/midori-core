@@ -328,6 +328,13 @@ Until every applicable item is recorded, Sync remains release-gated on that
 edition. A successful verification build is not permission to advertise
 Mozilla-hosted Firefox compatibility.
 
+The source tree includes cargo-fuzz targets for the shared isolated-world
+bridge envelope, credential context policy and credential C ABI. They enforce
+bounded identifiers/payloads, canonical userinfo-free HTTPS origin claims and
+the same private/user-action/vault rules under arbitrary input. CI executes a
+short corpus-backed campaign on relevant changes and weekly; release evidence
+still requires a longer campaign and independent review.
+
 The published WPEView 0.3.3 artifact remains blocked because it lacks an
 isolated document-start/message bridge and not every native library passes
 16 KiB page-size checks. The pinned source delta in `app-webkit/wpe-fork/`

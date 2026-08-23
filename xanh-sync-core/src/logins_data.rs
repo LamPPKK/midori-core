@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{credential_origin, CredentialContext, SyncError, VaultState};
+use crate::{
+    credential_origin, has_explicit_url_userinfo, CredentialContext, SyncError, VaultState,
+};
 
 pub(crate) const MAX_CREDENTIAL_INPUT_JSON_BYTES: usize = 64 * 1_024;
 pub(crate) const MAX_CREDENTIAL_OUTPUT_JSON_BYTES: usize = 4 * 1_024 * 1_024;
@@ -242,6 +244,7 @@ fn canonical_stored_origin(value: &str) -> Option<String> {
     let parsed = url::Url::parse(value).ok()?;
     if parsed.scheme() != "https"
         || parsed.host_str().is_none()
+        || has_explicit_url_userinfo(value)
         || !parsed.username().is_empty()
         || parsed.password().is_some()
         || parsed.path() != "/"
@@ -342,9 +345,11 @@ mod tests {
         wrong_origin.origin = "https://evil.example".into();
         let mut userinfo = record("userinfo");
         userinfo.form_action_origin = "https://user@xn--bcher-kva.example".into();
+        let mut empty_userinfo = record("empty-userinfo");
+        empty_userinfo.form_action_origin = "https://@xn--bcher-kva.example".into();
         let mut oversized = record("oversized");
         oversized.password = "x".repeat(MAX_CREDENTIAL_PASSWORD_BYTES + 1);
-        let mut records = vec![wrong_origin, userinfo, oversized];
+        let mut records = vec![wrong_origin, userinfo, empty_userinfo, oversized];
         records.extend((0..=MAX_CREDENTIAL_RESULTS).map(|index| {
             let mut value = record(&format!("credential-{index}"));
             value.time_last_used_epoch_millis = index as i64;

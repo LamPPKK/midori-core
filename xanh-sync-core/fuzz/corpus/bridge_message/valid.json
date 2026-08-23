@@ -1,0 +1,1 @@
+{"message":{"tab_id":"tab-7","navigation_nonce":"nonce-1","claimed_origin":"https://example.org","message_type":"credential-request","payload_json":"{}"},"expected":{"tab_id":"tab-7","navigation_nonce":"nonce-1","committed_url":"https://example.org/login","allowed_message_types":["credential-request"]}}

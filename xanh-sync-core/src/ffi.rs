@@ -7,16 +7,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use crate::{
-    credential_access_allowed, BookmarkRoot, CredentialContext, VaultState, XANH_SYNC_CORE_VERSION,
+    credential_access_allowed, BookmarkRoot, CredentialContext, VaultState,
+    MAX_CREDENTIAL_INPUT_JSON_BYTES, XANH_SYNC_CORE_VERSION,
 };
 
 #[cfg(feature = "mozilla")]
 use crate::{
     AccountState, BookmarkUpdate, CredentialUpdate, LegacyBookmark, LocalHistoryVisit, LocalTab,
     NewBookmark, NewCredential, SyncEngine, SyncReason, MAX_BOOKMARK_JSON_BYTES,
-    MAX_BOOKMARK_MUTATION_JSON_BYTES, MAX_CREDENTIAL_INPUT_JSON_BYTES,
-    MAX_CREDENTIAL_OUTPUT_JSON_BYTES, MAX_HISTORY_INPUT_JSON_BYTES, MAX_HISTORY_OUTPUT_JSON_BYTES,
-    MAX_LEGACY_BOOKMARK_JSON_BYTES, MAX_LOCAL_TABS_JSON_BYTES, MAX_REMOTE_TABS_JSON_BYTES,
+    MAX_BOOKMARK_MUTATION_JSON_BYTES, MAX_CREDENTIAL_OUTPUT_JSON_BYTES,
+    MAX_HISTORY_INPUT_JSON_BYTES, MAX_HISTORY_OUTPUT_JSON_BYTES, MAX_LEGACY_BOOKMARK_JSON_BYTES,
+    MAX_LOCAL_TABS_JSON_BYTES, MAX_REMOTE_TABS_JSON_BYTES,
 };
 #[cfg(feature = "mozilla")]
 use std::collections::HashMap;
@@ -100,6 +101,9 @@ pub extern "C" fn xanh_sync_credential_access_allowed(
     let Ok(json) = unsafe { CStr::from_ptr(context_json) }.to_str() else {
         return false;
     };
+    if json.len() > MAX_CREDENTIAL_INPUT_JSON_BYTES {
+        return false;
+    }
     let Ok(context) = serde_json::from_str::<CredentialContext>(json) else {
         return false;
     };
@@ -1169,5 +1173,27 @@ mod tests {
         xanh_sync_string_free(pointer);
         assert_eq!(message, "Mozilla Application Services operation failed");
         assert!(!message.contains("super-secret"));
+    }
+
+    #[test]
+    fn portable_credential_ffi_bounds_json_before_policy() {
+        let valid = CString::new(
+            serde_json::to_string(&CredentialContext {
+                document_url: "https://example.org/login".into(),
+                top_frame_origin: "https://example.org".into(),
+                frame_origin: "https://example.org".into(),
+                is_private: false,
+                user_selected: true,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(xanh_sync_credential_access_allowed(valid.as_ptr(), true));
+
+        let oversized = CString::new("x".repeat(MAX_CREDENTIAL_INPUT_JSON_BYTES + 1)).unwrap();
+        assert!(!xanh_sync_credential_access_allowed(
+            oversized.as_ptr(),
+            true
+        ));
     }
 }

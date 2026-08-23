@@ -116,6 +116,7 @@ case "$edition" in
     test -f .github/workflows/webkit-baseline.yml
     test -f .github/workflows/webview2-baseline.yml
     test -f .github/workflows/application-services-baseline.yml
+    test -f .github/workflows/firefox-sync-fuzz.yml
     grep -F 'python3 scripts/verify_androidx_webkit_latest.py' .github/workflows/webkit-baseline.yml >/dev/null
     grep -F 'python3 scripts/verify_webview2_latest.py' .github/workflows/webview2-baseline.yml >/dev/null
     grep -F 'python3 scripts/verify_application_services_latest.py' \
@@ -124,6 +125,25 @@ case "$edition" in
       .github/workflows/application-services-baseline.yml)" -eq 2
     test "$(grep -Fc 'xanh-sync-core/Cargo.toml' \
       .github/workflows/application-services-baseline.yml)" -eq 2
+    grep -F 'cargo install cargo-fuzz --version 0.13.2 --locked' \
+      .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    grep -F 'toolchain: nightly-2026-08-20' \
+      .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    grep -F 'uses: dtolnay/rust-toolchain@7c8d7d138f5c09cef361f8214cf96882cd029cdb' \
+      .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    grep -F 'components: rust-src' \
+      .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    grep -F 'cargo fuzz build --fuzz-dir xanh-sync-core/fuzz' \
+      .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    grep -F 'cargo metadata --locked --manifest-path xanh-sync-core/fuzz/Cargo.toml' \
+      .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    test -f xanh-sync-core/fuzz/Cargo.lock
+    for fuzz_target in bridge_message credential_context credential_context_ffi; do
+      test -f "xanh-sync-core/fuzz/fuzz_targets/$fuzz_target.rs"
+      test -d "xanh-sync-core/fuzz/corpus/$fuzz_target"
+      grep -F "cargo fuzz run --fuzz-dir xanh-sync-core/fuzz $fuzz_target" \
+        .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    done
     grep -F 'def verify_popup_contract(' scripts/verify_webkit_latest.py >/dev/null
     grep -F 'mouseEventData->buttonDown && mouseEventData->isTrusted' \
       scripts/verify_webkit_latest.py >/dev/null

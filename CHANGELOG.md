@@ -119,6 +119,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   requires an unlocked vault and explicit native action, derives exact HTTPS
   origins from same-origin frame context, excludes private/HTTP-auth/unsafe
   records and keeps platform credential presentation release-gated.
+- Added libFuzzer coverage for isolated bridge envelopes, credential context
+  policy and the credential C ABI. The shared bridge now bounds every
+  page-controlled field and rejects userinfo or non-origin claimed URLs before
+  matching the committed HTTPS document.
 - Added the Linux GTK Firefox Sync host boundary with system-browser OAuth,
   exact callback validation, asynchronous native operations, Secret Service
   persistence, server-aware scheduling, vault expiry and keep/delete

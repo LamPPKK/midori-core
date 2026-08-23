@@ -28,6 +28,17 @@ Security invariants:
 - `.xanhbackup` is a separate offline format and must never include account
   state, keys, tokens or passwords.
 
+The `fuzz/` package exercises the untrusted bridge envelope, credential context
+policy and stable credential C ABI with libFuzzer. It is intentionally portable
+and does not enable the Mozilla/NSS backend:
+
+```sh
+cargo install cargo-fuzz --version 0.13.2 --locked
+cargo fuzz run --fuzz-dir xanh-sync-core/fuzz bridge_message
+cargo fuzz run --fuzz-dir xanh-sync-core/fuzz credential_context
+cargo fuzz run --fuzz-dir xanh-sync-core/fuzz credential_context_ffi
+```
+
 Native build prerequisites follow Mozilla's NSS instructions. For a pinned
 Application Services checkout, build NSS and export `NSS_DIR`/`NSS_STATIC=1`
 before running:

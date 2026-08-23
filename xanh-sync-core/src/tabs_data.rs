@@ -165,6 +165,7 @@ pub(crate) fn canonical_web_url(
         Url::parse(value).map_err(|_| SyncError::InvalidConfig(format!("{label} is invalid")))?;
     if !matches!(parsed.scheme(), "http" | "https")
         || parsed.host_str().is_none()
+        || has_explicit_url_userinfo(value)
         || !parsed.username().is_empty()
         || parsed.password().is_some()
     {
@@ -179,6 +180,17 @@ pub(crate) fn canonical_web_url(
         )));
     }
     Ok(canonical)
+}
+
+pub(crate) fn has_explicit_url_userinfo(value: &str) -> bool {
+    let Some(scheme_end) = value.find("://") else {
+        return false;
+    };
+    let authority = &value[scheme_end + 3..];
+    let authority_end = authority
+        .find(['/', '?', '#', '\\'])
+        .unwrap_or(authority.len());
+    authority[..authority_end].contains('@')
 }
 
 #[cfg(test)]
@@ -216,6 +228,7 @@ mod tests {
         for url in [
             "file:///etc/passwd",
             "javascript:alert(1)",
+            "https://@example.com/",
             "https://user:secret@example.com/",
             "https://?missing-host",
         ] {

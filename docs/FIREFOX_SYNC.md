@@ -70,7 +70,9 @@ cannot claim another edition's OAuth response:
 
 Mozilla-hosted Accounts is preferred. Self-hosted mode requires an HTTPS
 Accounts URL, HTTPS Token Server URL and a client ID issued by that deployment.
-The confirmation dialog displays the Accounts domain before leaving Xanh.
+The confirmation dialog displays the exact canonical Accounts origin, including
+any non-default HTTPS port, before leaving Xanh. The native authorization URL
+must match that configured scheme, host and effective port exactly.
 TLS errors cannot be bypassed. A Firefox installation and Xanh Browser must be
 configured against the same custom Accounts/Sync deployment to interoperate.
 
@@ -296,14 +298,33 @@ Bookmark mutations retain the selected GUID and history deletion retains the
 selected URL/millisecond timestamp; InPrivate tabs never enter these mutations.
 Remote-tab results are decoded into bounded typed device/tab records and can
 only create a regular tab after an explicit native row selection.
+Both coordinators bind the callback to the exact OAuth `state` held only by the
+process that called `beginOAuth`; they do not treat persisted account JSON as a
+resumable PKCE flow. Mismatched callbacks, replays after consumption and
+callbacks delivered after process restart fail before native completion.
+Identical concurrent deliveries to multiple Apple scenes are coalesced into one
+native completion. A valid callback consumes the in-memory binding once, and an
+ambiguous native completion failure
+quarantines sign-in until an explicit safe abandon/reset or process restart. A
+failed first Sync does not undo completed OAuth: the account remains connected
+and the UI reports only the Sync error. Persisted Sync state is written before
+account JSON so a newly connected account is the final secure-store commit.
+Stale authentication cleanup deletes Sync state before account state so an
+interrupted cleanup remains retryable. Apple supplies one process-scoped Sync
+service and shared snapshot to every scene, while keeping settings, credential
+rows and presentation state private to each window. A second macOS/iPad window
+therefore cannot create or claim a separate flow or expose another scene's
+credential UI.
+Shared vault-lock transitions clear each scene's local password rows, picker and
+editor before those retained records can be used again.
 Both hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
-The platform boundary tests currently pass locally: 37 Apple tests cover the
-contract, coordinator, typed Places/Remote Tabs, private-data exclusion,
-Logins mutation bounds, navigation/recovery policy and device-only
+The platform boundary tests currently include 50 Apple test declarations
+covering the contract, coordinator, typed Places/Remote Tabs, private-data
+exclusion, Logins mutation bounds, navigation/recovery policy and device-only
 Keychain/LocalAuthentication policy,
-while 71 Windows cases cover the contract, coordinator, typed Places/tabs and
+while 81 Windows cases cover the contract, coordinator, typed Places/tabs and
 Logins mutation boundary, P/Invoke surface and DPAPI/Windows Hello policy. The
 Lite Android build produces both System WebView and WPE dynamic features. Its
 base-module growth is 758,772 bytes, below the 1 MiB limit, and Application

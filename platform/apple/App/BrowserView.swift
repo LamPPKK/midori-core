@@ -5,9 +5,15 @@ import WebKit
 @MainActor
 struct BrowserView: View {
     @State private var workspace = BrowserWorkspace()
-    @State private var firefoxSync = FirefoxSyncViewModel()
+    @State private var firefoxSync: FirefoxSyncViewModel
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
+
+    init(firefoxSyncProcess: XanhFirefoxSyncProcessService) {
+        _firefoxSync = State(
+            initialValue: FirefoxSyncViewModel(process: firefoxSyncProcess)
+        )
+    }
 
     var body: some View {
         let tab = workspace.selectedTab
@@ -39,6 +45,11 @@ struct BrowserView: View {
             workspace.selectedTab.recoverPendingWebContentProcessIfPossible(
                 isForeground: scenePhase == .active
             )
+        }
+        .onChange(of: firefoxSync.snapshot.vaultUnlocked) { _, unlocked in
+            guard !unlocked else { return }
+            firefoxSync.cancelCredentialSelection()
+            firefoxSync.clearCredentialLibrary(detail: "Password vault locked.")
         }
         .onChange(of: tab.externalURL) { _, externalURL in
             guard let externalURL else { return }

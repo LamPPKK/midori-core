@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private bool _userPresenceInProgress;
     private long _historyClearGeneration;
     private ContentDialog? _activeCredentialDialog;
+    private bool _isClosing;
 
     public MainWindow()
     {
@@ -38,6 +39,7 @@ public sealed partial class MainWindow : Window
 
     public async void HandleFirefoxSyncCallback(Uri callback)
     {
+        if (_isClosing) return;
         if (BrowserTabs.XamlRoot is null)
         {
             _pendingSyncCallback = callback;
@@ -47,13 +49,16 @@ public sealed partial class MainWindow : Window
         {
             if (!await EnsureFirefoxSyncAsync(showConfiguration: false))
                 throw new InvalidOperationException("Firefox Sync is not configured on this device.");
-            await _sync!.CompleteOAuthAsync(callback);
+            var coordinator = _sync!;
+            await coordinator.CompleteOAuthAsync(callback);
+            if (_isClosing) return;
             await PublishLocalTabsAsync();
-            UpdateFirefoxSyncUi(_sync.Snapshot);
+            UpdateFirefoxSyncUi(coordinator.Snapshot);
             await ShowMessageAsync("Firefox Sync", "Sign-in completed and the first sync was requested.");
         }
         catch (Exception error)
         {
+            if (_isClosing) return;
             await ShowMessageAsync("Firefox Sync sign-in failed", error.Message);
         }
     }
@@ -77,31 +82,48 @@ public sealed partial class MainWindow : Window
 
     private async void FirefoxSync_Click(object sender, RoutedEventArgs e)
     {
+        if (_isClosing) return;
+        var oauthStarted = false;
         try
         {
             if (!await EnsureFirefoxSyncAsync(showConfiguration: true)) return;
-            if (_sync!.Snapshot.AccountState == FirefoxAccountState.Connected)
+            if (_isClosing || _sync is null) return;
+            var coordinator = _sync;
+            if (coordinator.Snapshot.AccountState == FirefoxAccountState.Connected)
             {
                 await SyncCurrentTabsAsync(FirefoxSyncReason.Manual);
-                UpdateFirefoxSyncUi(_sync.Snapshot);
+                if (!_isClosing) UpdateFirefoxSyncUi(coordinator.Snapshot);
                 return;
             }
-            if (_sync.Snapshot.AccountState == FirefoxAccountState.Authenticating)
+            if (coordinator.Snapshot.AccountState == FirefoxAccountState.Authenticating)
             {
                 await ShowMessageAsync("Firefox Sync", "Finish sign-in in the system browser.");
                 return;
             }
 
-            var launch = await _sync.BeginOAuthAsync();
-            if (!await ConfirmAccountDomainAsync(launch.AccountDomain)) return;
+            if (!await ConfirmAccountOriginAsync(coordinator.AccountOrigin)) return;
+            if (_isClosing) return;
             WindowsFirefoxSyncConfiguration.EnsureProtocolRegistration();
+            var launch = await coordinator.BeginOAuthAsync();
+            oauthStarted = true;
+            if (_isClosing) return;
             if (!await Launcher.LaunchUriAsync(launch.AuthorizationUri))
                 throw new InvalidOperationException("Windows could not open the system browser.");
-            UpdateFirefoxSyncUi(_sync.Snapshot);
+            UpdateFirefoxSyncUi(coordinator.Snapshot);
         }
         catch (Exception error)
         {
-            await ShowMessageAsync("Firefox Sync failed", error.Message);
+            if (_isClosing) return;
+            Exception displayError = error;
+            if (oauthStarted && _sync is not null)
+            {
+                try { await _sync.AbandonOAuthAsync(); }
+                catch (Exception cleanupError)
+                {
+                    displayError = new AggregateException(error, cleanupError);
+                }
+            }
+            await ShowMessageAsync("Firefox Sync failed", displayError.Message);
         }
     }
 
@@ -138,6 +160,12 @@ public sealed partial class MainWindow : Window
             try
             {
                 await coordinator.InitializeAsync();
+                if (_isClosing)
+                {
+                    coordinator.SnapshotChanged -= Sync_SnapshotChanged;
+                    await coordinator.DisposeAsync();
+                    return false;
+                }
                 _sync = coordinator;
                 if (coordinator.Snapshot.AccountState == FirefoxAccountState.Connected)
                     await SyncCurrentTabsAsync(FirefoxSyncReason.Startup);
@@ -146,7 +174,7 @@ public sealed partial class MainWindow : Window
             catch
             {
                 coordinator.SnapshotChanged -= Sync_SnapshotChanged;
-                coordinator.Dispose();
+                await coordinator.DisposeAsync();
                 throw;
             }
             return true;
@@ -203,13 +231,13 @@ public sealed partial class MainWindow : Window
         return configuration;
     }
 
-    private async Task<bool> ConfirmAccountDomainAsync(string domain)
+    private async Task<bool> ConfirmAccountOriginAsync(string origin)
     {
         var dialog = new ContentDialog
         {
             XamlRoot = BrowserTabs.XamlRoot,
             Title = "Open Firefox Accounts?",
-            Content = $"Xanh Browser will open the system browser and continue sign-in at {domain}. TLS errors cannot be bypassed.",
+            Content = $"Xanh Browser will open the system browser and continue sign-in at {origin}. TLS errors cannot be bypassed.",
             PrimaryButtonText = "Continue",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -446,6 +474,7 @@ public sealed partial class MainWindow : Window
     private void Sync_SnapshotChanged(object? sender, FirefoxSyncHostSnapshot snapshot) =>
         DispatcherQueue.TryEnqueue(() =>
         {
+            if (_isClosing) return;
             if (!snapshot.VaultUnlocked) DismissCredentialDialog();
             UpdateFirefoxSyncUi(snapshot);
         });
@@ -1404,6 +1433,7 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowMessageAsync(string title, string message)
     {
+        if (_isClosing || BrowserTabs.XamlRoot is null) return;
         var dialog = new ContentDialog
         {
             XamlRoot = BrowserTabs.XamlRoot,
@@ -1448,19 +1478,21 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    private void MainWindow_Closed(object sender, WindowEventArgs args)
+    private async void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        _isClosing = true;
         _vaultTimer.Stop();
         DismissCredentialDialog();
-        if (_sync is not null)
+        var coordinator = _sync;
+        _sync = null;
+        if (coordinator is not null)
         {
-            _sync.SnapshotChanged -= Sync_SnapshotChanged;
-            _sync.Dispose();
-            _sync = null;
+            coordinator.SnapshotChanged -= Sync_SnapshotChanged;
         }
         foreach (var item in BrowserTabs.TabItems.OfType<TabViewItem>())
         {
             (item.Content as BrowserTab)?.Dispose();
         }
+        if (coordinator is not null) await coordinator.DisposeAsync();
     }
 }

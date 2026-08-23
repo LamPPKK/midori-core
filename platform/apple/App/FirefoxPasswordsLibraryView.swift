@@ -21,10 +21,11 @@ struct FirefoxPasswordsLibraryView: View {
                     Task { await model.loadSiteCredentials(contextProvider: contextProvider) }
                 }
                 Button("Add password", systemImage: "plus") {
-                    guard contextProvider()?.isAllowed == true else { return }
+                    guard model.snapshot.vaultUnlocked,
+                          contextProvider()?.isAllowed == true else { return }
                     editor = FirefoxCredentialEditorState(record: nil)
                 }
-                .disabled(contextProvider()?.isAllowed != true)
+                .disabled(!model.snapshot.vaultUnlocked || contextProvider()?.isAllowed != true)
             }
 
             Section("Saved logins") {
@@ -46,7 +47,8 @@ struct FirefoxPasswordsLibraryView: View {
 
                         Menu("Password actions", systemImage: "ellipsis.circle") {
                             Button("Edit", systemImage: "pencil") {
-                                guard let context = contextProvider(),
+                                guard model.snapshot.vaultUnlocked,
+                                      let context = contextProvider(),
                                       credential.isAllowed(for: context) else { return }
                                 editor = FirefoxCredentialEditorState(record: credential)
                             }
@@ -72,10 +74,17 @@ struct FirefoxPasswordsLibraryView: View {
             credentialToDelete = nil
             model.clearCredentialLibrary(detail: "The current page changed.")
         }
+        .onChange(of: model.snapshot.vaultUnlocked) { _, unlocked in
+            guard !unlocked else { return }
+            editor = nil
+            credentialToDelete = nil
+            model.clearCredentialLibrary(detail: "Password vault locked.")
+        }
         .onDisappear { model.clearCredentialLibrary() }
         .sheet(item: $editor) { state in
             FirefoxCredentialEditorSheet(initial: state) { draft in
-                guard contextProvider()?.isAllowed == true else { return }
+                guard model.snapshot.vaultUnlocked,
+                      contextProvider()?.isAllowed == true else { return }
                 if let record = state.record {
                     Task {
                         await model.updateCredential(

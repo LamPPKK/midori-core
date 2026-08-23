@@ -154,6 +154,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   system-browser OAuth, per-edition callbacks, single-flight operations,
   backoff-aware scheduling, secure state, remote-tab presentation, five-minute
   vault locking and restart-safe keep/delete disconnect retries.
+- Hardened Apple and WinUI OAuth ownership around Application Services' actual
+  memory-only PKCE lifecycle. Each coordinator now binds the exact expected
+  `state` in RAM, rejects mismatched/replayed/post-restart callbacks before
+  native completion, coalesces identical Apple multi-scene delivery, quarantines
+  ambiguous completion failures, and commits completed Sync metadata before
+  account JSON.
+- Moved Apple/WinUI exact-origin confirmation and protocol setup before native OAuth,
+  added safe runtime abandon/reopen when the system browser cannot launch, kept
+  completed accounts connected when only the first Sync fails, and made the
+  Apple Sync owner/snapshot process-scoped without sharing per-scene credential
+  UI. WinUI window teardown now drains in-flight coordinator work before native
+  runtime disposal.
 - Replaced Apple's count-only Remote Tabs summary with bounded typed records,
   sanitized grouped device rows and explicit safe-HTTP(S) opening. Invalid or
   oversized native output now fails closed without navigating to a fallback.

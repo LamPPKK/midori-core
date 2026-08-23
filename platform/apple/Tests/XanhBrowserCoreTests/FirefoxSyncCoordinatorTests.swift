@@ -26,6 +26,7 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
         "xanh-browser://accounts/oauth?code=a&state=b&token=secret",
         "xanh-browser://accounts/oauth?code=a&state=b#fragment",
         "xanh-browser://user@accounts/oauth?code=a&state=b",
+        "xanh-browser://accounts/oauth?code=a%00b&state=c",
     ] {
         #expect(throws: XanhSyncContractError.self) {
             try XanhFirefoxSyncCoordinator.parseOAuthCallback(
@@ -33,6 +34,15 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
                 callback: #require(URL(string: value))
             )
         }
+    }
+    let oversized = String(repeating: "a", count: 4_097)
+    #expect(throws: XanhSyncContractError.self) {
+        try XanhFirefoxSyncCoordinator.parseOAuthCallback(
+            expectedRedirect: #require(URL(string: "xanh-browser://accounts/oauth")),
+            callback: #require(
+                URL(string: "xanh-browser://accounts/oauth?code=\(oversized)&state=value")
+            )
+        )
     }
 }
 
@@ -85,7 +95,7 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
     #expect(runtime.maximumConcurrentCalls == 1)
 }
 
-@Test func oauthStateIsPersistedBeforeTheSystemBrowserOpens() async throws {
+@Test func oauthFlowIsMemoryBoundAndRequiresTheExactState() async throws {
     let runtime = FakeSyncRuntime()
     let secrets = FakeSyncSecrets()
     let coordinator = try makeCoordinator(runtime: runtime, secrets: secrets)
@@ -94,9 +104,343 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
 
     let launch = try await coordinator.beginOAuth()
 
-    #expect(launch.accountDomain == "accounts.firefox.com")
-    #expect(await secrets.value(.accountState) == "opaque-account")
+    #expect(launch.accountOrigin == "https://accounts.firefox.com")
+    #expect(await secrets.value(.accountState) == nil)
     #expect(await coordinator.snapshot.accountState == .authenticating)
+    await #expect(throws: XanhSyncContractError.self) {
+        try await coordinator.beginOAuth()
+    }
+    await #expect(throws: XanhSyncContractError.self) {
+        try await coordinator.completeOAuth(
+            callback: #require(URL(string: "xanh-browser://accounts/oauth?code=code&state=wrong"))
+        )
+    }
+    #expect(runtime.completeOAuthCalls == 0)
+
+    let snapshot = try await coordinator.completeOAuth(
+        callback: #require(
+            URL(string: "xanh-browser://accounts/oauth?code=code&state=expected-state")
+        )
+    )
+    #expect(snapshot.accountState == .connected)
+    #expect(runtime.completeOAuthCalls == 1)
+    #expect(await secrets.value(.accountState) == "opaque-account")
+}
+
+@Test func oauthCallbackAfterCoordinatorRestartFailsBeforeNativeCompletion() async throws {
+    let runtime = FakeSyncRuntime()
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: FakeSyncSecrets())
+    _ = try await coordinator.initialize()
+
+    await #expect(throws: XanhSyncContractError.self) {
+        try await coordinator.completeOAuth(
+            callback: #require(
+                URL(string: "xanh-browser://accounts/oauth?code=code&state=expected-state")
+            )
+        )
+    }
+    #expect(runtime.completeOAuthCalls == 0)
+}
+
+@Test func initializationDoesNotRestoreAnAuthenticatingSnapshotWithoutPKCEState() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.state = .authenticating
+    let secrets = FakeSyncSecrets()
+    await secrets.seed("stale-account", for: .accountState)
+    await secrets.seed("stale-sync", for: .syncState)
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: secrets)
+
+    let snapshot = try await coordinator.initialize()
+
+    #expect(snapshot.accountState == .disconnected)
+    #expect(snapshot.detail == "Firefox Accounts sign-in expired; start sign-in again")
+    #expect(await secrets.value(.accountState) == nil)
+    #expect(await secrets.value(.syncState) == nil)
+    #expect(await secrets.deletes() == [.syncState, .accountState])
+}
+
+@Test func staleOAuthCleanupIsRetryableWhenTheAccountDeleteFails() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.state = .authenticating
+    let secrets = FakeSyncSecrets()
+    await secrets.seed("stale-account", for: .accountState)
+    await secrets.seed("stale-sync", for: .syncState)
+    await secrets.failDelete(.accountState)
+    let first = try makeCoordinator(runtime: runtime, secrets: secrets)
+
+    await #expect(throws: CocoaError.self) { try await first.initialize() }
+    #expect(await secrets.value(.syncState) == nil)
+    #expect(await secrets.value(.accountState) == "stale-account")
+
+    let retry = try makeCoordinator(runtime: runtime, secrets: secrets)
+    let snapshot = try await retry.initialize()
+    #expect(snapshot.accountState == .disconnected)
+    #expect(await secrets.value(.accountState) == nil)
+}
+
+@Test func oauthAuthorizationRequiresTheConfiguredHostAndPort() async throws {
+    let configuration = try XanhSyncConfiguration(
+        server: .selfHosted(
+            accountsURL: #require(URL(string: "https://accounts.example.test:8443")),
+            tokenServerURL: #require(URL(string: "https://sync.example.test/token"))
+        ),
+        clientID: "approved-client",
+        redirectURI: #require(URL(string: "xanh-browser://accounts/oauth")),
+        deviceName: "Xanh Browser Apple"
+    )
+    let acceptedRuntime = FakeSyncRuntime()
+    acceptedRuntime.authorizationURL = try #require(
+        URL(string: "https://accounts.example.test:8443/oauth?state=expected-state")
+    )
+    let accepted = try makeCoordinator(
+        runtime: acceptedRuntime,
+        secrets: FakeSyncSecrets(),
+        configuration: configuration
+    )
+    _ = try await accepted.initialize()
+    let launch = try await accepted.beginOAuth()
+    #expect(launch.accountOrigin == "https://accounts.example.test:8443")
+
+    for value in [
+        "https://evil.example.test:8443/oauth?state=expected-state",
+        "https://accounts.example.test:443/oauth?state=expected-state",
+    ] {
+        let runtime = FakeSyncRuntime()
+        runtime.authorizationURL = try #require(URL(string: value))
+        let coordinator = try makeCoordinator(
+            runtime: runtime,
+            secrets: FakeSyncSecrets(),
+            configuration: configuration
+        )
+        _ = try await coordinator.initialize()
+        await #expect(throws: XanhSyncContractError.self) {
+            try await coordinator.beginOAuth()
+        }
+    }
+}
+
+@Test func oauthCallbackWaitsForAnInFlightCoordinatorOperation() async throws {
+    let runtime = FakeSyncRuntime()
+    let secrets = FakeSyncSecrets()
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: secrets)
+    _ = try await coordinator.initialize()
+    _ = try await coordinator.beginOAuth()
+    await secrets.delayWrites(milliseconds: 100)
+
+    async let update: Void = coordinator.setEngine(.tabs, enabled: false)
+    try await Task.sleep(for: .milliseconds(10))
+    let snapshot = try await coordinator.completeOAuth(
+        callback: #require(
+            URL(string: "xanh-browser://accounts/oauth?code=code&state=expected-state")
+        )
+    )
+    try await update
+
+    #expect(snapshot.accountState == .connected)
+    #expect(runtime.completeOAuthCalls == 1)
+}
+
+@MainActor
+@Test func processServiceCoalescesInitializationAndSharesOAuthStateAcrossScenes() async throws {
+    let runtime = FakeSyncRuntime()
+    let factory = CountingSyncRuntimeFactory(runtime: runtime)
+    let secrets = FakeSyncSecrets()
+    let configuration = try syncConfiguration()
+    let profile = FileManager.default.temporaryDirectory
+        .appending(path: "xanh-process-sync-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let service = XanhFirefoxSyncProcessService()
+
+    async let first = service.initialize(
+        configuration: configuration,
+        profileDirectory: profile,
+        runtimeFactory: factory,
+        secrets: secrets
+    )
+    async let second = service.initialize(
+        configuration: configuration,
+        profileDirectory: profile,
+        runtimeFactory: factory,
+        secrets: secrets
+    )
+    let (firstResult, secondResult) = try await (first, second)
+    #expect(firstResult.0 === secondResult.0)
+    #expect(factory.openCalls == 1)
+
+    _ = try await firstResult.0.beginOAuth()
+    service.updateSnapshot(await firstResult.0.snapshot)
+    let callback = try #require(
+        URL(string: "xanh-browser://accounts/oauth?code=code&state=expected-state")
+    )
+    async let firstCallback = service.completeOAuth(callback: callback)
+    async let duplicateSceneCallback = service.completeOAuth(callback: callback)
+    let callbackResults = try await (firstCallback, duplicateSceneCallback)
+
+    #expect(service.snapshot.accountState == .connected)
+    #expect(callbackResults.0.accountState == .connected)
+    #expect(callbackResults.1.accountState == .connected)
+    #expect(runtime.completeOAuthCalls == 1)
+}
+
+@MainActor
+@Test func processServicePublishesFailedOAuthCompletionToEveryScene() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.completeOAuthError = CocoaError(.fileReadUnknown)
+    let service = XanhFirefoxSyncProcessService()
+    let result = try await service.initialize(
+        configuration: syncConfiguration(),
+        profileDirectory: FileManager.default.temporaryDirectory.appending(
+            path: "xanh-process-sync-\(UUID().uuidString)",
+            directoryHint: .isDirectory
+        ),
+        runtimeFactory: FakeSyncRuntimeFactory(runtime: runtime),
+        secrets: FakeSyncSecrets()
+    )
+    _ = try await result.0.beginOAuth()
+    service.updateSnapshot(await result.0.snapshot)
+    let callback = try #require(
+        URL(string: "xanh-browser://accounts/oauth?code=code&state=expected-state")
+    )
+
+    await #expect(throws: CocoaError.self) {
+        try await service.completeOAuth(callback: callback)
+    }
+    #expect(service.snapshot.accountState == .disconnected)
+    #expect(service.snapshot.status == .authError)
+    await #expect(throws: XanhSyncContractError.self) {
+        try await service.completeOAuth(callback: callback)
+    }
+    #expect(runtime.completeOAuthCalls == 1)
+}
+
+@MainActor
+@Test func wrongQueuedSceneCallbackCannotBlockTheExactCallback() async throws {
+    let runtime = FakeSyncRuntime()
+    let secrets = FakeSyncSecrets()
+    let service = XanhFirefoxSyncProcessService()
+    let result = try await service.initialize(
+        configuration: syncConfiguration(),
+        profileDirectory: FileManager.default.temporaryDirectory.appending(
+            path: "xanh-process-sync-\(UUID().uuidString)",
+            directoryHint: .isDirectory
+        ),
+        runtimeFactory: FakeSyncRuntimeFactory(runtime: runtime),
+        secrets: secrets
+    )
+    _ = try await result.0.beginOAuth()
+    service.updateSnapshot(await result.0.snapshot)
+    await secrets.delayWrites(milliseconds: 100)
+    async let update: Void = result.0.setEngine(.tabs, enabled: false)
+    try await Task.sleep(for: .milliseconds(10))
+
+    let wrong = Task {
+        try await service.completeOAuth(
+            callback: #require(
+                URL(string: "xanh-browser://accounts/oauth?code=code&state=wrong")
+            )
+        )
+    }
+    try await Task.sleep(for: .milliseconds(10))
+    let exact = Task {
+        try await service.completeOAuth(
+            callback: #require(
+                URL(string: "xanh-browser://accounts/oauth?code=code&state=expected-state")
+            )
+        )
+    }
+    try await update
+
+    await #expect(throws: XanhSyncContractError.self) { try await wrong.value }
+    #expect(try await exact.value.accountState == .connected)
+    #expect(runtime.completeOAuthCalls == 1)
+}
+
+@Test func ambiguousNativeBeginFailureQuarantinesOAuthUntilRestart() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.failBeginOAuth = true
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: FakeSyncSecrets())
+    _ = try await coordinator.initialize()
+
+    await #expect(throws: CocoaError.self) { try await coordinator.beginOAuth() }
+    runtime.failBeginOAuth = false
+    await #expect(throws: XanhSyncContractError.self) { try await coordinator.beginOAuth() }
+    #expect(runtime.beginOAuthCalls == 1)
+
+    let ambiguousRuntime = FakeSyncRuntime()
+    ambiguousRuntime.authorizationURL = URL(
+        string: "https://accounts.firefox.com/oauth?state&state=expected-state"
+    )!
+    let ambiguousCoordinator = try makeCoordinator(
+        runtime: ambiguousRuntime,
+        secrets: FakeSyncSecrets()
+    )
+    _ = try await ambiguousCoordinator.initialize()
+    await #expect(throws: XanhSyncContractError.self) {
+        try await ambiguousCoordinator.beginOAuth()
+    }
+    #expect(ambiguousRuntime.beginOAuthCalls == 1)
+}
+
+@Test func persistedSyncStateIsCommittedBeforeAccountState() async throws {
+    let secrets = FakeSyncSecrets()
+    let coordinator = try makeCoordinator(runtime: FakeSyncRuntime(), secrets: secrets)
+
+    _ = try await coordinator.initialize()
+
+    #expect(await secrets.writes() == [.syncState, .accountState])
+}
+
+@Test func firstSyncFailureDoesNotUndoCompletedOAuth() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.syncError = CocoaError(.fileReadUnknown)
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: FakeSyncSecrets())
+    _ = try await coordinator.initialize()
+    _ = try await coordinator.beginOAuth()
+
+    let snapshot = try await coordinator.completeOAuth(
+        callback: #require(
+            URL(string: "xanh-browser://accounts/oauth?code=code&state=expected-state")
+        )
+    )
+
+    #expect(snapshot.accountState == .connected)
+    #expect(snapshot.status == .networkError)
+    #expect(snapshot.detail == "Sign-in completed; the first Sync did not finish")
+}
+
+@Test func abandonedOAuthReopensPersistedStateAndRejectsTheOldCallback() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.authorizationURL = URL(string: "https://accounts.firefox.com/oauth?state=first")!
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: FakeSyncSecrets())
+    _ = try await coordinator.initialize()
+    _ = try await coordinator.beginOAuth()
+
+    var snapshot = try await coordinator.abandonOAuth()
+    #expect(snapshot.accountState == .disconnected)
+
+    runtime.authorizationURL = URL(string: "https://accounts.firefox.com/oauth?state=second")!
+    _ = try await coordinator.beginOAuth()
+    await #expect(throws: XanhSyncContractError.self) {
+        try await coordinator.completeOAuth(
+            callback: #require(URL(string: "xanh-browser://accounts/oauth?code=code&state=first"))
+        )
+    }
+    snapshot = try await coordinator.completeOAuth(
+        callback: #require(URL(string: "xanh-browser://accounts/oauth?code=code&state=second"))
+    )
+    #expect(snapshot.accountState == .connected)
+}
+
+@Test func abandoningAnAuthenticatingRuntimeDeletesSyncStateBeforeAccountState() async throws {
+    let runtime = FakeSyncRuntime()
+    let secrets = FakeSyncSecrets()
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: secrets)
+    _ = try await coordinator.initialize()
+    _ = try await coordinator.beginOAuth()
+    runtime.state = .authenticating
+
+    _ = try await coordinator.abandonOAuth()
+
+    #expect(await secrets.deletes().suffix(2) == [.syncState, .accountState])
 }
 
 @Test func generatedVaultKeyIsNotStoredWhenNativeUnlockFails() async throws {
@@ -524,10 +868,11 @@ private func makeCoordinator(
     runtime: FakeSyncRuntime,
     secrets: FakeSyncSecrets,
     now: @escaping @Sendable () -> Date = Date.init,
-    profile: URL? = nil
+    profile: URL? = nil,
+    configuration: XanhSyncConfiguration? = nil
 ) throws -> XanhFirefoxSyncCoordinator {
     XanhFirefoxSyncCoordinator(
-        configuration: try syncConfiguration(),
+        configuration: try configuration ?? syncConfiguration(),
         profileDirectory: profile ?? FileManager.default.temporaryDirectory
             .appending(path: "xanh-apple-sync-\(UUID().uuidString)", directoryHint: .isDirectory),
         runtimeFactory: FakeSyncRuntimeFactory(runtime: runtime),
@@ -552,6 +897,31 @@ private struct FakeSyncRuntimeFactory: XanhFirefoxSyncRuntimeFactory {
     func generateLocalLoginsKey() throws -> String { "generated-device-key" }
 }
 
+private final class CountingSyncRuntimeFactory: XanhFirefoxSyncRuntimeFactory, @unchecked Sendable {
+    private let lock = NSLock()
+    private let runtime: FakeSyncRuntime
+    private var storedOpenCalls = 0
+
+    init(runtime: FakeSyncRuntime) { self.runtime = runtime }
+
+    var openCalls: Int {
+        lock.withLock { storedOpenCalls }
+    }
+
+    func open(
+        configuration: XanhSyncConfiguration,
+        profileDirectory: URL,
+        localLoginsKey: String?,
+        accountJSON: String?,
+        persistedSyncState: String?
+    ) throws -> any XanhFirefoxSyncRuntime {
+        lock.withLock { storedOpenCalls += 1 }
+        return runtime
+    }
+
+    func generateLocalLoginsKey() throws -> String { "generated-device-key" }
+}
+
 private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable {
     private let lock = NSLock()
     private var activeCalls = 0
@@ -559,7 +929,11 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     var state = XanhAccountState.disconnected
     var syncResult = XanhNativeSyncResult(status: .success, nextSyncAllowedEpochSeconds: nil)
     var syncDelay: TimeInterval = 0
+    var syncError: Error?
+    var completeOAuthError: Error?
     var failUnlock = false
+    var failBeginOAuth = false
+    var authorizationURL = URL(string: "https://accounts.firefox.com/oauth?state=expected-state")!
     private(set) var syncCalls = 0
     private(set) var disconnectCalls = 0
     private(set) var lastDisconnectDeletedLocal = false
@@ -586,11 +960,19 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     private(set) var lastDeletedHistoryURL: URL?
     private(set) var lastDeletedHistoryTimestamp: Int64?
     private(set) var clearHistoryCalls = 0
+    private(set) var beginOAuthCalls = 0
+    private(set) var completeOAuthCalls = 0
 
     func initialize() throws -> XanhAccountState { state }
     func accountState() throws -> XanhAccountState { state }
-    func beginOAuth() throws -> URL { URL(string: "https://accounts.firefox.com/oauth")! }
+    func beginOAuth() throws -> URL {
+        beginOAuthCalls += 1
+        if failBeginOAuth { throw CocoaError(.fileReadUnknown) }
+        return authorizationURL
+    }
     func completeOAuth(code: String, state: String) throws -> XanhAccountState {
+        completeOAuthCalls += 1
+        if let completeOAuthError { throw completeOAuthError }
         self.state = .connected
         return .connected
     }
@@ -609,6 +991,7 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
         }
         syncCalls += 1
         if syncDelay > 0 { Thread.sleep(forTimeInterval: syncDelay) }
+        if let syncError { throw syncError }
         return syncResult
     }
 
@@ -733,14 +1116,33 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
 
 private actor FakeSyncSecrets: XanhFirefoxSyncSecretStore {
     private var values: [XanhSyncSecret: String] = [:]
+    private var writeOrder: [XanhSyncSecret] = []
+    private var deleteOrder: [XanhSyncSecret] = []
     private var deleteFailuresRemaining = 0
+    private var targetedDeleteFailures: Set<XanhSyncSecret> = []
+    private var writeDelayMilliseconds = 0
 
     var isEmpty: Bool { values.isEmpty }
     func value(_ secret: XanhSyncSecret) -> String? { values[secret] }
+    func writes() -> [XanhSyncSecret] { writeOrder }
+    func deletes() -> [XanhSyncSecret] { deleteOrder }
+    func seed(_ value: String, for secret: XanhSyncSecret) { values[secret] = value }
     func failNextDelete() { deleteFailuresRemaining += 1 }
+    func failDelete(_ secret: XanhSyncSecret) { targetedDeleteFailures.insert(secret) }
+    func delayWrites(milliseconds: Int) { writeDelayMilliseconds = milliseconds }
     func read(_ secret: XanhSyncSecret) async throws -> String? { values[secret] }
-    func write(_ value: String, for secret: XanhSyncSecret) async throws { values[secret] = value }
+    func write(_ value: String, for secret: XanhSyncSecret) async throws {
+        if writeDelayMilliseconds > 0 {
+            try await Task.sleep(for: .milliseconds(writeDelayMilliseconds))
+        }
+        writeOrder.append(secret)
+        values[secret] = value
+    }
     func delete(_ secret: XanhSyncSecret) async throws {
+        deleteOrder.append(secret)
+        if targetedDeleteFailures.remove(secret) != nil {
+            throw CocoaError(.fileWriteUnknown)
+        }
         if deleteFailuresRemaining > 0 {
             deleteFailuresRemaining -= 1
             throw CocoaError(.fileWriteUnknown)

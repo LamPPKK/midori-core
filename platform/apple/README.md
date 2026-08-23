@@ -52,6 +52,22 @@ an edition-specific URL callback:
 - macOS: `xanh-browser-macos://accounts/oauth`
 - iOS/iPadOS: `xanh-browser-ios://accounts/oauth`
 
+The PKCE verifier and expected OAuth `state` remain in the coordinator's memory
+only. A callback is accepted only for the process flow that started that exact
+state; mismatched state, replay after consumption, or delivery after process
+restart fails before native completion. Identical concurrent delivery to more
+than one scene is coalesced into one native completion. Because Application Services does not
+persist its pending PKCE flow, the user must start a fresh sign-in after a
+restart or an ambiguous native completion failure. Canceling the origin prompt
+does not start a flow; if the system browser refuses to open after a confirmed
+start, Xanh discards the in-memory runtime and reopens only previously committed
+state so the user can retry safely. The authorization URL must match the exact
+configured HTTPS Accounts origin, including a non-default port. Every Apple
+scene shares a process-wide Sync service and account snapshot, preventing a
+second window from claiming the flow, while settings and credential picker
+state remain private to their originating scene. A shared vault-lock transition
+immediately dismisses and clears password rows/editors in every scene.
+
 Opaque account/Sync state is stored in non-synchronizing, device-only Keychain
 items. The local Logins key additionally requires LocalAuthentication and the
 vault locks after five minutes or when the scene leaves the foreground. A

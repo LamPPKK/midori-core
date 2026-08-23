@@ -51,12 +51,18 @@ public sealed class FirefoxSyncCoordinatorTests
             "xanh-browser://accounts/oauth?code=a&state=b&token=secret",
             "xanh-browser://accounts/oauth?code=a&state=b#fragment",
             "xanh-browser://user@accounts/oauth?code=a&state=b",
+            "xanh-browser://accounts/oauth?code=a%00b&state=c",
         })
         {
             Assert.ThrowsException<ArgumentException>(() =>
                 FirefoxSyncCoordinator.ParseOAuthCallback(
                     "xanh-browser://accounts/oauth", new Uri(callback)), callback);
         }
+        var oversized = new string('a', 4_097);
+        Assert.ThrowsException<ArgumentException>(() =>
+            FirefoxSyncCoordinator.ParseOAuthCallback(
+                "xanh-browser://accounts/oauth",
+                new Uri($"xanh-browser://accounts/oauth?code={oversized}&state=value")));
     }
 
     [TestMethod]
@@ -107,7 +113,7 @@ public sealed class FirefoxSyncCoordinatorTests
     }
 
     [TestMethod]
-    public async Task OAuthStateIsPersistedBeforeTheSystemBrowserOpens()
+    public async Task OAuthFlowIsMemoryBoundAndRequiresTheExactState()
     {
         var runtime = new FakeRuntime();
         var store = new FakeSecretStore();
@@ -117,9 +123,234 @@ public sealed class FirefoxSyncCoordinatorTests
 
         var launch = await coordinator.BeginOAuthAsync();
 
-        Assert.AreEqual("accounts.firefox.com", launch.AccountDomain);
-        Assert.AreEqual("opaque-account", store.Values[FirefoxSyncSecret.AccountState]);
+        Assert.AreEqual("https://accounts.firefox.com", launch.AccountOrigin);
+        Assert.IsFalse(store.Values.ContainsKey(FirefoxSyncSecret.AccountState));
         Assert.AreEqual(FirefoxAccountState.Authenticating, coordinator.Snapshot.AccountState);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => coordinator.BeginOAuthAsync());
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => coordinator.CompleteOAuthAsync(
+                new Uri("xanh-browser://accounts/oauth?code=code&state=wrong")));
+        Assert.AreEqual(0, runtime.CompleteOAuthCalls);
+
+        var snapshot = await coordinator.CompleteOAuthAsync(
+            new Uri("xanh-browser://accounts/oauth?code=code&state=expected-state"));
+        Assert.AreEqual(FirefoxAccountState.Connected, snapshot.AccountState);
+        Assert.AreEqual(1, runtime.CompleteOAuthCalls);
+        Assert.AreEqual("opaque-account", store.Values[FirefoxSyncSecret.AccountState]);
+    }
+
+    [TestMethod]
+    public async Task OAuthCallbackAfterCoordinatorRestartFailsBeforeNativeCompletion()
+    {
+        var runtime = new FakeRuntime();
+        using var coordinator = Create(runtime, new FakeSecretStore());
+        await coordinator.InitializeAsync();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => coordinator.CompleteOAuthAsync(
+                new Uri("xanh-browser://accounts/oauth?code=code&state=expected-state")));
+        Assert.AreEqual(0, runtime.CompleteOAuthCalls);
+    }
+
+    [TestMethod]
+    public async Task InitializationDoesNotRestoreAuthenticatingStateWithoutPkceState()
+    {
+        var runtime = new FakeRuntime { State = FirefoxAccountState.Authenticating };
+        var store = new FakeSecretStore();
+        store.Values[FirefoxSyncSecret.AccountState] = "stale-account";
+        store.Values[FirefoxSyncSecret.SyncState] = "stale-sync";
+        using var coordinator = Create(runtime, store);
+
+        var snapshot = await coordinator.InitializeAsync();
+
+        Assert.AreEqual(FirefoxAccountState.Disconnected, snapshot.AccountState);
+        Assert.AreEqual(
+            "Firefox Accounts sign-in expired; start sign-in again",
+            snapshot.Detail);
+        Assert.IsFalse(store.Values.ContainsKey(FirefoxSyncSecret.AccountState));
+        Assert.IsFalse(store.Values.ContainsKey(FirefoxSyncSecret.SyncState));
+        CollectionAssert.AreEqual(
+            new[] { FirefoxSyncSecret.SyncState, FirefoxSyncSecret.AccountState },
+            store.Deletes);
+    }
+
+    [TestMethod]
+    public async Task StaleOAuthCleanupIsRetryableWhenAccountDeleteFails()
+    {
+        var runtime = new FakeRuntime { State = FirefoxAccountState.Authenticating };
+        var store = new FakeSecretStore();
+        store.Values[FirefoxSyncSecret.AccountState] = "stale-account";
+        store.Values[FirefoxSyncSecret.SyncState] = "stale-sync";
+        store.TargetedDeleteFailures.Add(FirefoxSyncSecret.AccountState);
+        using var first = Create(runtime, store);
+
+        await Assert.ThrowsExceptionAsync<IOException>(() => first.InitializeAsync());
+        Assert.IsFalse(store.Values.ContainsKey(FirefoxSyncSecret.SyncState));
+        Assert.AreEqual("stale-account", store.Values[FirefoxSyncSecret.AccountState]);
+
+        using var retry = Create(runtime, store);
+        var snapshot = await retry.InitializeAsync();
+        Assert.AreEqual(FirefoxAccountState.Disconnected, snapshot.AccountState);
+        Assert.IsFalse(store.Values.ContainsKey(FirefoxSyncSecret.AccountState));
+    }
+
+    [TestMethod]
+    public async Task OAuthAuthorizationRequiresConfiguredHostAndPort()
+    {
+        var configuration = Configuration() with
+        {
+            AccountsUri = new Uri("https://accounts.example.test:8443"),
+            TokenServerUri = new Uri("https://sync.example.test/token"),
+        };
+        var acceptedRuntime = new FakeRuntime
+        {
+            BeginOAuthValue =
+                "https://accounts.example.test:8443/oauth?state=expected-state",
+        };
+        using var accepted = Create(
+            acceptedRuntime, new FakeSecretStore(), configuration: configuration);
+        await accepted.InitializeAsync();
+        var launch = await accepted.BeginOAuthAsync();
+        Assert.AreEqual("https://accounts.example.test:8443", launch.AccountOrigin);
+
+        foreach (var value in new[]
+        {
+            "https://evil.example.test:8443/oauth?state=expected-state",
+            "https://accounts.example.test:443/oauth?state=expected-state",
+        })
+        {
+            var runtime = new FakeRuntime { BeginOAuthValue = value };
+            using var coordinator = Create(
+                runtime, new FakeSecretStore(), configuration: configuration);
+            await coordinator.InitializeAsync();
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+                () => coordinator.BeginOAuthAsync());
+        }
+    }
+
+    [TestMethod]
+    public async Task DisposeAsyncDrainsNativeCompletionBeforeFreeingRuntime()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var proceed = new ManualResetEventSlim();
+        var runtime = new FakeRuntime
+        {
+            CompleteOAuthEntered = entered,
+            CompleteOAuthContinue = proceed,
+        };
+        var coordinator = Create(runtime, new FakeSecretStore());
+        await coordinator.InitializeAsync();
+        await coordinator.BeginOAuthAsync();
+
+        var completion = coordinator.CompleteOAuthAsync(
+            new Uri("xanh-browser://accounts/oauth?code=code&state=expected-state"));
+        Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(5)));
+        var disposal = coordinator.DisposeAsync().AsTask();
+        Assert.IsFalse(disposal.IsCompleted);
+
+        proceed.Set();
+        var snapshot = await completion;
+        await disposal;
+
+        Assert.AreEqual(FirefoxAccountState.Connected, snapshot.AccountState);
+        Assert.AreEqual(1, runtime.DisposeCalls);
+        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(
+            () => coordinator.SyncAsync(FirefoxSyncReason.Manual));
+    }
+
+    [TestMethod]
+    public async Task AmbiguousNativeBeginFailureQuarantinesOAuthUntilRestart()
+    {
+        var runtime = new FakeRuntime { BeginOAuthError = new IOException("native failure") };
+        using var coordinator = Create(runtime, new FakeSecretStore());
+        await coordinator.InitializeAsync();
+
+        await Assert.ThrowsExceptionAsync<IOException>(() => coordinator.BeginOAuthAsync());
+        runtime.BeginOAuthError = null;
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => coordinator.BeginOAuthAsync());
+        Assert.AreEqual(1, runtime.BeginOAuthCalls);
+
+        var ambiguousRuntime = new FakeRuntime
+        {
+            BeginOAuthValue = "https://accounts.firefox.com/oauth?state&state=expected-state",
+        };
+        using var ambiguousCoordinator = Create(ambiguousRuntime, new FakeSecretStore());
+        await ambiguousCoordinator.InitializeAsync();
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => ambiguousCoordinator.BeginOAuthAsync());
+        Assert.AreEqual(1, ambiguousRuntime.BeginOAuthCalls);
+    }
+
+    [TestMethod]
+    public async Task PersistedSyncStateIsCommittedBeforeAccountState()
+    {
+        var store = new FakeSecretStore();
+        using var coordinator = Create(new FakeRuntime(), store);
+
+        await coordinator.InitializeAsync();
+
+        CollectionAssert.AreEqual(
+            new[] { FirefoxSyncSecret.SyncState, FirefoxSyncSecret.AccountState },
+            store.Writes);
+    }
+
+    [TestMethod]
+    public async Task FirstSyncFailureDoesNotUndoCompletedOAuth()
+    {
+        var runtime = new FakeRuntime { SyncError = new IOException("network failure") };
+        using var coordinator = Create(runtime, new FakeSecretStore());
+        await coordinator.InitializeAsync();
+        await coordinator.BeginOAuthAsync();
+
+        var snapshot = await coordinator.CompleteOAuthAsync(
+            new Uri("xanh-browser://accounts/oauth?code=code&state=expected-state"));
+
+        Assert.AreEqual(FirefoxAccountState.Connected, snapshot.AccountState);
+        Assert.AreEqual(FirefoxSyncStatus.NetworkError, snapshot.Status);
+        Assert.AreEqual("Sign-in completed; the first Sync did not finish", snapshot.Detail);
+    }
+
+    [TestMethod]
+    public async Task AbandonedOAuthReopensPersistedStateAndRejectsOldCallback()
+    {
+        var runtime = new FakeRuntime
+        {
+            BeginOAuthValue = "https://accounts.firefox.com/oauth?state=first",
+        };
+        using var coordinator = Create(runtime, new FakeSecretStore());
+        await coordinator.InitializeAsync();
+        await coordinator.BeginOAuthAsync();
+
+        var snapshot = await coordinator.AbandonOAuthAsync();
+        Assert.AreEqual(FirefoxAccountState.Disconnected, snapshot.AccountState);
+
+        runtime.BeginOAuthValue = "https://accounts.firefox.com/oauth?state=second";
+        await coordinator.BeginOAuthAsync();
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => coordinator.CompleteOAuthAsync(
+                new Uri("xanh-browser://accounts/oauth?code=code&state=first")));
+        snapshot = await coordinator.CompleteOAuthAsync(
+            new Uri("xanh-browser://accounts/oauth?code=code&state=second"));
+        Assert.AreEqual(FirefoxAccountState.Connected, snapshot.AccountState);
+    }
+
+    [TestMethod]
+    public async Task AbandoningAuthenticatingRuntimeDeletesSyncStateBeforeAccountState()
+    {
+        var runtime = new FakeRuntime();
+        var store = new FakeSecretStore();
+        using var coordinator = Create(runtime, store);
+        await coordinator.InitializeAsync();
+        await coordinator.BeginOAuthAsync();
+        runtime.State = FirefoxAccountState.Authenticating;
+
+        await coordinator.AbandonOAuthAsync();
+
+        CollectionAssert.AreEqual(
+            new[] { FirefoxSyncSecret.SyncState, FirefoxSyncSecret.AccountState },
+            store.Deletes.TakeLast(2).ToArray());
     }
 
     [TestMethod]
@@ -380,8 +611,9 @@ public sealed class FirefoxSyncCoordinatorTests
         FakeRuntime runtime,
         FakeSecretStore store,
         Func<DateTimeOffset>? clock = null,
-        string? profileDirectory = null) => new(
-            Configuration(),
+        string? profileDirectory = null,
+        FirefoxSyncConfiguration? configuration = null) => new(
+            configuration ?? Configuration(),
             profileDirectory ?? Path.Combine(Path.GetTempPath(), $"xanh-sync-{Guid.NewGuid():N}"),
             new FakeRuntimeFactory(runtime),
             store,
@@ -408,13 +640,22 @@ public sealed class FirefoxSyncCoordinatorTests
         public string SyncResult { get; set; } =
             "{\"status\":\"success\",\"next_sync_allowed_epoch_seconds\":null}";
         public TimeSpan SyncDelay { get; set; }
+        public Exception? SyncError { get; set; }
         public Exception? UnlockError { get; set; }
+        public Exception? BeginOAuthError { get; set; }
+        public string BeginOAuthValue { get; set; } =
+            "https://accounts.firefox.com/oauth?state=expected-state";
+        public int BeginOAuthCalls { get; private set; }
         public int SyncCalls { get; private set; }
         public int DisconnectCalls { get; private set; }
         public int TouchCredentialCalls { get; private set; }
         public int AddCredentialCalls { get; private set; }
         public int UpdateCredentialCalls { get; private set; }
         public int DeleteCredentialCalls { get; private set; }
+        public int CompleteOAuthCalls { get; private set; }
+        public int DisposeCalls { get; private set; }
+        public ManualResetEventSlim? CompleteOAuthEntered { get; set; }
+        public ManualResetEventSlim? CompleteOAuthContinue { get; set; }
         public FirefoxCredentialDraft? LastCredentialDraft { get; private set; }
         public int MaximumConcurrentCalls => _maximumConcurrentCalls;
         public bool LastDisconnectDeletedLocal { get; private set; }
@@ -431,9 +672,19 @@ public sealed class FirefoxSyncCoordinatorTests
         public string CredentialsResult { get; set; } = "[]";
 
         public FirefoxAccountState Initialize() => State;
-        public string BeginOAuth() => "https://accounts.firefox.com/oauth";
-        public FirefoxAccountState CompleteOAuth(string code, string state) =>
-            State = FirefoxAccountState.Connected;
+        public string BeginOAuth()
+        {
+            BeginOAuthCalls++;
+            if (BeginOAuthError is not null) throw BeginOAuthError;
+            return BeginOAuthValue;
+        }
+        public FirefoxAccountState CompleteOAuth(string code, string state)
+        {
+            CompleteOAuthCalls++;
+            CompleteOAuthEntered?.Set();
+            CompleteOAuthContinue?.Wait();
+            return State = FirefoxAccountState.Connected;
+        }
         public string AccountJson() => "opaque-account";
         public string? PersistedState() => "opaque-sync";
 
@@ -453,6 +704,7 @@ public sealed class FirefoxSyncCoordinatorTests
             {
                 SyncCalls++;
                 if (SyncDelay > TimeSpan.Zero) Thread.Sleep(SyncDelay);
+                if (SyncError is not null) throw SyncError;
                 return SyncResult;
             }
             finally
@@ -525,7 +777,7 @@ public sealed class FirefoxSyncCoordinatorTests
             VaultUnlocked = false;
         }
 
-        public void Dispose() { }
+        public void Dispose() => DisposeCalls++;
 
         private static FirefoxCredentialDraft ParseCredentialDraft(string value)
         {
@@ -559,7 +811,10 @@ public sealed class FirefoxSyncCoordinatorTests
     private sealed class FakeSecretStore : IFirefoxSyncSecretStore
     {
         public ConcurrentDictionary<FirefoxSyncSecret, string> Values { get; } = new();
+        public List<FirefoxSyncSecret> Writes { get; } = new();
+        public List<FirefoxSyncSecret> Deletes { get; } = new();
         public int DeleteFailuresRemaining { get; set; }
+        public HashSet<FirefoxSyncSecret> TargetedDeleteFailures { get; } = [];
 
         public Task<string?> ReadAsync(
             FirefoxSyncSecret secret,
@@ -571,6 +826,7 @@ public sealed class FirefoxSyncCoordinatorTests
             string value,
             CancellationToken cancellationToken = default)
         {
+            Writes.Add(secret);
             Values[secret] = value;
             return Task.CompletedTask;
         }
@@ -579,6 +835,9 @@ public sealed class FirefoxSyncCoordinatorTests
             FirefoxSyncSecret secret,
             CancellationToken cancellationToken = default)
         {
+            Deletes.Add(secret);
+            if (TargetedDeleteFailures.Remove(secret))
+                throw new IOException("injected targeted secure-store failure");
             if (DeleteFailuresRemaining > 0)
             {
                 DeleteFailuresRemaining--;

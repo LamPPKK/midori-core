@@ -58,9 +58,20 @@ The WinUI command bar contains Firefox Sync setup, manual Sync, per-engine
 switches, remote-tab presentation, vault controls and keep/delete disconnect.
 OAuth opens in the system browser and returns through the registered
 `xanh-browser-windows://accounts/oauth` protocol. AppLifecycle redirects that
-callback to the one live Xanh Browser instance. Opaque state is encrypted with
+callback to the one live Xanh Browser instance. The coordinator keeps the
+expected OAuth `state` and PKCE-flow ownership only in memory, accepts exactly
+the callback for the flow started by that process, and rejects callbacks after
+restart before native completion. Application Services does not persist its
+pending PKCE verifier, so an interrupted or ambiguous sign-in must be restarted
+interactively. Exact-origin confirmation (including a non-default HTTPS port)
+and protocol registration happen before the
+flow starts; a rejected system-browser launch abandons the in-memory runtime and
+reopens only previously committed state so retry remains available. Opaque
+completed account/Sync state is encrypted with
 user-bound DPAPI, while unlocking the local Logins key requires Windows Hello
-or the device PIN and expires after five minutes/backgrounding.
+or the device PIN and expires after five minutes/backgrounding. Window teardown
+stops late UI delivery and asynchronously drains the current coordinator
+operation before freeing the native runtime.
 
 When the native Sync runtime is configured, the command bar also exposes
 Bookmarks and History. Successful regular WebView2 navigation is recorded in

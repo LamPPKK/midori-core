@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -22,7 +23,7 @@ public interface IFirefoxSyncSecretStore
     Task<bool> VerifyUserPresenceAsync(string reason, CancellationToken cancellationToken = default);
 }
 
-public sealed record FirefoxOAuthLaunch(Uri AuthorizationUri, string AccountDomain);
+public sealed record FirefoxOAuthLaunch(Uri AuthorizationUri, string AccountOrigin);
 
 public sealed record FirefoxSyncHostSnapshot(
     FirefoxAccountState AccountState,
@@ -33,7 +34,7 @@ public sealed record FirefoxSyncHostSnapshot(
     DateTimeOffset? NextAllowed,
     string Detail);
 
-public sealed class FirefoxSyncCoordinator : IDisposable
+public sealed class FirefoxSyncCoordinator : IDisposable, IAsyncDisposable
 {
     private static readonly FirefoxSyncEngine[] AllEngines =
     {
@@ -54,13 +55,18 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     private readonly IFirefoxSyncSecretStore _secrets;
     private readonly Func<DateTimeOffset> _clock;
     private readonly SemaphoreSlim _operation = new(1, 1);
+    private readonly object _disposeGate = new();
     private readonly HashSet<FirefoxSyncEngine> _enabledEngines = new(AllEngines);
     private IFirefoxSyncRuntime? _runtime;
     private FirefoxSyncSchedule _schedule = new();
     private bool? _pendingDisconnectDeleteLocal;
     private bool _nativeDisconnectCompleted;
     private DateTimeOffset? _vaultLastActivity;
-    private bool _disposed;
+    private string? _pendingOAuthState;
+    private bool _oauthFlowQuarantined;
+    private volatile bool _disposed;
+    private volatile bool _disposeRequested;
+    private Task? _disposeTask;
 
     public FirefoxSyncCoordinator(
         FirefoxSyncConfiguration configuration,
@@ -85,12 +91,14 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     }
 
     public FirefoxSyncHostSnapshot Snapshot { get; private set; }
+    public string AccountOrigin =>
+        _configuration.AccountsUri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
     public event EventHandler<FirefoxSyncHostSnapshot>? SnapshotChanged;
 
     public async Task<FirefoxSyncHostSnapshot> InitializeAsync(
         CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ThrowIfDisposed();
@@ -122,8 +130,20 @@ public sealed class FirefoxSyncCoordinator : IDisposable
             try
             {
                 var state = await Task.Run(_runtime.Initialize, cancellationToken).ConfigureAwait(false);
-                await PersistRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
-                Publish(state, FirefoxSyncStatus.Idle, "Firefox Sync is ready");
+                if (state == FirefoxAccountState.Authenticating)
+                {
+                    await _secrets.DeleteAsync(
+                        FirefoxSyncSecret.SyncState, cancellationToken).ConfigureAwait(false);
+                    await _secrets.DeleteAsync(
+                        FirefoxSyncSecret.AccountState, cancellationToken).ConfigureAwait(false);
+                    Publish(FirefoxAccountState.Disconnected, FirefoxSyncStatus.Idle,
+                        "Firefox Accounts sign-in expired; start sign-in again");
+                }
+                else
+                {
+                    await PersistRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
+                    Publish(state, FirefoxSyncStatus.Idle, "Firefox Sync is ready");
+                }
                 if (_pendingDisconnectDeleteLocal is { } deleteLocal)
                     await DisconnectLockedAsync(deleteLocal, cancellationToken).ConfigureAwait(false);
                 return Snapshot;
@@ -144,19 +164,29 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     public async Task<FirefoxOAuthLaunch> BeginOAuthAsync(
         CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_pendingOAuthState is not null || _oauthFlowQuarantined)
+                throw new InvalidOperationException(
+                    "A Firefox Accounts sign-in is already pending in this process.");
             var runtime = RequireRuntime();
-            var value = await Task.Run(runtime.BeginOAuth, cancellationToken).ConfigureAwait(false);
+            _oauthFlowQuarantined = true;
+            var value = await Task.Run(runtime.BeginOAuth, CancellationToken.None).ConfigureAwait(false);
             if (!Uri.TryCreate(value, UriKind.Absolute, out var authorization)
                 || !authorization.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                || !authorization.IdnHost.Equals(
+                    _configuration.AccountsUri.IdnHost, StringComparison.OrdinalIgnoreCase)
+                || authorization.Port != _configuration.AccountsUri.Port
                 || !string.IsNullOrEmpty(authorization.UserInfo))
+            {
                 throw new InvalidOperationException("Firefox Accounts returned an unsafe authorization URL.");
-            await PersistRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
+            }
+            _pendingOAuthState = OAuthStateFromAuthorizationUri(authorization);
+            _oauthFlowQuarantined = false;
             Publish(FirefoxAccountState.Authenticating, FirefoxSyncStatus.Idle,
                 "Waiting for the system browser to complete sign-in");
-            return new FirefoxOAuthLaunch(authorization, _configuration.AccountsUri.IdnHost);
+            return new FirefoxOAuthLaunch(authorization, AccountOrigin);
         }
         finally
         {
@@ -169,18 +199,110 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         CancellationToken cancellationToken = default)
     {
         var (code, state) = ParseOAuthCallback(_configuration.RedirectUri, callback);
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var runtime = RequireRuntime();
-            var accountState = await Task.Run(
-                () => runtime.CompleteOAuth(code, state), cancellationToken).ConfigureAwait(false);
-            await PersistRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
-            Publish(accountState, FirefoxSyncStatus.Idle, "Firefox Accounts sign-in completed");
+            if (_pendingOAuthState is null
+                || !CryptographicOperations.FixedTimeEquals(
+                    Encoding.UTF8.GetBytes(_pendingOAuthState),
+                    Encoding.UTF8.GetBytes(state)))
+                throw new InvalidOperationException(
+                    "OAuth callback does not belong to a sign-in started in this process.");
+            _pendingOAuthState = null;
+            _oauthFlowQuarantined = true;
+            FirefoxAccountState accountState;
+            try
+            {
+                var runtime = RequireRuntime();
+                accountState = await Task.Run(
+                    () => runtime.CompleteOAuth(code, state), cancellationToken).ConfigureAwait(false);
+                await PersistRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
+                _oauthFlowQuarantined = false;
+                Publish(accountState, FirefoxSyncStatus.Idle, "Firefox Accounts sign-in completed");
+            }
+            catch
+            {
+                Publish(FirefoxAccountState.Disconnected, FirefoxSyncStatus.AuthError,
+                    "Sign-in failed; restart Xanh Browser before trying again");
+                throw;
+            }
             if (accountState == FirefoxAccountState.Connected)
-                await SyncLockedAsync(FirefoxSyncReason.Startup, ignoreInterval: true, cancellationToken)
-                    .ConfigureAwait(false);
+            {
+                try
+                {
+                    await SyncLockedAsync(
+                        FirefoxSyncReason.Startup, ignoreInterval: true, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    Publish(FirefoxAccountState.Connected, FirefoxSyncStatus.NetworkError,
+                        "Sign-in completed; the first Sync did not finish");
+                }
+            }
             return Snapshot;
+        }
+        finally
+        {
+            _operation.Release();
+        }
+    }
+
+    public async Task<FirefoxSyncHostSnapshot> AbandonOAuthAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            if (_pendingOAuthState is null && !_oauthFlowQuarantined) return Snapshot;
+
+            _pendingOAuthState = null;
+            _oauthFlowQuarantined = true;
+            var previous = _runtime;
+            _runtime = null;
+            previous?.Dispose();
+            _vaultLastActivity = null;
+            try
+            {
+                var account = await _secrets.ReadAsync(
+                    FirefoxSyncSecret.AccountState, cancellationToken).ConfigureAwait(false);
+                var syncState = await _secrets.ReadAsync(
+                    FirefoxSyncSecret.SyncState, cancellationToken).ConfigureAwait(false);
+                _runtime = await Task.Run(
+                    () => _runtimeFactory.Open(
+                        _configuration.ToNativeJson(),
+                        _profileDirectory,
+                        null,
+                        account,
+                        syncState),
+                    CancellationToken.None).ConfigureAwait(false);
+                var state = await Task.Run(
+                    _runtime.Initialize, CancellationToken.None).ConfigureAwait(false);
+                if (state == FirefoxAccountState.Authenticating)
+                {
+                    await _secrets.DeleteAsync(
+                        FirefoxSyncSecret.SyncState, cancellationToken).ConfigureAwait(false);
+                    await _secrets.DeleteAsync(
+                        FirefoxSyncSecret.AccountState, cancellationToken).ConfigureAwait(false);
+                    Publish(FirefoxAccountState.Disconnected, FirefoxSyncStatus.Idle,
+                        "Firefox Accounts sign-in was canceled");
+                }
+                else
+                {
+                    await PersistRuntimeStateAsync(cancellationToken).ConfigureAwait(false);
+                    Publish(state, FirefoxSyncStatus.Idle,
+                        "Firefox Accounts sign-in was canceled");
+                }
+                _oauthFlowQuarantined = false;
+                return Snapshot;
+            }
+            catch
+            {
+                _runtime?.Dispose();
+                _runtime = null;
+                throw;
+            }
         }
         finally
         {
@@ -192,7 +314,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         FirefoxSyncReason reason,
         CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             return await SyncLockedAsync(reason, ignoreInterval: false, cancellationToken)
@@ -215,7 +337,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         bool enabled,
         CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ThrowIfDisposed();
@@ -235,7 +357,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
     public async Task<bool> UnlockVaultAsync(CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -278,7 +400,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
     public async Task LockVaultAsync(CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -294,7 +416,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
     public async Task<bool> TouchVaultAsync(CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ThrowIfDisposed();
@@ -314,7 +436,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
     public async Task<bool> LockVaultIfIdleAsync(CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -335,7 +457,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     public async Task<IReadOnlyList<FirefoxRemoteTabsDevice>> RemoteTabsAsync(
         CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -391,7 +513,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         if (Encoding.UTF8.GetByteCount(payload) > 4 * 1_024 * 1_024)
             throw new ArgumentException("Local tab payload exceeds 4 MiB.");
 
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -416,7 +538,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         FirefoxBookmarkRoot root = FirefoxBookmarkRoot.Mobile,
         CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -447,7 +569,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
             throw new ArgumentException("Bookmark URL is unsafe.");
         var safeTitle = FirefoxPlacesPolicy.SanitizeTitle(title, url.AbsoluteUri);
 
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -498,7 +620,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
             is_private = false,
         }, JsonOptions);
 
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -520,7 +642,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         if (!FirefoxPlacesPolicy.IsGuid(guid))
             throw new ArgumentException("Bookmark GUID is invalid.");
 
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -560,7 +682,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
             },
         }, JsonOptions);
 
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -584,7 +706,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     {
         if (limit is 0 or > FirefoxPlacesPolicy.MaximumHistoryResults)
             throw new ArgumentOutOfRangeException(nameof(limit));
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -611,7 +733,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         if (!FirefoxPlacesPolicy.IsAllowedWebUri(url)
             || !FirefoxPlacesPolicy.IsSafeTimestamp(visitedAtEpochMillis, allowZero: false))
             throw new ArgumentException("History visit identity is invalid.");
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -628,7 +750,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
     public async Task ClearHistoryAsync(CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -646,7 +768,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         CancellationToken cancellationToken = default)
     {
         if (!context.IsAllowed) throw new ArgumentException("Credential context is not allowed.");
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -677,7 +799,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     {
         if (!draft.IsAllowedFor(context))
             throw new ArgumentException("Credential draft or context is not allowed.");
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -704,7 +826,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     {
         if (!FirefoxCredentialPolicy.IsValidId(id) || !draft.IsAllowedFor(context))
             throw new ArgumentException("Credential ID, draft or context is not allowed.");
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -732,7 +854,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     {
         if (!FirefoxCredentialPolicy.IsValidId(id) || !context.IsAllowed)
             throw new ArgumentException("Credential ID or context is not allowed.");
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -758,7 +880,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     {
         if (!FirefoxCredentialPolicy.IsValidId(id) || !context.IsAllowed)
             throw new ArgumentException("Credential ID or context is not allowed.");
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var runtime = RequireRuntime();
@@ -778,7 +900,7 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         bool deleteLocal,
         CancellationToken cancellationToken = default)
     {
-        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitForOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             await DisconnectLockedAsync(deleteLocal, cancellationToken).ConfigureAwait(false);
@@ -791,11 +913,52 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is { IsCompleted: true }) return;
+            if (_disposeTask is not null || !_operation.Wait(0))
+                throw new InvalidOperationException(
+                    "An operation is still running; await DisposeAsync instead.");
+            _disposeRequested = true;
+            _disposed = true;
+            DisposeRuntimeLocked();
+            _operation.Release();
+            _disposeTask = Task.CompletedTask;
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+        {
+            _disposeTask ??= DisposeCoreAsync();
+            return new ValueTask(_disposeTask);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        _disposeRequested = true;
+        await _operation.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _disposed = true;
+            DisposeRuntimeLocked();
+        }
+        finally
+        {
+            // The semaphore remains valid so callers that raced teardown can acquire,
+            // observe ObjectDisposedException, and release without a disposal race.
+            _operation.Release();
+        }
+    }
+
+    private void DisposeRuntimeLocked()
+    {
+        _pendingOAuthState = null;
+        _oauthFlowQuarantined = false;
         _runtime?.Dispose();
         _runtime = null;
-        _operation.Dispose();
     }
 
     public static (string Code, string State) ParseOAuthCallback(string expectedRedirect, Uri callback)
@@ -821,9 +984,44 @@ public sealed class FirefoxSyncCoordinator : IDisposable
         }
         if (parameters.Count != 2
             || !parameters.TryGetValue("code", out var code)
-            || !parameters.TryGetValue("state", out var state))
+            || !parameters.TryGetValue("state", out var state)
+            || Encoding.UTF8.GetByteCount(code) > 4_096
+            || Encoding.UTF8.GetByteCount(state) > 4_096
+            || code.Any(char.IsControl)
+            || state.Any(char.IsControl))
             throw new ArgumentException("OAuth callback is missing code or state.");
         return (code, state);
+    }
+
+    private static string OAuthStateFromAuthorizationUri(Uri authorization)
+    {
+        string? state = null;
+        var query = authorization.Query.StartsWith('?')
+            ? authorization.Query[1..]
+            : authorization.Query;
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = pair.IndexOf('=');
+            if (separator <= 0)
+            {
+                if (Uri.UnescapeDataString(pair).Equals("state", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "Firefox Accounts authorization URL has invalid OAuth state.");
+                continue;
+            }
+            var name = Uri.UnescapeDataString(pair[..separator]);
+            if (!name.Equals("state", StringComparison.Ordinal)) continue;
+            if (state is not null)
+                throw new InvalidOperationException(
+                    "Firefox Accounts authorization URL has ambiguous OAuth state.");
+            state = Uri.UnescapeDataString(pair[(separator + 1)..]);
+        }
+        if (string.IsNullOrEmpty(state)
+            || Encoding.UTF8.GetByteCount(state) > 4_096
+            || state.Any(char.IsControl))
+            throw new InvalidOperationException(
+                "Firefox Accounts authorization URL has invalid OAuth state.");
+        return state;
     }
 
     private async Task<FirefoxSyncHostSnapshot> SyncLockedAsync(
@@ -910,6 +1108,8 @@ public sealed class FirefoxSyncCoordinator : IDisposable
 
         _schedule = new();
         _vaultLastActivity = null;
+        _pendingOAuthState = null;
+        _oauthFlowQuarantined = false;
         _pendingDisconnectDeleteLocal = null;
         _nativeDisconnectCompleted = false;
         Publish(FirefoxAccountState.Disconnected, FirefoxSyncStatus.Idle,
@@ -920,14 +1120,14 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     {
         var runtime = RequireRuntime();
         var account = await Task.Run(runtime.AccountJson, cancellationToken).ConfigureAwait(false);
-        await _secrets.WriteAsync(
-            FirefoxSyncSecret.AccountState, account, cancellationToken).ConfigureAwait(false);
         var state = runtime.PersistedState();
         if (state is null)
             await _secrets.DeleteAsync(FirefoxSyncSecret.SyncState, cancellationToken).ConfigureAwait(false);
         else
             await _secrets.WriteAsync(
                 FirefoxSyncSecret.SyncState, state, cancellationToken).ConfigureAwait(false);
+        await _secrets.WriteAsync(
+            FirefoxSyncSecret.AccountState, account, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task MarkLocalChangeLockedAsync(CancellationToken cancellationToken)
@@ -1149,6 +1349,16 @@ public sealed class FirefoxSyncCoordinator : IDisposable
     private void ThrowIfDisposed()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FirefoxSyncCoordinator));
+    }
+
+    private async Task WaitForOperationAsync(CancellationToken cancellationToken)
+    {
+        if (_disposeRequested)
+            throw new ObjectDisposedException(nameof(FirefoxSyncCoordinator));
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (!_disposeRequested) return;
+        _operation.Release();
+        throw new ObjectDisposedException(nameof(FirefoxSyncCoordinator));
     }
 
     private sealed record SyncWireResult(

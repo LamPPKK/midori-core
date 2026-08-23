@@ -15,22 +15,14 @@ final class FirefoxSyncViewModel {
     private static let redirectURI = URL(string: "xanh-browser-ios://accounts/oauth")!
 #endif
 
-    var snapshot = XanhSyncHostSnapshot(
-        accountState: .disconnected,
-        status: .idle,
-        enabledEngines: Set(XanhSyncEngine.allCases),
-        vaultUnlocked: false,
-        lastSync: nil,
-        nextAllowed: nil,
-        detail: "Firefox Sync is not configured"
-    )
+    var snapshot: XanhSyncHostSnapshot { process.snapshot }
     var accountsURL = ""
     var tokenServerURL = ""
     var clientID = ""
     var isShowingSettings = false
     var isConfirmingAccountDomain = false
     var isConfirmingDisconnect = false
-    var accountDomain = ""
+    var accountOrigin = ""
     var remoteTabs: [XanhRemoteTabsDevice] = []
     var remoteTabsStatus = "Remote tabs have not been loaded."
     var bookmarks: [XanhBookmarkRecord] = []
@@ -44,20 +36,36 @@ final class FirefoxSyncViewModel {
     var credentialSelection: FirefoxCredentialSelection?
 
     private var coordinator: XanhFirefoxSyncCoordinator?
-    private var pendingOAuth: XanhOAuthLaunch?
+    private let process: XanhFirefoxSyncProcessService
+    private var isInitializing = false
     private var pendingHistory: [PendingHistoryVisit] = []
     private var isWritingHistory = false
     @ObservationIgnored
     private var credentialContinuation: CheckedContinuation<XanhCredentialRecord?, Never>?
 
+    init(process: XanhFirefoxSyncProcessService) {
+        self.process = process
+    }
+
     var isConfigured: Bool { coordinator != nil }
 
     func initializeIfConfigured() async {
-        guard coordinator == nil, let configuration = loadConfiguration() else { return }
-        await initialize(configuration)
+        guard coordinator == nil, !isInitializing, let configuration = loadConfiguration() else {
+            return
+        }
+        isInitializing = true
+        defer { isInitializing = false }
+        do {
+            try await initialize(configuration)
+        } catch {
+            report(error)
+        }
     }
 
     func saveSelfHostedConfiguration() async {
+        guard !isInitializing else { return }
+        isInitializing = true
+        defer { isInitializing = false }
         do {
             guard let accounts = URL(string: accountsURL.trimmingCharacters(in: .whitespacesAndNewlines)),
                   let token = URL(string: tokenServerURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
@@ -74,8 +82,11 @@ final class FirefoxSyncViewModel {
                 tokenServerURL: token.absoluteString,
                 clientID: configuration.clientID
             )
-            UserDefaults.standard.set(try JSONEncoder().encode(stored), forKey: Self.configurationKey)
-            await initialize(configuration)
+            try await initialize(configuration)
+            UserDefaults.standard.set(
+                try JSONEncoder().encode(stored),
+                forKey: Self.configurationKey
+            )
         } catch {
             report(error)
         }
@@ -83,30 +94,40 @@ final class FirefoxSyncViewModel {
 
     func prepareSignIn() async {
         guard let coordinator else { return }
+        accountOrigin = await coordinator.accountOrigin
+        isConfirmingAccountDomain = true
+    }
+
+    func beginConfirmedSignIn() async -> URL? {
+        guard let coordinator else { return nil }
         do {
             let launch = try await coordinator.beginOAuth()
-            pendingOAuth = launch
-            accountDomain = launch.accountDomain
-            isConfirmingAccountDomain = true
-            await refreshSnapshot()
+            process.updateSnapshot(await coordinator.snapshot)
+            return launch.authorizationURL
+        } catch {
+            report(error)
+            return nil
+        }
+    }
+
+    func finishOAuthLaunch(accepted: Bool) async {
+        guard !accepted, let coordinator else { return }
+        do {
+            process.updateSnapshot(try await coordinator.abandonOAuth())
+            errorMessage = "The system browser did not open. Firefox Accounts sign-in was canceled."
         } catch {
             report(error)
         }
     }
 
-    func confirmedSignInURL() -> URL? {
-        defer { pendingOAuth = nil }
-        return pendingOAuth?.authorizationURL
-    }
-
     func handleOAuthCallback(_ url: URL) async {
         if coordinator == nil { await initializeIfConfigured() }
-        guard let coordinator else {
+        guard coordinator != nil else {
             errorMessage = "Firefox Sync is not configured on this device."
             return
         }
         do {
-            snapshot = try await coordinator.completeOAuth(callback: url)
+            _ = try await process.completeOAuth(callback: url)
         } catch {
             report(error)
         }
@@ -115,7 +136,7 @@ final class FirefoxSyncViewModel {
     func syncNow() async {
         guard let coordinator else { return }
         do {
-            snapshot = try await coordinator.sync(reason: .manual)
+            process.updateSnapshot(try await coordinator.sync(reason: .manual))
         } catch {
             report(error)
         }
@@ -124,7 +145,7 @@ final class FirefoxSyncViewModel {
     func syncIfDue(_ reason: XanhSyncReason) async {
         guard let coordinator, snapshot.accountState == .connected else { return }
         do {
-            snapshot = try await coordinator.sync(reason: reason)
+            process.updateSnapshot(try await coordinator.sync(reason: reason))
         } catch XanhSyncContractError.busy {
             // A user-initiated operation already owns the single-flight slot.
         } catch {
@@ -503,30 +524,23 @@ final class FirefoxSyncViewModel {
         }
     }
 
-    private func initialize(_ configuration: XanhSyncConfiguration) async {
+    private func initialize(_ configuration: XanhSyncConfiguration) async throws {
         guard let factory = AppleFirefoxSyncRuntimeProvider.factory else {
-            snapshot = snapshotWithDetail(
+            process.updateSnapshot(snapshotWithDetail(
                 "This verification build does not package the pinned Firefox Sync XCFramework."
-            )
-            return
+            ))
+            throw XanhSyncContractError.nativeCoreUnavailable
         }
-        do {
-            let profile = try Self.profileDirectory()
-            let service = "\(Bundle.main.bundleIdentifier ?? "io.github.lamppkk.xanhbrowser").firefox-sync"
-            let value = XanhFirefoxSyncCoordinator(
-                configuration: configuration,
-                profileDirectory: profile,
-                runtimeFactory: factory,
-                secrets: XanhKeychainFirefoxSyncSecretStore(service: service)
-            )
-            snapshot = try await value.initialize()
-            coordinator = value
-            if snapshot.accountState == .connected {
-                snapshot = try await value.sync(reason: .startup)
-            }
-        } catch {
-            report(error)
-        }
+        let profile = try Self.profileDirectory()
+        let service = "\(Bundle.main.bundleIdentifier ?? "io.github.lamppkk.xanhbrowser").firefox-sync"
+        let result = try await process.initialize(
+            configuration: configuration,
+            profileDirectory: profile,
+            runtimeFactory: factory,
+            secrets: XanhKeychainFirefoxSyncSecretStore(service: service)
+        )
+        coordinator = result.0
+        process.updateSnapshot(result.1)
     }
 
     private func loadConfiguration() -> XanhSyncConfiguration? {
@@ -561,7 +575,7 @@ final class FirefoxSyncViewModel {
 
     private func refreshSnapshot() async {
         guard let coordinator else { return }
-        snapshot = await coordinator.snapshot
+        process.updateSnapshot(await coordinator.snapshot)
     }
 
     private func drainHistoryQueue() async {
@@ -588,7 +602,6 @@ final class FirefoxSyncViewModel {
 
     private func report(_ error: Error) {
         errorMessage = error.localizedDescription
-        snapshot = snapshotWithDetail("Firefox Sync needs attention")
     }
 
     private func snapshotWithDetail(_ detail: String) -> XanhSyncHostSnapshot {

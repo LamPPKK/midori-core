@@ -165,10 +165,15 @@ struct FirefoxSyncSettingsView: View {
         .alert("Open Firefox Accounts?", isPresented: $model.isConfirmingAccountDomain) {
             Button("Cancel", role: .cancel) {}
             Button("Continue") {
-                if let url = model.confirmedSignInURL() { openURL(url) }
+                Task {
+                    guard let url = await model.beginConfirmedSignIn() else { return }
+                    openURL(url) { accepted in
+                        Task { await model.finishOAuthLaunch(accepted: accepted) }
+                    }
+                }
             }
         } message: {
-            Text("Xanh Browser will continue sign-in at \(model.accountDomain) in the system browser. TLS errors cannot be bypassed.")
+            Text("Xanh Browser will continue sign-in at \(model.accountOrigin) in the system browser. TLS errors cannot be bypassed.")
         }
         .alert(
             "Firefox Sync error",

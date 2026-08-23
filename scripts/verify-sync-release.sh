@@ -491,6 +491,38 @@ case "$edition" in
     grep -F 'if (!private_mode) {' desktop/browser-window.vala >/dev/null
     grep -F 'x-scheme-handler/xanh-browser' data-xanh/io.github.lamppkk.xanhbrowser.desktop >/dev/null
     test -f platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift
+    grep -F 'private var pendingOAuthState: String?' \
+      platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift >/dev/null
+    grep -F 'guard let expectedState = pendingOAuthState, expectedState == values.state else {' \
+      platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift >/dev/null
+    grep -F 'oauthFlowQuarantined = true' \
+      platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift >/dev/null
+    grep -F 'oauthCallbackAfterCoordinatorRestartFailsBeforeNativeCompletion' \
+      platform/apple/Tests/XanhBrowserCoreTests/FirefoxSyncCoordinatorTests.swift >/dev/null
+    grep -F '@State private var firefoxSyncProcess = XanhFirefoxSyncProcessService()' \
+      platform/apple/App/XanhBrowserApp.swift >/dev/null
+    grep -F 'BrowserView(firefoxSyncProcess: firefoxSyncProcess)' \
+      platform/apple/App/XanhBrowserApp.swift >/dev/null
+    grep -F 'public final class XanhFirefoxSyncProcessService {' \
+      platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift >/dev/null
+    grep -F 'authorizationURL.host?.caseInsensitiveCompare(configuration.accountDomain)' \
+      platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift >/dev/null
+    grep -F '(authorizationURL.port ?? 443) == configuration.accountPort' \
+      platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift >/dev/null
+    grep -F 'oauthAuthorizationRequiresTheConfiguredHostAndPort' \
+      platform/apple/Tests/XanhBrowserCoreTests/FirefoxSyncCoordinatorTests.swift >/dev/null
+    grep -F 'oauthCallbackWaitsForAnInFlightCoordinatorOperation' \
+      platform/apple/Tests/XanhBrowserCoreTests/FirefoxSyncCoordinatorTests.swift >/dev/null
+    grep -F 'processServiceCoalescesInitializationAndSharesOAuthStateAcrossScenes' \
+      platform/apple/Tests/XanhBrowserCoreTests/FirefoxSyncCoordinatorTests.swift >/dev/null
+    grep -F 'processServicePublishesFailedOAuthCompletionToEveryScene' \
+      platform/apple/Tests/XanhBrowserCoreTests/FirefoxSyncCoordinatorTests.swift >/dev/null
+    grep -F 'wrongQueuedSceneCallbackCannotBlockTheExactCallback' \
+      platform/apple/Tests/XanhBrowserCoreTests/FirefoxSyncCoordinatorTests.swift >/dev/null
+    grep -F '.onChange(of: firefoxSync.snapshot.vaultUnlocked)' \
+      platform/apple/App/BrowserView.swift >/dev/null
+    grep -F 'public func abandonOAuth() async throws -> XanhSyncHostSnapshot' \
+      platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift >/dev/null
     test -f platform/apple/App/BrowserCredentialBridge.swift
     grep -F 'forMainFrameOnly: true' \
       platform/apple/App/BrowserCredentialBridge.swift >/dev/null
@@ -529,6 +561,24 @@ case "$edition" in
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
     verify_apple_sync_library
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
+    grep -F 'private string? _pendingOAuthState;' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'OAuth callback does not belong to a sign-in started in this process.' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'OAuthCallbackAfterCoordinatorRestartFailsBeforeNativeCompletion' \
+      platform/windows/tests/XanhBrowser.Core.Tests/FirefoxSyncCoordinatorTests.cs >/dev/null
+    grep -F 'public async Task<FirefoxSyncHostSnapshot> AbandonOAuthAsync(' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'if (!await ConfirmAccountOriginAsync(coordinator.AccountOrigin)) return;' \
+      platform/windows/src/XanhBrowser.Windows/MainWindow.xaml.cs >/dev/null
+    grep -F 'authorization.Port != _configuration.AccountsUri.Port' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'OAuthAuthorizationRequiresConfiguredHostAndPort' \
+      platform/windows/tests/XanhBrowser.Core.Tests/FirefoxSyncCoordinatorTests.cs >/dev/null
+    grep -F 'public ValueTask DisposeAsync()' \
+      platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
+    grep -F 'DisposeAsyncDrainsNativeCompletionBeforeFreeingRuntime' \
+      platform/windows/tests/XanhBrowser.Core.Tests/FirefoxSyncCoordinatorTests.cs >/dev/null
     grep -F 'public async Task UpdateLocalTabsAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
     grep -F 'public async Task<IReadOnlyList<FirefoxRemoteTabsDevice>> RemoteTabsAsync(' \

@@ -71,6 +71,21 @@ public struct XanhSyncConfiguration: Codable, Equatable, Sendable {
         }
     }
 
+    public var accountPort: Int {
+        switch server {
+        case .mozilla: 443
+        case let .selfHosted(accountsURL, _): accountsURL.port ?? 443
+        }
+    }
+
+    public var accountOrigin: String {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = accountDomain
+        if accountPort != 443 { components.port = accountPort }
+        return components.string ?? "https://\(accountDomain)"
+    }
+
     private static func requireSecureOrigin(_ url: URL, name: String) throws {
         guard url.scheme?.lowercased() == "https", url.host != nil, url.user == nil, url.password == nil else {
             throw XanhSyncContractError.invalidConfiguration("\(name) must be an HTTPS origin without userinfo")

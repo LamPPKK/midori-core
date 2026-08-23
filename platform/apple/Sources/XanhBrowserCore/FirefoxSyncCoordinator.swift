@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 public enum XanhSyncSecret: String, CaseIterable, Sendable {
     case accountState = "account-state"
@@ -253,7 +254,7 @@ public protocol XanhFirefoxSyncSecretStore: Sendable {
 
 public struct XanhOAuthLaunch: Equatable, Sendable {
     public let authorizationURL: URL
-    public let accountDomain: String
+    public let accountOrigin: String
 }
 
 public struct XanhSyncHostSnapshot: Equatable, Sendable {
@@ -264,6 +265,124 @@ public struct XanhSyncHostSnapshot: Equatable, Sendable {
     public let lastSync: Date?
     public let nextAllowed: Date?
     public let detail: String
+}
+
+@MainActor
+@Observable
+public final class XanhFirefoxSyncProcessService {
+    private var coordinator: XanhFirefoxSyncCoordinator?
+    private var configuration: XanhSyncConfiguration?
+    private var initializationTask: Task<(
+        XanhFirefoxSyncCoordinator,
+        XanhSyncHostSnapshot
+    ), Error>?
+    private var callbackTask: Task<XanhSyncHostSnapshot, Error>?
+    private var callbackURL: URL?
+    public private(set) var snapshot = XanhSyncHostSnapshot(
+        accountState: .disconnected,
+        status: .idle,
+        enabledEngines: Set(XanhSyncEngine.allCases),
+        vaultUnlocked: false,
+        lastSync: nil,
+        nextAllowed: nil,
+        detail: "Firefox Sync is not initialized"
+    )
+
+    public init() {}
+
+    public func initialize(
+        configuration requestedConfiguration: XanhSyncConfiguration,
+        profileDirectory: URL,
+        runtimeFactory: any XanhFirefoxSyncRuntimeFactory,
+        secrets: any XanhFirefoxSyncSecretStore
+    ) async throws -> (XanhFirefoxSyncCoordinator, XanhSyncHostSnapshot) {
+        if let coordinator {
+            guard configuration == requestedConfiguration else {
+                throw XanhSyncContractError.invalidConfiguration(
+                    "A different Firefox Sync configuration is already active in this process"
+                )
+            }
+            snapshot = await coordinator.snapshot
+            return (coordinator, snapshot)
+        }
+        if let initializationTask {
+            guard configuration == requestedConfiguration else {
+                throw XanhSyncContractError.invalidConfiguration(
+                    "Another Firefox Sync configuration is being initialized"
+                )
+            }
+            return try await initializationTask.value
+        }
+
+        configuration = requestedConfiguration
+        let task = Task {
+            let value = XanhFirefoxSyncCoordinator(
+                configuration: requestedConfiguration,
+                profileDirectory: profileDirectory,
+                runtimeFactory: runtimeFactory,
+                secrets: secrets
+            )
+            var snapshot = try await value.initialize()
+            if snapshot.accountState == .connected {
+                do {
+                    snapshot = try await value.sync(reason: .startup)
+                } catch {
+                    snapshot = await value.snapshot
+                }
+            }
+            return (value, snapshot)
+        }
+        initializationTask = task
+        do {
+            let result = try await task.value
+            coordinator = result.0
+            snapshot = result.1
+            initializationTask = nil
+            return result
+        } catch {
+            initializationTask = nil
+            configuration = nil
+            throw error
+        }
+    }
+
+    public func completeOAuth(callback: URL) async throws -> XanhSyncHostSnapshot {
+        if let callbackTask {
+            if callbackURL == callback {
+                snapshot = try await callbackTask.value
+                return snapshot
+            }
+            guard let coordinator else { throw XanhSyncContractError.nativeCoreUnavailable }
+            do {
+                snapshot = try await coordinator.completeOAuth(callback: callback)
+                return snapshot
+            } catch {
+                snapshot = await coordinator.snapshot
+                throw error
+            }
+        }
+        guard let coordinator else { throw XanhSyncContractError.nativeCoreUnavailable }
+        callbackURL = callback
+        let task = Task {
+            do {
+                return try await coordinator.completeOAuth(callback: callback)
+            } catch {
+                snapshot = await coordinator.snapshot
+                throw error
+            }
+        }
+        callbackTask = task
+        defer {
+            callbackTask = nil
+            callbackURL = nil
+        }
+        snapshot = try await task.value
+        return snapshot
+    }
+
+    public func updateSnapshot(_ value: XanhSyncHostSnapshot) {
+        snapshot = value
+    }
 }
 
 public actor XanhFirefoxSyncCoordinator {
@@ -281,6 +400,11 @@ public actor XanhFirefoxSyncCoordinator {
     private var vaultLastActivity: Date?
     private var operationRunning = false
     private var vaultLockPending = false
+    // Application Services keeps the PKCE verifier in its in-memory flow store.
+    // Persisted account JSON is deliberately not treated as resumable OAuth state.
+    private var pendingOAuthState: String?
+    private var oauthFlowQuarantined = false
+    private var operationWaiters: [CheckedContinuation<Void, Never>] = []
 
     public private(set) var snapshot = XanhSyncHostSnapshot(
         accountState: .disconnected,
@@ -291,6 +415,8 @@ public actor XanhFirefoxSyncCoordinator {
         nextAllowed: nil,
         detail: "Firefox Sync is not initialized"
     )
+
+    public var accountOrigin: String { configuration.accountOrigin }
 
     public init(
         configuration: XanhSyncConfiguration,
@@ -333,8 +459,18 @@ public actor XanhFirefoxSyncCoordinator {
         runtime = opened
         do {
             let state = try opened.initialize()
-            try await persistRuntimeState()
-            publish(accountState: state, status: .idle, detail: "Firefox Sync is ready")
+            if state == .authenticating {
+                try await secrets.delete(.syncState)
+                try await secrets.delete(.accountState)
+                publish(
+                    accountState: .disconnected,
+                    status: .idle,
+                    detail: "Firefox Accounts sign-in expired; start sign-in again"
+                )
+            } else {
+                try await persistRuntimeState()
+                publish(accountState: state, status: .idle, detail: "Firefox Sync is ready")
+            }
             if let deleteLocal = pendingDisconnectDeleteLocal {
                 try await disconnectLocked(deleteLocal: deleteLocal)
             }
@@ -348,16 +484,24 @@ public actor XanhFirefoxSyncCoordinator {
     public func beginOAuth() async throws -> XanhOAuthLaunch {
         try startOperation()
         defer { finishOperation() }
+        guard pendingOAuthState == nil, !oauthFlowQuarantined else {
+            throw XanhSyncContractError.invalidConfiguration(
+                "A Firefox Accounts sign-in is already pending in this process"
+            )
+        }
+        oauthFlowQuarantined = true
         let authorizationURL = try requireRuntime().beginOAuth()
         guard authorizationURL.scheme?.lowercased() == "https",
-              authorizationURL.host != nil,
+              authorizationURL.host?.caseInsensitiveCompare(configuration.accountDomain) == .orderedSame,
+              (authorizationURL.port ?? 443) == configuration.accountPort,
               authorizationURL.user == nil,
               authorizationURL.password == nil else {
             throw XanhSyncContractError.invalidConfiguration(
                 "Firefox Accounts returned an unsafe authorization URL"
             )
         }
-        try await persistRuntimeState()
+        pendingOAuthState = try Self.oauthState(from: authorizationURL)
+        oauthFlowQuarantined = false
         publish(
             accountState: .authenticating,
             status: .idle,
@@ -365,25 +509,98 @@ public actor XanhFirefoxSyncCoordinator {
         )
         return XanhOAuthLaunch(
             authorizationURL: authorizationURL,
-            accountDomain: configuration.accountDomain
+            accountOrigin: configuration.accountOrigin
         )
     }
 
     @discardableResult
     public func completeOAuth(callback: URL) async throws -> XanhSyncHostSnapshot {
-        try startOperation()
-        defer { finishOperation() }
         let values = try Self.parseOAuthCallback(
             expectedRedirect: configuration.redirectURI,
             callback: callback
         )
-        let state = try requireRuntime().completeOAuth(code: values.code, state: values.state)
-        try await persistRuntimeState()
-        publish(accountState: state, status: .idle, detail: "Firefox Accounts sign-in completed")
+        await waitForOperation()
+        defer { finishOperation() }
+        guard let expectedState = pendingOAuthState, expectedState == values.state else {
+            throw XanhSyncContractError.invalidConfiguration(
+                "OAuth callback does not belong to a sign-in started in this process"
+            )
+        }
+        pendingOAuthState = nil
+        oauthFlowQuarantined = true
+        let state: XanhAccountState
+        do {
+            state = try requireRuntime().completeOAuth(code: values.code, state: values.state)
+            try await persistRuntimeState()
+            oauthFlowQuarantined = false
+            publish(accountState: state, status: .idle, detail: "Firefox Accounts sign-in completed")
+        } catch {
+            publish(
+                accountState: .disconnected,
+                status: .authError,
+                detail: "Sign-in failed; restart Xanh Browser before trying again"
+            )
+            throw error
+        }
         if state == .connected {
-            _ = try await syncLocked(reason: .startup, ignoreInterval: true)
+            do {
+                _ = try await syncLocked(reason: .startup, ignoreInterval: true)
+            } catch {
+                publish(
+                    accountState: .connected,
+                    status: .networkError,
+                    detail: "Sign-in completed; the first Sync did not finish"
+                )
+            }
         }
         return snapshot
+    }
+
+    @discardableResult
+    public func abandonOAuth() async throws -> XanhSyncHostSnapshot {
+        try startOperation()
+        defer { finishOperation() }
+        guard pendingOAuthState != nil || oauthFlowQuarantined else { return snapshot }
+
+        pendingOAuthState = nil
+        oauthFlowQuarantined = true
+        runtime = nil
+        vaultLastActivity = nil
+        vaultLockPending = false
+        do {
+            let account = try await secrets.read(.accountState)
+            let syncState = try await secrets.read(.syncState)
+            let opened = try runtimeFactory.open(
+                configuration: configuration,
+                profileDirectory: profileDirectory,
+                localLoginsKey: nil,
+                accountJSON: account,
+                persistedSyncState: syncState
+            )
+            runtime = opened
+            let state = try opened.initialize()
+            if state == .authenticating {
+                try await secrets.delete(.syncState)
+                try await secrets.delete(.accountState)
+                publish(
+                    accountState: .disconnected,
+                    status: .idle,
+                    detail: "Firefox Accounts sign-in was canceled"
+                )
+            } else {
+                try await persistRuntimeState()
+                publish(
+                    accountState: state,
+                    status: .idle,
+                    detail: "Firefox Accounts sign-in was canceled"
+                )
+            }
+            oauthFlowQuarantined = false
+            return snapshot
+        } catch {
+            runtime = nil
+            throw error
+        }
     }
 
     @discardableResult
@@ -776,10 +993,36 @@ public actor XanhFirefoxSyncCoordinator {
                 throw XanhSyncContractError.invalidConfiguration("OAuth callback query is ambiguous")
             }
         }
-        guard values.count == 2, let code = values["code"], let state = values["state"] else {
+        guard values.count == 2,
+              let code = values["code"],
+              let state = values["state"],
+              code.utf8.count <= 4_096,
+              state.utf8.count <= 4_096,
+              !code.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              !state.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
             throw XanhSyncContractError.invalidConfiguration("OAuth callback is missing code or state")
         }
         return (code, state)
+    }
+
+    private nonisolated static func oauthState(from authorizationURL: URL) throws -> String {
+        guard let items = URLComponents(url: authorizationURL, resolvingAgainstBaseURL: false)?.queryItems
+        else {
+            throw XanhSyncContractError.invalidConfiguration(
+                "Firefox Accounts authorization URL is missing OAuth state"
+            )
+        }
+        let stateItems = items.filter { $0.name == "state" }
+        guard stateItems.count == 1,
+              let state = stateItems[0].value,
+              !state.isEmpty,
+              state.utf8.count <= 4_096,
+              !state.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+            throw XanhSyncContractError.invalidConfiguration(
+                "Firefox Accounts authorization URL has invalid OAuth state"
+            )
+        }
+        return state
     }
 
     private func syncLocked(
@@ -847,6 +1090,8 @@ public actor XanhFirefoxSyncCoordinator {
         try await secrets.delete(.disconnectIntent)
         schedule = XanhSyncSchedule()
         vaultLastActivity = nil
+        pendingOAuthState = nil
+        oauthFlowQuarantined = false
         pendingDisconnectDeleteLocal = nil
         nativeDisconnectCompleted = false
         publish(
@@ -860,12 +1105,13 @@ public actor XanhFirefoxSyncCoordinator {
 
     private func persistRuntimeState() async throws {
         let opened = try requireRuntime()
-        try await secrets.write(try opened.accountJSON(), for: .accountState)
+        let account = try opened.accountJSON()
         if let state = try opened.persistedSyncState() {
             try await secrets.write(state, for: .syncState)
         } else {
             try await secrets.delete(.syncState)
         }
+        try await secrets.write(account, for: .accountState)
     }
 
     private func publish(accountState: XanhAccountState, status: XanhSyncStatus, detail: String) {
@@ -916,25 +1162,37 @@ public actor XanhFirefoxSyncCoordinator {
         operationRunning = true
     }
 
+    private func waitForOperation() async {
+        while operationRunning {
+            await withCheckedContinuation { continuation in
+                operationWaiters.append(continuation)
+            }
+        }
+        operationRunning = true
+    }
+
     private func finishOperation() {
         operationRunning = false
-        guard vaultLockPending, let runtime else { return }
-        do {
-            try runtime.lockVault()
-            vaultLockPending = false
-            vaultLastActivity = nil
-            publish(
-                accountState: (try? runtime.accountState()) ?? snapshot.accountState,
-                status: snapshot.status,
-                detail: "Password vault locked"
-            )
-        } catch {
-            publish(
-                accountState: snapshot.accountState,
-                status: snapshot.status,
-                detail: "Password vault lock must be retried"
-            )
+        if vaultLockPending, let runtime {
+            do {
+                try runtime.lockVault()
+                vaultLockPending = false
+                vaultLastActivity = nil
+                publish(
+                    accountState: (try? runtime.accountState()) ?? snapshot.accountState,
+                    status: snapshot.status,
+                    detail: "Password vault locked"
+                )
+            } catch {
+                publish(
+                    accountState: snapshot.accountState,
+                    status: snapshot.status,
+                    detail: "Password vault lock must be retried"
+                )
+            }
         }
+        guard !operationWaiters.isEmpty else { return }
+        operationWaiters.removeFirst().resume()
     }
 
     private func deleteUnreadableLoginsDatabase() throws {

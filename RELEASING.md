@@ -542,11 +542,27 @@ than repackaging it as a monolithic APK.
    `XANH_SYNC_SWIFT_FLAGS=-DXANH_ENABLE_FIREFOX_SYNC`, and confirm the callback
    is `xanh-browser-macos://accounts/oauth` or
    `xanh-browser-ios://accounts/oauth` for the target. Then run
-   `./scripts/verify-sync-release.sh apple`. Receive tabs from multiple devices
-   and confirm the native list groups sanitized typed records by device and is
-   inert until one row is selected. Reject more than 100 devices/500 total
-   tabs, duplicate identities, unsafe current/history/icon URLs, payloads over
-   8 MiB and out-of-range timestamps without opening a home/search fallback.
+   `./scripts/verify-sync-release.sh apple`. Before completing one sign-in,
+   send a callback with a different `state`, start a second flow, and terminate
+   the app between browser launch and callback delivery. The wrong/duplicate/
+   post-restart callbacks must fail before native completion; after restart the
+   UI must offer a fresh interactive sign-in rather than claim the PKCE flow was
+   restored from Keychain. Open two macOS/iPad windows and confirm they share
+   one flow owner; callback delivery through either scene must reach that owner
+   once, while identical simultaneous delivery to two scenes is coalesced into
+   one native completion. Verify settings and password rows remain confined to
+   the originating scene. Return an authorization URL with a different host or
+   wrong effective port and require rejection before launch; confirm a custom
+   non-default port is shown in the origin prompt. Cancel origin confirmation
+   and inject a failed system-browser launch;
+   neither may strand sign-in, and launch failure must reopen only the last
+   committed state. Fail the first Sync after OAuth completion and confirm the
+   account stays connected with a Sync-specific error. Receive tabs from
+   multiple devices and confirm the native list groups sanitized typed records
+   by device and is inert until one row is selected. Reject more than 100
+   devices/500 total tabs, duplicate identities, unsafe current/history/icon
+   URLs, payloads over 8 MiB and out-of-range timestamps without opening a
+   home/search fallback.
    In the Places library, load all four bookmark roots, save the current regular
    page, then rename and delete it while proving the same 12-character GUID is
    used. Record two visits to the same URL, delete only the selected exact
@@ -641,7 +657,20 @@ channels are rejected before a controller or page is created, while Runtime
    `-p:XanhFxaClientId=<registered-id>`; otherwise keep the build self-hosted.
    Confirm the registered callback is
    `xanh-browser-windows://accounts/oauth`, protect account state with DPAPI
-   and vault access with Windows Hello, then run
+   and vault access with Windows Hello. Race a duplicate callback and a second
+   sign-in against the live flow, then exit the process before callback
+   delivery. Only the exact in-memory `state` may reach native completion;
+   post-restart delivery must be rejected and a fresh interactive sign-in must
+   remain available. Return an authorization URL with a different host or wrong
+   effective port and require rejection before launch; confirm a configured
+   non-default port is shown in the origin prompt. Cancel origin confirmation
+   and inject `LaunchUriAsync`
+   failure; confirmation must not start a flow and launch failure must abandon
+   it by reopening only the last committed DPAPI state. Fail the first Sync
+   after successful OAuth and confirm the account remains connected with a
+   Sync-specific error. Close the window during native OAuth completion and
+   confirm teardown drains the operation, frees the runtime once and suppresses
+   late dialogs. Then run
    `./scripts/verify-sync-release.sh windows`.
 
 Verification: x64 and ARM64 packages must install cleanly, retain a valid

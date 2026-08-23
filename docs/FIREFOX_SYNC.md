@@ -97,9 +97,16 @@ browsing never reads, writes or syncs credentials.
 ## Platform status and release gates
 
 `xanh-sync-core` provides the shared Rust contract, UniFFI scaffolding and a C
-ABI. Android standard consumes the official 155.0 AARs directly. Apple release
-builds must package the official pinned XCFramework and generated Swift
-bindings. Linux, WebView2 and WinCairo consume the C ABI.
+ABI. Android standard consumes the official 155.0 AARs directly. Its Xanh-only
+password library enforces the shared exact HTTPS-origin, ASCII identifier,
+metadata and UTF-8 byte bounds for list/add/update/delete/touch, and successful
+mutations schedule local-change Sync. Decrypted UI is cleared on background,
+vault replacement or disconnect; stale async completions cannot repopulate or
+retarget it. The secure Activity opts out of Autofill/content capture and
+requests no IME personalized learning, with external provider/IME compliance
+remaining platform-controlled. Apple release builds must package the official
+pinned XCFramework and generated Swift bindings. Linux, WebView2 and WinCairo
+consume the C ABI.
 
 Android Lite uses an on-demand Play dynamic feature. `sync-feature-common`
 contains the UI, JobScheduler integration and password manager;

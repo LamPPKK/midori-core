@@ -337,6 +337,15 @@ Mozilla approval or a documented self-hosted deployment, signed artifacts and
 the interoperability/security matrix remain mandatory. Sync tokens, scoped
 keys and passwords are never included in `.xanhbackup`.
 
+The standard Android host applies the shared Logins contract to its Xanh-only
+password library: exact canonical HTTPS origins, ASCII identifiers and bounded
+UTF-8 username/password/field data are enforced before every mutation. A
+successful add/update/delete/touch schedules local-change Sync; backgrounding,
+vault replacement or disconnect clears decrypted rows and dialogs so stale
+async work cannot repopulate or retarget the screen. The hierarchy opts out of
+Android Autofill/content capture and requests no IME personalized learning;
+provider/IME compliance remains platform-controlled.
+
 On Linux, the optional native build now exposes account controls in the GTK
 menu, opens OAuth in the system browser, validates the registered callback and
 stores account/Sync/vault state in Secret Service. The ordinary desktop build

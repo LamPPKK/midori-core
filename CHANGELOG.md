@@ -243,6 +243,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   mistaken for Play upload artifacts.
 - Added exact-origin credential policy, five-minute vault expiry, HTTPS-only
   self-hosted configuration and approval-gated Mozilla-hosted release checks.
+- Hardened the standard Android password library with the shared exact-origin,
+  identifier and UTF-8 bounds, local-change scheduling, secure native UI and
+  lifecycle generation checks that discard stale decrypted presentation.
 - Rejected embedded NUL in credential values at the shared Rust boundary so
   NUL-terminated C hosts cannot silently truncate a username or password.
 - Hardened the Lite System WebView picker with bounded bridge messages, a

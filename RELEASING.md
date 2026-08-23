@@ -466,6 +466,14 @@ databases, logs and crash output for plaintext secrets and complete independent
 FFI/bridge fuzzing and security review. WPE and WinCairo Sync remain blocked by
 their isolated-bridge/vault guards even if another edition passes.
 
+For Android standard, also complete the password-library matrix in the Android
+repository release checklist. It must reject non-exact/non-HTTPS origins,
+invalid IDs and out-of-bound UTF-8 credential fields before native mutation,
+schedule successful add/update/delete/touch for Sync, and clear decrypted
+rows/dialogs across background, vault lock, disconnect and runtime replacement.
+No stale async completion may repopulate or retarget the UI, and Xanh must not
+register as an OS-wide Autofill service.
+
 For Lite, first publish the reviewed Android AAR to a private/local Maven
 repository, then build the on-demand splits explicitly:
 

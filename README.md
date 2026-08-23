@@ -324,6 +324,9 @@ model and provider workflow.
 Sync. It pins stable Mozilla Application Services 155.0 and exposes UniFFI plus
 a versioned C ABI for Kotlin, Swift, Vala and C#. Bookmarks/history use Places,
 remote tabs use Tabs and passwords use a local authenticated Logins vault.
+An official-tag verifier checks the lock, Cargo closure, Rust constants and
+license notice on relevant changes and weekly; a newer stable Mozilla release
+fails CI until its compatibility and security matrix is rerun explicitly.
 Mozilla-hosted builds require registered per-edition client IDs and production
 approval; an HTTPS self-hosted deployment remains available when configured
 against the same server as Firefox.

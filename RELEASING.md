@@ -74,6 +74,11 @@ GitHub source-release automation additionally requires
    and confirm every Lite/System WebView Gradle module equals the newest stable
    AndroidX WebKit version published in Google Maven. Prereleases never satisfy
    this gate.
+7. Run `python3 scripts/verify_application_services_latest.py` with network
+   access and confirm the lock, Cargo dependency graph, Rust identity constants
+   and third-party notice all match Mozilla's newest stable Application Services
+   tag and exact official revision. Prerelease, floating and mixed revisions
+   never satisfy this gate.
 
 Verification:
 
@@ -452,8 +457,11 @@ Before producing source artifacts, validate the new native editions.
 Before enabling Sync in any signed artifact, build `xanh-sync-core` with the
 `mozilla` feature against the exact revision in
 `xanh-sync-core/APPLICATION_SERVICES.lock`, generate an SBOM and include
-`THIRD_PARTY_NOTICES.md`. Run `./scripts/verify-sync-release.sh <edition>` for
-the target and retain evidence for every environment flag it checks.
+`THIRD_PARTY_NOTICES.md`. The latest-stable verifier must pass on the release
+commit; a newly published Mozilla stable tag requires an explicit dependency
+update plus the full interoperability/security matrix, never an automatic pin
+rewrite. Run `./scripts/verify-sync-release.sh <edition>` for the target and
+retain evidence for every environment flag it checks.
 
 Mozilla-hosted releases require a separately registered client ID/redirect URI
 and written production approval for each application identity. Otherwise the

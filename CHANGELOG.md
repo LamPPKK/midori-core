@@ -92,6 +92,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   replacement and the shared Android/C# ASCII and Unicode golden vectors.
 - Added the `xanh-sync-core` Rust boundary for Mozilla Accounts / Firefox Sync,
   pinned to stable Application Services 155.0 with UniFFI and a stable C ABI.
+- Added a weekly official-tag verifier that fails closed when the Application
+  Services lock, Cargo closure, Rust identity or license notice is stale or a
+  newer stable Mozilla release exists.
 - Added shared account, engine, scheduling, backoff, migration, bridge and vault
   policies plus Android, Swift and C# platform contracts.
 - Added reproducible Sync release gates, generated cross-language bindings and

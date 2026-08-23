@@ -21,8 +21,9 @@ jobs:
           components: rustfmt, clippy
       - name: Verify pinned Application Services release
         run: |
-          grep -Fx 'version=155.0' xanh-sync-core/APPLICATION_SERVICES.lock
-          grep -Fx 'revision=c0fd8cea40c9b5dafc6604831f7bd7a8c096d313' xanh-sync-core/APPLICATION_SERVICES.lock
+          python3 -B -m unittest discover -s scripts/tests \
+            -p 'test_verify_application_services_latest.py' -v
+          python3 scripts/verify_application_services_latest.py
           cargo fmt --manifest-path xanh-sync-core/Cargo.toml --check
       - name: Test portable contract and FFI policy
         run: cargo test --locked --manifest-path xanh-sync-core/Cargo.toml

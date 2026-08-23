@@ -3,7 +3,10 @@
 Xanh Browser uses Mozilla Application Services rather than implementing Sync
 1.5 itself. Version 1 pins Application Services 155.0 at
 `c0fd8cea40c9b5dafc6604831f7bd7a8c096d313`. Nightly artifacts are prohibited
-from production.
+from production. `scripts/verify_application_services_latest.py` compares this
+entire local dependency closure with Mozilla's official stable tags on relevant
+changes and weekly. A newer stable release blocks the baseline until the pin is
+reviewed and the interoperability/security matrix is rerun.
 
 ## Data and behavior
 

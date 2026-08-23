@@ -5,6 +5,12 @@ builds use Mozilla Application Services **155.0** at revision
 `c0fd8cea40c9b5dafc6604831f7bd7a8c096d313` and must enable the `mozilla`
 feature.
 
+The repository does not assume that this pin remains current. Run
+`python3 scripts/verify_application_services_latest.py` from the repository
+root with network access before release. CI repeats the check for relevant
+changes and weekly; a newer stable tag is a reviewed upgrade that must rerun
+interop, FFI, SBOM and security evidence rather than an automatic rewrite.
+
 The default feature set deliberately builds only the portable policy/state
 layer so unit tests do not require NSS. A release that omits `mozilla` must be
 rejected by packaging checks.

@@ -121,6 +121,95 @@ private final class AppleFirefoxSyncRuntime: XanhFirefoxSyncRuntime, @unchecked 
             )
         }
     }
+    func bookmarkRootGUID(_ root: XanhBookmarkRoot) throws -> String {
+        bookmarkRootGuid(root: map(root))
+    }
+    func bookmarks(_ root: XanhBookmarkRoot) throws -> [XanhBookmarkRecord] {
+        try runtime.bookmarkTree(root: map(root)).map { record in
+            XanhBookmarkRecord(
+                guid: record.guid,
+                parentGUID: record.parentGuid,
+                position: record.position,
+                kind: map(record.kind),
+                title: record.title,
+                rawURL: record.url,
+                isOpenable: record.isOpenable,
+                dateAddedEpochMillis: record.dateAddedEpochMillis,
+                lastModifiedEpochMillis: record.lastModifiedEpochMillis
+            )
+        }
+    }
+    func createBookmark(
+        parentGUID: String,
+        url: URL,
+        title: String,
+        dateAddedEpochMillis: Int64,
+        isPrivate: Bool
+    ) throws -> String {
+        try runtime.createBookmark(item: NewBookmark(
+            parentGuid: parentGUID,
+            position: nil,
+            kind: .bookmark,
+            title: title,
+            url: url.absoluteString,
+            dateAddedEpochMillis: dateAddedEpochMillis,
+            lastModifiedEpochMillis: nil,
+            isPrivate: isPrivate
+        ))
+    }
+    func renameBookmark(guid: String, title: String, isPrivate: Bool) throws {
+        try runtime.updateBookmark(update: BookmarkUpdate(
+            guid: guid,
+            title: title,
+            url: nil,
+            parentGuid: nil,
+            position: nil,
+            isPrivate: isPrivate
+        ))
+    }
+    func deleteBookmark(guid: String, isPrivate: Bool) throws -> Bool {
+        try runtime.deleteBookmark(guid: guid, isPrivate: isPrivate)
+    }
+    func recordHistory(
+        url: URL,
+        title: String,
+        visitedAtEpochMillis: Int64,
+        transition: XanhHistoryTransition,
+        isPrivate: Bool
+    ) throws -> XanhHistoryUpdateResult {
+        let result = try runtime.recordHistory(visits: [LocalHistoryVisit(
+            url: url.absoluteString,
+            title: title,
+            visitedAtEpochMillis: visitedAtEpochMillis,
+            transition: map(transition),
+            isPrivate: isPrivate
+        )])
+        return XanhHistoryUpdateResult(
+            acceptedCount: result.acceptedCount,
+            skippedPrivateCount: result.skippedPrivateCount
+        )
+    }
+    func recentHistory(limit: UInt32) throws -> [XanhHistoryVisitRecord] {
+        try runtime.recentHistory(limit: limit).map { record in
+            guard let url = URL(string: record.url) else {
+                throw XanhSyncContractError.bridgeRejected
+            }
+            return XanhHistoryVisitRecord(
+                url: url,
+                title: record.title,
+                visitedAtEpochMillis: record.visitedAtEpochMillis,
+                transition: map(record.transition),
+                isRemote: record.isRemote
+            )
+        }
+    }
+    func deleteHistoryVisit(url: URL, visitedAtEpochMillis: Int64) throws {
+        try runtime.deleteHistoryVisit(
+            url: url.absoluteString,
+            visitedAtEpochMillis: visitedAtEpochMillis
+        )
+    }
+    func clearHistory() throws { try runtime.clearHistory() }
     func vaultUnlocked() throws -> Bool { try runtime.vaultUnlocked() }
     func unlockVault(localLoginsKey: String) throws {
         try runtime.unlockVault(localLoginsKey: localLoginsKey)
@@ -211,6 +300,47 @@ private final class AppleFirefoxSyncRuntime: XanhFirefoxSyncRuntime, @unchecked 
         case .tv: .tv
         case .vr: .vr
         case .unknown: .unknown
+        }
+    }
+
+    private func map(_ root: XanhBookmarkRoot) -> BookmarkRoot {
+        switch root {
+        case .menu: .menu
+        case .toolbar: .toolbar
+        case .unfiled: .unfiled
+        case .mobile: .mobile
+        }
+    }
+
+    private func map(_ kind: BookmarkKind) -> XanhBookmarkKind {
+        switch kind {
+        case .bookmark: .bookmark
+        case .folder: .folder
+        case .separator: .separator
+        }
+    }
+
+    private func map(_ transition: XanhHistoryTransition) -> HistoryTransition {
+        switch transition {
+        case .link: .link
+        case .typed: .typed
+        case .bookmark: .bookmark
+        case .redirectPermanent: .redirectPermanent
+        case .redirectTemporary: .redirectTemporary
+        case .download: .download
+        case .reload: .reload
+        }
+    }
+
+    private func map(_ transition: HistoryTransition) -> XanhHistoryTransition {
+        switch transition {
+        case .link: .link
+        case .typed: .typed
+        case .bookmark: .bookmark
+        case .redirectPermanent: .redirectPermanent
+        case .redirectTemporary: .redirectTemporary
+        case .download: .download
+        case .reload: .reload
         }
     }
 }

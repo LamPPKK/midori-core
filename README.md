@@ -367,11 +367,14 @@ credential pickers with trusted-gesture, exact-origin, tab and navigation-nonce
 checks; private/InPrivate tabs never install them. Apple additionally keeps its
 bridge and credential payload in an isolated `WKContentWorld`. Apple decodes
 remote tabs into bounded typed records, groups them by device and opens a
-regular tab only after the user selects one specific safe HTTP(S) row. Their
-ordinary verification artifacts intentionally omit the native Mozilla runtime,
-and production remains blocked until the pinned XCFramework/DLL and platform
-interoperability/security evidence are packaged and reviewed. Each platform
-uses its own registered callback scheme.
+regular tab only after the user selects one specific safe HTTP(S) row. Its
+native Places library also presents bounded bookmark/history records, preserves
+the exact bookmark GUID or URL/millisecond visit identity for mutations, records
+only completed regular navigation and excludes private tabs before every Places
+write. Their ordinary verification artifacts intentionally omit the native
+Mozilla runtime, and production remains blocked until the pinned XCFramework/DLL
+and platform interoperability/security evidence are packaged and reviewed. Each
+platform uses its own registered callback scheme.
 
 The Sync-enabled Windows host now publishes bounded regular tabs before Sync,
 records only successful regular navigation in Places and exposes a native

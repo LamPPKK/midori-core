@@ -30,10 +30,12 @@ require_evidence() {
   fi
 }
 
-verify_apple_remote_tabs() {
+verify_apple_sync_library() {
   coordinator='platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift'
+  places='platform/apple/Sources/XanhBrowserCore/FirefoxPlaces.swift'
   runtime='platform/apple/App/AppleFirefoxSyncRuntime.swift'
   settings='platform/apple/App/FirefoxSyncSettingsView.swift'
+  places_ui='platform/apple/App/FirefoxPlacesLibraryView.swift'
   workspace='platform/apple/App/BrowserModel.swift'
   browser='platform/apple/App/BrowserView.swift'
 
@@ -46,7 +48,7 @@ verify_apple_remote_tabs() {
     "$coordinator" >/dev/null
   grep -F 'try device.tabs.enumerated().map' "$runtime" >/dev/null
   grep -F 'ForEach(model.remoteTabs)' "$settings" >/dev/null
-  grep -F 'onOpenRemoteTab(url)' "$settings" >/dev/null
+  grep -F 'onOpenLibraryURL(url)' "$settings" >/dev/null
   grep -F 'guard initialURL.map(AddressResolver.isAllowedWebURL) ?? true' \
     "$workspace" >/dev/null
   grep -F '_ = workspace.addTab(initialURL: url)' "$browser" >/dev/null
@@ -54,6 +56,31 @@ verify_apple_remote_tabs() {
     echo 'Apple Remote Tabs must expose explicit typed rows, not a count-only summary' >&2
     exit 1
   fi
+
+  grep -F 'public struct XanhBookmarkRecord:' "$places" >/dev/null
+  grep -F 'public struct XanhHistoryVisitRecord:' "$places" >/dev/null
+  grep -F 'public static let maximumBookmarkRecords = 10_000' "$places" >/dev/null
+  grep -F 'public static let maximumHistoryResults = 500' "$places" >/dev/null
+  grep -F 'public static let maximumBookmarkPayloadBytes = 16 * 1_024 * 1_024' \
+    "$places" >/dev/null
+  grep -F 'public static let maximumHistoryPayloadBytes = 8 * 1_024 * 1_024' \
+    "$places" >/dev/null
+  grep -F 'public func bookmarks() throws -> [XanhBookmarkRecord]' \
+    "$coordinator" >/dev/null
+  grep -F 'public func renameBookmark(' "$coordinator" >/dev/null
+  grep -F 'public func deleteBookmark(guid: String, isPrivate: Bool = false)' \
+    "$coordinator" >/dev/null
+  grep -F 'if isPrivate { return }' "$coordinator" >/dev/null
+  grep -F 'visitedAtEpochMillis: Int64,' \
+    "$coordinator" >/dev/null
+  grep -F 'isPrivate: Bool = false' "$coordinator" >/dev/null
+  grep -F 'try runtime.bookmarkTree(root: map(root))' "$runtime" >/dev/null
+  grep -F 'try runtime.recordHistory(visits: [LocalHistoryVisit(' "$runtime" >/dev/null
+  grep -F 'struct FirefoxBookmarksLibraryView: View' "$places_ui" >/dev/null
+  grep -F 'struct FirefoxHistoryLibraryView: View' "$places_ui" >/dev/null
+  grep -F '.disabled(isPrivateContext)' "$places_ui" >/dev/null
+  grep -F 'if event == .finished,' "$browser" >/dev/null
+  grep -F 'isPrivate: tab.isPrivate' "$browser" >/dev/null
 }
 
 case "$edition" in
@@ -449,7 +476,7 @@ case "$edition" in
       platform/apple/App/BrowserView.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
-    verify_apple_remote_tabs
+    verify_apple_sync_library
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
     grep -F 'public async Task UpdateLocalTabsAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
@@ -856,7 +883,7 @@ case "$edition" in
       platform/apple/App/BrowserView.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
-    verify_apple_remote_tabs
+    verify_apple_sync_library
     test "${XANH_APPLE_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;
   android)

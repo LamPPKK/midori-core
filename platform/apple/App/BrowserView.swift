@@ -61,10 +61,25 @@ struct BrowserView: View {
             Task { await firefoxSync.handleOAuthCallback(url) }
         }
         .sheet(isPresented: $firefoxSync.isShowingSettings) {
-            FirefoxSyncSettingsView(model: firefoxSync) { url in
-                guard AddressResolver.isAllowedWebURL(url) else { return }
-                _ = workspace.addTab(initialURL: url)
-            }
+            FirefoxSyncSettingsView(
+                model: firefoxSync,
+                isPrivateContext: tab.isPrivate,
+                canSaveCurrentPage: !tab.isPrivate
+                    && tab.page.url.map(XanhPlacesPolicy.isAllowedWebURL) == true,
+                onSaveCurrentBookmark: {
+                    Task {
+                        await firefoxSync.saveBookmark(
+                            url: tab.page.url,
+                            title: tab.page.title,
+                            isPrivate: tab.isPrivate
+                        )
+                    }
+                },
+                onOpenLibraryURL: { url in
+                    guard XanhPlacesPolicy.isAllowedWebURL(url) else { return }
+                    _ = workspace.addTab(initialURL: url)
+                }
+            )
         }
         .sheet(item: $firefoxSync.credentialSelection, onDismiss: {
             firefoxSync.cancelCredentialSelection()
@@ -91,6 +106,15 @@ struct BrowserView: View {
             do {
                 for try await event in tab.page.navigations {
                     tab.handleNavigationEvent(event)
+                    if event == .finished,
+                       let url = tab.page.url,
+                       XanhPlacesPolicy.isAllowedWebURL(url) {
+                        await firefoxSync.recordHistory(
+                            url: url,
+                            title: tab.page.title,
+                            isPrivate: tab.isPrivate
+                        )
+                    }
                 }
             } catch {
                 firefoxSync.cancelCredentialSelection()

@@ -33,11 +33,18 @@ final class FirefoxSyncViewModel {
     var accountDomain = ""
     var remoteTabs: [XanhRemoteTabsDevice] = []
     var remoteTabsStatus = "Remote tabs have not been loaded."
+    var bookmarks: [XanhBookmarkRecord] = []
+    var bookmarksStatus = "Bookmarks have not been loaded."
+    var recentHistory: [XanhHistoryVisitRecord] = []
+    var historyStatus = "History has not been loaded."
+    var isConfirmingClearHistory = false
     var errorMessage: String?
     var credentialSelection: FirefoxCredentialSelection?
 
     private var coordinator: XanhFirefoxSyncCoordinator?
     private var pendingOAuth: XanhOAuthLaunch?
+    private var pendingHistory: [PendingHistoryVisit] = []
+    private var isWritingHistory = false
     @ObservationIgnored
     private var credentialContinuation: CheckedContinuation<XanhCredentialRecord?, Never>?
 
@@ -178,6 +185,121 @@ final class FirefoxSyncViewModel {
         }
     }
 
+    func saveBookmark(url: URL?, title: String?, isPrivate: Bool) async {
+        guard let coordinator else { return }
+        guard !isPrivate else {
+            bookmarksStatus = "Private tabs cannot create bookmarks."
+            return
+        }
+        guard let url, XanhPlacesPolicy.isAllowedWebURL(url) else {
+            bookmarksStatus = "The current page cannot be bookmarked safely."
+            return
+        }
+        do {
+            _ = try await coordinator.createBookmark(url: url, title: title)
+            await loadBookmarks(detail: "Bookmark saved to Mobile Bookmarks.")
+        } catch {
+            report(error)
+        }
+    }
+
+    func loadBookmarks(detail: String? = nil) async {
+        guard let coordinator else { return }
+        do {
+            bookmarks = try await coordinator.bookmarks().filter { $0.kind == .bookmark }
+            bookmarksStatus = detail ?? (bookmarks.isEmpty
+                ? "No Firefox Sync bookmarks are available."
+                : "\(bookmarks.count) bookmark(s). Unsafe Firefox URLs remain manageable but cannot be opened.")
+        } catch {
+            bookmarks = []
+            bookmarksStatus = "Bookmarks could not be loaded."
+            report(error)
+        }
+    }
+
+    func renameBookmark(
+        _ bookmark: XanhBookmarkRecord,
+        title: String,
+        isPrivate: Bool
+    ) async {
+        guard let coordinator else { return }
+        do {
+            try await coordinator.renameBookmark(
+                guid: bookmark.guid,
+                title: title,
+                isPrivate: isPrivate
+            )
+            await loadBookmarks(detail: "Bookmark renamed by exact GUID.")
+        } catch {
+            report(error)
+        }
+    }
+
+    func deleteBookmark(_ bookmark: XanhBookmarkRecord, isPrivate: Bool) async {
+        guard let coordinator else { return }
+        do {
+            let deleted = try await coordinator.deleteBookmark(
+                guid: bookmark.guid,
+                isPrivate: isPrivate
+            )
+            await loadBookmarks(detail: deleted
+                ? "Bookmark deleted by exact GUID."
+                : "Bookmark no longer exists.")
+        } catch {
+            report(error)
+        }
+    }
+
+    func recordHistory(url: URL, title: String?, isPrivate: Bool) async {
+        guard !isPrivate,
+              coordinator != nil,
+              XanhPlacesPolicy.isAllowedWebURL(url) else { return }
+        let candidate = PendingHistoryVisit(url: url, title: title)
+        guard pendingHistory.last != candidate else { return }
+        if pendingHistory.count == 100 { pendingHistory.removeFirst() }
+        pendingHistory.append(candidate)
+        await drainHistoryQueue()
+    }
+
+    func loadRecentHistory(detail: String? = nil) async {
+        guard let coordinator else { return }
+        do {
+            recentHistory = try await coordinator.recentHistory()
+            historyStatus = detail ?? (recentHistory.isEmpty
+                ? "No Firefox Sync history is available."
+                : "\(recentHistory.count) recent visit(s). Remote visits are never opened automatically.")
+        } catch {
+            recentHistory = []
+            historyStatus = "History could not be loaded."
+            report(error)
+        }
+    }
+
+    func deleteHistoryVisit(_ visit: XanhHistoryVisitRecord, isPrivate: Bool) async {
+        guard let coordinator else { return }
+        do {
+            try await coordinator.deleteHistoryVisit(
+                url: visit.url,
+                visitedAtEpochMillis: visit.visitedAtEpochMillis,
+                isPrivate: isPrivate
+            )
+            await loadRecentHistory(detail: "The selected URL/timestamp visit was deleted.")
+        } catch {
+            report(error)
+        }
+    }
+
+    func clearHistory(isPrivate: Bool) async {
+        guard let coordinator else { return }
+        do {
+            try await coordinator.clearHistory(isPrivate: isPrivate)
+            recentHistory = []
+            historyStatus = "All local Places history was cleared. The next Sync publishes the deletion."
+        } catch {
+            report(error)
+        }
+    }
+
     func requestCredential(
         for context: XanhCredentialContext
     ) async -> XanhCredentialRecord? {
@@ -236,6 +358,11 @@ final class FirefoxSyncViewModel {
             try await coordinator.disconnect(deleteLocal: deleteLocal)
             remoteTabs = []
             remoteTabsStatus = "Remote tabs have not been loaded."
+            bookmarks = []
+            bookmarksStatus = "Bookmarks have not been loaded."
+            recentHistory = []
+            historyStatus = "History has not been loaded."
+            pendingHistory = []
             await refreshSnapshot()
         } catch {
             report(error)
@@ -303,6 +430,28 @@ final class FirefoxSyncViewModel {
         snapshot = await coordinator.snapshot
     }
 
+    private func drainHistoryQueue() async {
+        guard !isWritingHistory else { return }
+        isWritingHistory = true
+        defer { isWritingHistory = false }
+
+        while !pendingHistory.isEmpty, !Task.isCancelled {
+            guard let coordinator else {
+                pendingHistory = []
+                return
+            }
+            let visit = pendingHistory.removeFirst()
+            do {
+                try await coordinator.recordHistory(url: visit.url, title: visit.title)
+            } catch XanhSyncContractError.busy {
+                pendingHistory.insert(visit, at: 0)
+                try? await Task.sleep(for: .milliseconds(250))
+            } catch {
+                historyStatus = "A page visit could not be saved to Places."
+            }
+        }
+    }
+
     private func report(_ error: Error) {
         errorMessage = error.localizedDescription
         snapshot = snapshotWithDetail("Firefox Sync needs attention")
@@ -342,6 +491,11 @@ final class FirefoxSyncViewModel {
         let accountsURL: String
         let tokenServerURL: String
         let clientID: String
+    }
+
+    private struct PendingHistoryVisit: Equatable {
+        let url: URL
+        let title: String?
     }
 }
 

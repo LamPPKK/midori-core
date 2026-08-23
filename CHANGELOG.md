@@ -147,6 +147,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Replaced Apple's count-only Remote Tabs summary with bounded typed records,
   sanitized grouped device rows and explicit safe-HTTP(S) opening. Invalid or
   oversized native output now fails closed without navigating to a fallback.
+- Added an Apple native Places bookmark/history library for macOS, iOS and
+  iPadOS. It records completed regular navigations, preserves exact native
+  bookmark GUID and visit timestamp identities for mutations, bounds all typed
+  output and rejects private-tab writes before crossing the UniFFI boundary.
 - Added fail-closed Apple XCFramework and Windows native-DLL packaging
   boundaries. Mozilla-hosted metadata is embedded only when a separately
   approved client ID is supplied; self-hosted configuration remains the

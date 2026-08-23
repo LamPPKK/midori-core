@@ -62,6 +62,14 @@ native display. Unsafe URLs, duplicate identities and out-of-range timestamps
 fail closed. Receiving or refreshing the list never navigates; a regular tab is
 created only after the user chooses one specific safe HTTP(S) row.
 
+The native Places library loads all four Firefox bookmark roots into a bounded
+typed model (10,000 records and 16 MiB), and loads at most 500 recent history
+visits within an 8 MiB boundary. Bookmark rename/delete preserves the selected
+12-character Places GUID; history delete preserves the selected canonical URL
+and exact millisecond timestamp. Completed regular navigations are recorded as
+link visits. Private tabs are rejected before bookmark or history mutations,
+and unsafe records remain inert rather than being opened through a fallback.
+
 Regular tabs install a main-frame-only password-fill script in a named
 `WKContentWorld`. The page world cannot read its tab ID, per-navigation nonce
 or native credential payload. Only a trusted pointer/keyboard action on a

@@ -3,7 +3,10 @@ import SwiftUI
 @available(iOS 26.0, macOS 26.0, *)
 struct FirefoxSyncSettingsView: View {
     @Bindable var model: FirefoxSyncViewModel
-    let onOpenRemoteTab: (URL) -> Void
+    let isPrivateContext: Bool
+    let canSaveCurrentPage: Bool
+    let onSaveCurrentBookmark: () -> Void
+    let onOpenLibraryURL: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -65,6 +68,14 @@ struct FirefoxSyncSettingsView: View {
                             }
                         }
 
+                        FirefoxPlacesSettingsSection(
+                            model: model,
+                            isPrivateContext: isPrivateContext,
+                            canSaveCurrentPage: canSaveCurrentPage,
+                            onSaveCurrentBookmark: onSaveCurrentBookmark,
+                            onOpenLibraryURL: onOpenLibraryURL
+                        )
+
                         Section("Passwords") {
                             Button(
                                 model.snapshot.vaultUnlocked ? "Lock password vault" : "Unlock password vault",
@@ -87,7 +98,7 @@ struct FirefoxSyncSettingsView: View {
                                         Button {
                                             guard let url = tab.currentURL,
                                                   AddressResolver.isAllowedWebURL(url) else { return }
-                                            onOpenRemoteTab(url)
+                                            onOpenLibraryURL(url)
                                             dismiss()
                                         } label: {
                                             VStack(alignment: .leading, spacing: 3) {
@@ -200,5 +211,46 @@ struct FirefoxSyncSettingsView: View {
             date: .abbreviated,
             time: .shortened
         )
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+private struct FirefoxPlacesSettingsSection: View {
+    @Bindable var model: FirefoxSyncViewModel
+    let isPrivateContext: Bool
+    let canSaveCurrentPage: Bool
+    let onSaveCurrentBookmark: () -> Void
+    let onOpenLibraryURL: (URL) -> Void
+
+    var body: some View {
+        Section("Places library") {
+            if isPrivateContext {
+                Text("Places changes are unavailable while the current tab is private.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Button("Bookmark current page", systemImage: "bookmark") {
+                onSaveCurrentBookmark()
+            }
+            .disabled(!canSaveCurrentPage)
+            NavigationLink {
+                FirefoxBookmarksLibraryView(
+                    model: model,
+                    isPrivateContext: isPrivateContext,
+                    onOpenURL: onOpenLibraryURL
+                )
+            } label: {
+                Label("Bookmarks", systemImage: "book")
+            }
+            NavigationLink {
+                FirefoxHistoryLibraryView(
+                    model: model,
+                    isPrivateContext: isPrivateContext,
+                    onOpenURL: onOpenLibraryURL
+                )
+            } label: {
+                Label("History", systemImage: "clock")
+            }
+        }
     }
 }

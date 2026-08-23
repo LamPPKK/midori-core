@@ -193,6 +193,27 @@ public protocol XanhFirefoxSyncRuntime: AnyObject, Sendable {
     func persistedSyncState() throws -> String?
     func sync(reason: XanhSyncReason, engines: [XanhSyncEngine]) throws -> XanhNativeSyncResult
     func remoteTabs() throws -> [XanhRemoteTabsDevice]
+    func bookmarkRootGUID(_ root: XanhBookmarkRoot) throws -> String
+    func bookmarks(_ root: XanhBookmarkRoot) throws -> [XanhBookmarkRecord]
+    func createBookmark(
+        parentGUID: String,
+        url: URL,
+        title: String,
+        dateAddedEpochMillis: Int64,
+        isPrivate: Bool
+    ) throws -> String
+    func renameBookmark(guid: String, title: String, isPrivate: Bool) throws
+    func deleteBookmark(guid: String, isPrivate: Bool) throws -> Bool
+    func recordHistory(
+        url: URL,
+        title: String,
+        visitedAtEpochMillis: Int64,
+        transition: XanhHistoryTransition,
+        isPrivate: Bool
+    ) throws -> XanhHistoryUpdateResult
+    func recentHistory(limit: UInt32) throws -> [XanhHistoryVisitRecord]
+    func deleteHistoryVisit(url: URL, visitedAtEpochMillis: Int64) throws
+    func clearHistory() throws
     func vaultUnlocked() throws -> Bool
     func unlockVault(localLoginsKey: String) throws
     func lockVault() throws
@@ -460,6 +481,166 @@ public actor XanhFirefoxSyncCoordinator {
         return devices
     }
 
+    public func bookmarks() throws -> [XanhBookmarkRecord] {
+        try startOperation()
+        defer { finishOperation() }
+        let opened = try requireRuntime()
+        var records: [XanhBookmarkRecord] = []
+        for root in XanhBookmarkRoot.allCases {
+            let rootRecords = try opened.bookmarks(root)
+            guard rootRecords.count <= XanhPlacesPolicy.maximumBookmarkRecords,
+                  records.count <= XanhPlacesPolicy.maximumBookmarkRecords - rootRecords.count else {
+                throw XanhSyncContractError.bridgeRejected
+            }
+            records.append(contentsOf: rootRecords)
+        }
+        guard records.allSatisfy({ $0.isSafe }),
+              Set(records.map { $0.guid }).count == records.count,
+              let payloadBytes = try? JSONEncoder().encode(records).count,
+              payloadBytes <= XanhPlacesPolicy.maximumBookmarkPayloadBytes else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        return records
+    }
+
+    @discardableResult
+    public func createBookmark(
+        url: URL,
+        title: String?,
+        root: XanhBookmarkRoot = .mobile,
+        isPrivate: Bool = false
+    ) throws -> String {
+        guard !isPrivate,
+              XanhPlacesPolicy.isAllowedWebURL(url) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        let safeTitle = XanhPlacesPolicy.sanitizeTitle(title, fallback: url.absoluteString)
+        let timestamp = try currentEpochMillis()
+        try startOperation()
+        defer { finishOperation() }
+        let opened = try requireRuntime()
+        let parentGUID = try opened.bookmarkRootGUID(root)
+        guard XanhPlacesPolicy.isGUID(parentGUID) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        let guid = try opened.createBookmark(
+            parentGUID: parentGUID,
+            url: url,
+            title: safeTitle,
+            dateAddedEpochMillis: timestamp,
+            isPrivate: false
+        )
+        guard XanhPlacesPolicy.isGUID(guid) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        schedule.localChange = now()
+        return guid
+    }
+
+    public func renameBookmark(
+        guid: String,
+        title: String,
+        isPrivate: Bool = false
+    ) throws {
+        guard !isPrivate,
+              XanhPlacesPolicy.isGUID(guid) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        let safeTitle = XanhPlacesPolicy.sanitizeTitle(title, fallback: "Untitled")
+        try startOperation()
+        defer { finishOperation() }
+        try requireRuntime().renameBookmark(guid: guid, title: safeTitle, isPrivate: false)
+        schedule.localChange = now()
+    }
+
+    @discardableResult
+    public func deleteBookmark(guid: String, isPrivate: Bool = false) throws -> Bool {
+        guard !isPrivate,
+              XanhPlacesPolicy.isGUID(guid) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        try startOperation()
+        defer { finishOperation() }
+        let deleted = try requireRuntime().deleteBookmark(guid: guid, isPrivate: false)
+        if deleted { schedule.localChange = now() }
+        return deleted
+    }
+
+    public func recordHistory(
+        url: URL,
+        title: String?,
+        transition: XanhHistoryTransition = .link,
+        isPrivate: Bool = false
+    ) throws {
+        if isPrivate { return }
+        guard XanhPlacesPolicy.isAllowedWebURL(url) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        let safeTitle = XanhPlacesPolicy.sanitizeTitle(title, fallback: url.absoluteString)
+        let timestamp = try currentEpochMillis()
+        try startOperation()
+        defer { finishOperation() }
+        let result = try requireRuntime().recordHistory(
+            url: url,
+            title: safeTitle,
+            visitedAtEpochMillis: timestamp,
+            transition: transition,
+            isPrivate: false
+        )
+        guard result.acceptedCount == 1,
+              result.skippedPrivateCount == 0 else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        schedule.localChange = now()
+    }
+
+    public func recentHistory(
+        limit: UInt32 = UInt32(XanhPlacesPolicy.maximumHistoryResults)
+    ) throws -> [XanhHistoryVisitRecord] {
+        guard limit > 0,
+              limit <= XanhPlacesPolicy.maximumHistoryResults else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        try startOperation()
+        defer { finishOperation() }
+        let records = try requireRuntime().recentHistory(limit: limit)
+        guard records.count <= Int(limit),
+              records.allSatisfy({ $0.isSafe }),
+              Set(records.map { $0.id }).count == records.count,
+              let payloadBytes = try? JSONEncoder().encode(records).count,
+              payloadBytes <= XanhPlacesPolicy.maximumHistoryPayloadBytes else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        return records
+    }
+
+    public func deleteHistoryVisit(
+        url: URL,
+        visitedAtEpochMillis: Int64,
+        isPrivate: Bool = false
+    ) throws {
+        guard !isPrivate,
+              XanhPlacesPolicy.isAllowedWebURL(url),
+              XanhPlacesPolicy.isSafeTimestamp(visitedAtEpochMillis, allowZero: false) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        try startOperation()
+        defer { finishOperation() }
+        try requireRuntime().deleteHistoryVisit(
+            url: url,
+            visitedAtEpochMillis: visitedAtEpochMillis
+        )
+        schedule.localChange = now()
+    }
+
+    public func clearHistory(isPrivate: Bool = false) throws {
+        guard !isPrivate else { throw XanhSyncContractError.bridgeRejected }
+        try startOperation()
+        defer { finishOperation() }
+        try requireRuntime().clearHistory()
+        schedule.localChange = now()
+    }
+
     public func credentials(
         for context: XanhCredentialContext
     ) throws -> [XanhCredentialRecord] {
@@ -634,6 +815,16 @@ public actor XanhFirefoxSyncCoordinator {
     private func requireRuntime() throws -> any XanhFirefoxSyncRuntime {
         guard let runtime else { throw XanhSyncContractError.nativeCoreUnavailable }
         return runtime
+    }
+
+    private func currentEpochMillis() throws -> Int64 {
+        let value = now().timeIntervalSince1970 * 1_000
+        guard value.isFinite,
+              value > 0,
+              value <= Double(XanhPlacesPolicy.maximumEpochMillis) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        return Int64(value.rounded(.down))
     }
 
     private func requireUsableVault(_ opened: any XanhFirefoxSyncRuntime) throws {

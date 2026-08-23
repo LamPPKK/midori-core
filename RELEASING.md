@@ -521,6 +521,14 @@ than repackaging it as a monolithic APK.
    inert until one row is selected. Reject more than 100 devices/500 total
    tabs, duplicate identities, unsafe current/history/icon URLs, payloads over
    8 MiB and out-of-range timestamps without opening a home/search fallback.
+   In the Places library, load all four bookmark roots, save the current regular
+   page, then rename and delete it while proving the same 12-character GUID is
+   used. Record two visits to the same URL, delete only the selected exact
+   millisecond visit, then confirm clear-all removes the remaining native Places
+   history. Reject malformed/duplicate GUIDs, unsafe URL/openable mismatches,
+   more than 10,000 bookmark records, more than 500 history rows and aggregate
+   bookmark/history payloads over 16/8 MiB. Repeat create/update/delete and
+   navigation in a private tab and verify no Places mutation is attempted.
 5. On macOS, iPhone and iPad, verify the native credential picker after Face
    ID/Touch ID/passcode unlock. Cover cancel/retry, exact-origin denial,
    cross-origin frames, forged or oversized messages, stale navigation,

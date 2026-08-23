@@ -292,6 +292,191 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
     }
 }
 
+@Test func placesLibraryPreservesExactIdentitiesAndRejectsPrivateOrUnsafeData() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.state = .connected
+    let bookmarkURL = try #require(URL(string: "https://example.org/bookmark"))
+    let historyURL = try #require(URL(string: "https://example.org/history"))
+    let bookmark = XanhBookmarkRecord(
+        guid: "bookmark1234",
+        parentGUID: "mobile______",
+        position: 0,
+        kind: .bookmark,
+        title: "Saved\u{202E} Page",
+        rawURL: bookmarkURL.absoluteString,
+        isOpenable: true,
+        dateAddedEpochMillis: 1,
+        lastModifiedEpochMillis: 2
+    )
+    let visit = XanhHistoryVisitRecord(
+        url: historyURL,
+        title: "Visited page",
+        visitedAtEpochMillis: 3,
+        transition: .typed,
+        isRemote: true
+    )
+    runtime.bookmarksByRoot[.mobile] = [bookmark]
+    runtime.historyRecords = [visit]
+    let coordinator = try makeCoordinator(
+        runtime: runtime,
+        secrets: FakeSyncSecrets(),
+        now: { Date(timeIntervalSince1970: 1_700_000_000) }
+    )
+    _ = try await coordinator.initialize()
+
+    let bookmarks = try await coordinator.bookmarks()
+    #expect(bookmarks == [bookmark])
+    #expect(bookmarks[0].displayTitle == "Saved Page")
+    #expect(bookmarks[0].openableURL == bookmarkURL)
+
+    let created = try await coordinator.createBookmark(
+        url: bookmarkURL,
+        title: "  New\nbookmark  "
+    )
+    #expect(created == "created_____")
+    #expect(runtime.lastCreatedBookmarkParentGUID == "mobile______")
+    #expect(runtime.lastCreatedBookmarkTitle == "New bookmark")
+    #expect(runtime.lastCreatedBookmarkTimestamp == 1_700_000_000_000)
+
+    do {
+        try await coordinator.renameBookmark(
+            guid: bookmark.guid,
+            title: "Private rename",
+            isPrivate: true
+        )
+        Issue.record("private bookmark rename must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+    #expect(runtime.lastRenamedBookmarkGUID == nil)
+    do {
+        _ = try await coordinator.deleteBookmark(guid: bookmark.guid, isPrivate: true)
+        Issue.record("private bookmark delete must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+    #expect(runtime.lastDeletedBookmarkGUID == nil)
+
+    try await coordinator.renameBookmark(guid: bookmark.guid, title: " Renamed\nbookmark ")
+    #expect(runtime.lastRenamedBookmarkGUID == bookmark.guid)
+    #expect(runtime.lastRenamedBookmarkTitle == "Renamed bookmark")
+    #expect(try await coordinator.deleteBookmark(guid: bookmark.guid))
+    #expect(runtime.lastDeletedBookmarkGUID == bookmark.guid)
+
+    try await coordinator.recordHistory(
+        url: historyURL,
+        title: "Private",
+        isPrivate: true
+    )
+    #expect(runtime.recordHistoryCalls == 0)
+    do {
+        try await coordinator.deleteHistoryVisit(
+            url: historyURL,
+            visitedAtEpochMillis: visit.visitedAtEpochMillis,
+            isPrivate: true
+        )
+        Issue.record("private history delete must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+    #expect(runtime.lastDeletedHistoryURL == nil)
+    do {
+        try await coordinator.clearHistory(isPrivate: true)
+        Issue.record("private history clear must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+    #expect(runtime.clearHistoryCalls == 0)
+    try await coordinator.recordHistory(url: historyURL, title: " Normal\nvisit ")
+    #expect(runtime.recordHistoryCalls == 1)
+    #expect(runtime.lastHistoryTitle == "Normal visit")
+    #expect(runtime.lastHistoryTimestamp == 1_700_000_000_000)
+
+    #expect(try await coordinator.recentHistory() == [visit])
+    try await coordinator.deleteHistoryVisit(
+        url: historyURL,
+        visitedAtEpochMillis: visit.visitedAtEpochMillis
+    )
+    #expect(runtime.lastDeletedHistoryURL == historyURL)
+    #expect(runtime.lastDeletedHistoryTimestamp == visit.visitedAtEpochMillis)
+    try await coordinator.clearHistory()
+    #expect(runtime.clearHistoryCalls == 1)
+
+    runtime.bookmarksByRoot[.toolbar] = [bookmark]
+    do {
+        _ = try await coordinator.bookmarks()
+        Issue.record("duplicate Places GUIDs across roots must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+
+    runtime.bookmarksByRoot = [
+        .mobile: (0...XanhPlacesPolicy.maximumBookmarkRecords).map { index in
+            XanhBookmarkRecord(
+                guid: String(format: "%012d", index),
+                parentGUID: "mobile______",
+                position: UInt32(index),
+                kind: .bookmark,
+                title: "Bookmark",
+                rawURL: bookmarkURL.absoluteString,
+                isOpenable: true,
+                dateAddedEpochMillis: 1,
+                lastModifiedEpochMillis: 2
+            )
+        }
+    ]
+    do {
+        _ = try await coordinator.bookmarks()
+        Issue.record("more than 10,000 bookmark records must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+
+    let maximumTitle = String(repeating: "x", count: XanhPlacesPolicy.maximumTitleUTF8Bytes)
+    runtime.bookmarksByRoot = [
+        .mobile: (0..<4_096).map { index in
+            XanhBookmarkRecord(
+                guid: String(format: "%012d", index),
+                parentGUID: "mobile______",
+                position: UInt32(index),
+                kind: .bookmark,
+                title: maximumTitle,
+                rawURL: bookmarkURL.absoluteString,
+                isOpenable: true,
+                dateAddedEpochMillis: 1,
+                lastModifiedEpochMillis: 2
+            )
+        }
+    ]
+    do {
+        _ = try await coordinator.bookmarks()
+        Issue.record("bookmark payloads above 16 MiB must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+
+    runtime.historyRecords = Array(
+        repeating: visit,
+        count: XanhPlacesPolicy.maximumHistoryResults + 1
+    )
+    do {
+        _ = try await coordinator.recentHistory()
+        Issue.record("more than 500 history visits must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+
+    do {
+        _ = try await coordinator.createBookmark(
+            url: try #require(URL(string: "https://user:secret@example.org/")),
+            title: "Unsafe"
+        )
+        Issue.record("bookmark URLs containing userinfo must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+}
+
 private func makeCoordinator(
     runtime: FakeSyncRuntime,
     secrets: FakeSyncSecrets,
@@ -339,6 +524,21 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     private(set) var touchCredentialCalls = 0
     var credentialRecords: [XanhCredentialRecord] = []
     var remoteDevices: [XanhRemoteTabsDevice] = []
+    var bookmarksByRoot: [XanhBookmarkRoot: [XanhBookmarkRecord]] = [:]
+    var historyRecords: [XanhHistoryVisitRecord] = []
+    var recordHistoryResult = XanhHistoryUpdateResult(acceptedCount: 1, skippedPrivateCount: 0)
+    private(set) var lastCreatedBookmarkParentGUID: String?
+    private(set) var lastCreatedBookmarkTitle: String?
+    private(set) var lastCreatedBookmarkTimestamp: Int64?
+    private(set) var lastRenamedBookmarkGUID: String?
+    private(set) var lastRenamedBookmarkTitle: String?
+    private(set) var lastDeletedBookmarkGUID: String?
+    private(set) var recordHistoryCalls = 0
+    private(set) var lastHistoryTitle: String?
+    private(set) var lastHistoryTimestamp: Int64?
+    private(set) var lastDeletedHistoryURL: URL?
+    private(set) var lastDeletedHistoryTimestamp: Int64?
+    private(set) var clearHistoryCalls = 0
 
     func initialize() throws -> XanhAccountState { state }
     func accountState() throws -> XanhAccountState { state }
@@ -366,6 +566,55 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     }
 
     func remoteTabs() throws -> [XanhRemoteTabsDevice] { remoteDevices }
+    func bookmarkRootGUID(_ root: XanhBookmarkRoot) throws -> String {
+        switch root {
+        case .menu: "menu________"
+        case .toolbar: "toolbar_____"
+        case .unfiled: "unfiled_____"
+        case .mobile: "mobile______"
+        }
+    }
+    func bookmarks(_ root: XanhBookmarkRoot) throws -> [XanhBookmarkRecord] {
+        bookmarksByRoot[root] ?? []
+    }
+    func createBookmark(
+        parentGUID: String,
+        url: URL,
+        title: String,
+        dateAddedEpochMillis: Int64,
+        isPrivate: Bool
+    ) throws -> String {
+        lastCreatedBookmarkParentGUID = parentGUID
+        lastCreatedBookmarkTitle = title
+        lastCreatedBookmarkTimestamp = dateAddedEpochMillis
+        return "created_____"
+    }
+    func renameBookmark(guid: String, title: String, isPrivate: Bool) throws {
+        lastRenamedBookmarkGUID = guid
+        lastRenamedBookmarkTitle = title
+    }
+    func deleteBookmark(guid: String, isPrivate: Bool) throws -> Bool {
+        lastDeletedBookmarkGUID = guid
+        return true
+    }
+    func recordHistory(
+        url: URL,
+        title: String,
+        visitedAtEpochMillis: Int64,
+        transition: XanhHistoryTransition,
+        isPrivate: Bool
+    ) throws -> XanhHistoryUpdateResult {
+        recordHistoryCalls += 1
+        lastHistoryTitle = title
+        lastHistoryTimestamp = visitedAtEpochMillis
+        return recordHistoryResult
+    }
+    func recentHistory(limit: UInt32) throws -> [XanhHistoryVisitRecord] { historyRecords }
+    func deleteHistoryVisit(url: URL, visitedAtEpochMillis: Int64) throws {
+        lastDeletedHistoryURL = url
+        lastDeletedHistoryTimestamp = visitedAtEpochMillis
+    }
+    func clearHistory() throws { clearHistoryCalls += 1 }
     func vaultUnlocked() throws -> Bool { isVaultUnlocked }
     func unlockVault(localLoginsKey: String) throws {
         if failUnlock { throw XanhSyncContractError.vaultLocked }

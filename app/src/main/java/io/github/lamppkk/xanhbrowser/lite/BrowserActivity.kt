@@ -370,6 +370,19 @@ class BrowserActivity : AppCompatActivity() {
     @VisibleForTesting
     internal fun currentWebUrlForTest(): String? = webView?.url
 
+    @VisibleForTesting
+    internal fun currentWebViewIdentityForTest(): Int? =
+        webView?.let(System::identityHashCode)
+
+    @VisibleForTesting
+    internal fun rendererRecoveryUsedForTest(): Boolean = rendererRecoveryUsed
+
+    @VisibleForTesting
+    internal fun terminateCurrentRendererForTest(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        return webView?.webViewRenderProcess?.terminate() == true
+    }
+
     internal fun openExternal(uri: Uri): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
         if (intent.resolveActivity(packageManager) == null) {

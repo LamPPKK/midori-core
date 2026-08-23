@@ -339,6 +339,9 @@ Flatpak manifest.
    WebView must be detached and destroyed before the callback returns, recovery
    must wait for foreground, restore only a bounded HTTP(S) GET target and stop
    after one attempt rather than looping.
+   `BrowserActivityTest.rendererRecoveryIsForegroundAndOneShot` automates the
+   foreground kill/recreation/repeated-crash path with the real renderer on API
+   29 and newer; keep the background and System WebView matrix checks manual.
 4. Export the four `XANH_LITE_*` values and build the signed candidate:
 
    ```sh

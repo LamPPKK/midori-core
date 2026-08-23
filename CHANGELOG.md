@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added Xanh Browser Lite for Android API 26–36 with single-tab navigation,
   sharing, desktop mode, scoped downloads, file upload, geolocation consent and
   asynchronous privacy clearing.
+- Added API 29+ Lite instrumentation that terminates the real System WebView
+  renderer, verifies a foreground recreation at the validated URL, and proves
+  a repeated renderer failure closes the Activity instead of looping.
 - Added Linux, Android, instrumentation, CodeQL, dependency-review, Flatpak and
   signed-source GitHub Actions workflows.
 - Added a scheduled, fail-closed official-tag verifier so the shared WebKitGTK,

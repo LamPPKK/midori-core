@@ -208,6 +208,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   owner-HWND interop, generation-checks late completions and fails invalid
   windows closed. It is compiled into WinCairo but remains disconnected until
   the native Sync vault/picker is packaged.
+- Added a WinCairo current-user DPAPI secret store with six fixed LocalAppData
+  slots, slot-specific entropy, a 4 MiB bound, inner integrity validation,
+  reparse-point rejection, flushed atomic replacement and idempotent removal.
+  Windows CI exercises tamper, wrong-slot, overwrite and size-limit behavior;
+  the store remains disconnected until the native Sync picker is packaged.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

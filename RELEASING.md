@@ -679,8 +679,18 @@ not block WebKit's UI thread; navigation, renderer termination and teardown
 must cancel an outstanding completion exactly once. The desktop interop starts
 at Windows build 22000, so password access must remain unavailable on older
 Windows builds even though the browser itself may still run there. Keep Sync
-disabled until the DPAPI/Windows Hello vault, packaged native core, picker and
-security evidence are complete.
+disabled until the DPAPI/Windows Hello primitives are connected to the packaged
+native core and picker and all security evidence is complete. Run
+`XanhDpapiSecretStoreContractTest` on Windows x64 and verify all six fixed slots
+round-trip under the current user, plaintext is absent from ciphertext, wrong-
+slot entropy and tampering fail closed, the 4 MiB limit is enforced, overwrite
+publishes only the complete new value, and remove/remove-all are idempotent.
+Confirm the production root resolves below `FOLDERID_LocalAppData`, no target or
+store reparse point is followed, `CRYPTPROTECT_LOCAL_MACHINE` is absent and a
+DPAPI/store error never falls back to plaintext. Treat same-user code execution
+as outside the store's confidentiality boundary: DPAPI protects against other
+Windows accounts and offline copying, not a process already running as the
+signed-in user.
 The pre-load navigation-action policy must also reject overlong/malformed URLs,
 userinfo, invalid ports, script-created external navigation and every external
 redirect. Verify that only a direct user gesture can delegate bounded `mailto:`

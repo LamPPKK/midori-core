@@ -49,7 +49,7 @@ runtime files cannot leak into a new artifact.
 The reviewed source deltas also expose **Export encrypted backup** and **Import
 encrypted backup** in the File menu and connect the validating credential
 bridge to MiniBrowser. The build script temporarily copies the standalone CNG
-codec plus five credential-bridge/Windows-Hello sources into the pinned tree,
+codec plus seven credential-bridge/DPAPI/Windows-Hello sources into the pinned tree,
 records every source hash in `ENGINE.txt`, and removes the files while restoring the checkout.
 Export places the selected window first and includes up to 49 other
 regular HTTP(S) windows. Import authenticates and validates the complete file
@@ -85,8 +85,8 @@ foreground window, committed URL and generation after completion, while
 navigation, renderer termination and teardown complete stale requests as
 `unavailable`. The committed preview deliberately has no credential picker
 callback, so every validated request receives `unavailable` and no secret is
-filled. Sync remains blocked until the DPAPI/Windows Hello vault, packaged
-native core and reviewed picker are connected; the validating bridge must not
+filled. Sync remains blocked until the compiled DPAPI/Windows Hello primitives,
+packaged native core and reviewed picker are connected; the validating bridge must not
 be treated as a substitute.
 
 The build also compiles a cancellable C++/WinRT Windows Hello helper using the
@@ -95,6 +95,20 @@ HWND API. It generation-checks completion and catches every activation/device
 error as denial. The helper is not wired to the bridge yet, and because that
 interop requires Windows build 22000, password access must fail closed on older
 Windows releases.
+
+The compiled `XanhDpapiSecretStore` provides fixed slots for account state,
+Sync state, the Logins key, scheduling, engine selection and a disconnect
+intent below the current user's `FOLDERID_LocalAppData`. Each value is capped
+at 4 MiB, protected without machine scope or interactive DPAPI UI, bound to its
+slot with optional entropy, and wrapped in an application-level SHA-256
+envelope. Reads reject reparse points, malformed lengths and altered data.
+Writes use a random same-directory `CREATE_NEW` temporary file, flush its
+contents and publish it with a replace-existing, write-through same-volume rename;
+the API also provides idempotent fixed-slot removal. DPAPI binds confidentiality
+to the Windows user profile, not to the Xanh process; another process already
+running as that user can invoke DPAPI, deny access or delete ciphertext. Callers
+must therefore treat every error as a locked/unavailable vault. The preview compiles this store but does not yet wire
+it to the credential picker or native Sync runtime.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /

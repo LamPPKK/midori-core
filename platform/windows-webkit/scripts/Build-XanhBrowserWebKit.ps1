@@ -24,6 +24,8 @@ $portableBackupImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/X
 $credentialBridgePolicy = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridgePolicy.h")).Path
 $credentialBridgeHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.h")).Path
 $credentialBridgeImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.cpp")).Path
+$dpapiSecretStoreHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhDpapiSecretStore.h")).Path
+$dpapiSecretStoreImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhDpapiSecretStore.cpp")).Path
 $windowsHelloHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.h")).Path
 $windowsHelloImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhWindowsHello.cpp")).Path
 $mainIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/MiniBrowser.ico"
@@ -33,6 +35,8 @@ $portableBackupImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrow
 $credentialBridgePolicyDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridgePolicy.h"
 $credentialBridgeHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.h"
 $credentialBridgeImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.cpp"
+$dpapiSecretStoreHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhDpapiSecretStore.h"
+$dpapiSecretStoreImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhDpapiSecretStore.cpp"
 $windowsHelloHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.h"
 $windowsHelloImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhWindowsHello.cpp"
 
@@ -86,7 +90,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 if ((Test-Path $portableBackupHeaderDestination) -or (Test-Path $portableBackupImplementationDestination)
     -or (Test-Path $credentialBridgePolicyDestination) -or (Test-Path $credentialBridgeHeaderDestination)
-    -or (Test-Path $credentialBridgeImplementationDestination) -or (Test-Path $windowsHelloHeaderDestination)
+    -or (Test-Path $credentialBridgeImplementationDestination) -or (Test-Path $dpapiSecretStoreHeaderDestination)
+    -or (Test-Path $dpapiSecretStoreImplementationDestination) -or (Test-Path $windowsHelloHeaderDestination)
     -or (Test-Path $windowsHelloImplementationDestination)) {
     throw "The pinned WebKit source unexpectedly contains Xanh host sources. Use a clean exact checkout."
 }
@@ -107,6 +112,8 @@ $portableBackupImplementationHash = $null
 $credentialBridgePolicyHash = $null
 $credentialBridgeHeaderHash = $null
 $credentialBridgeImplementationHash = $null
+$dpapiSecretStoreHeaderHash = $null
+$dpapiSecretStoreImplementationHash = $null
 $windowsHelloHeaderHash = $null
 $windowsHelloImplementationHash = $null
 
@@ -135,6 +142,10 @@ try {
     Copy-Item $credentialBridgeHeader $credentialBridgeHeaderDestination
     $copiedSourceFiles += $credentialBridgeImplementationDestination
     Copy-Item $credentialBridgeImplementation $credentialBridgeImplementationDestination
+    $copiedSourceFiles += $dpapiSecretStoreHeaderDestination
+    Copy-Item $dpapiSecretStoreHeader $dpapiSecretStoreHeaderDestination
+    $copiedSourceFiles += $dpapiSecretStoreImplementationDestination
+    Copy-Item $dpapiSecretStoreImplementation $dpapiSecretStoreImplementationDestination
     $copiedSourceFiles += $windowsHelloHeaderDestination
     Copy-Item $windowsHelloHeader $windowsHelloHeaderDestination
     $copiedSourceFiles += $windowsHelloImplementationDestination
@@ -144,6 +155,8 @@ try {
     $credentialBridgePolicyHash = (Get-FileHash $credentialBridgePolicyDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgeHeaderHash = (Get-FileHash $credentialBridgeHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $credentialBridgeImplementationHash = (Get-FileHash $credentialBridgeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $dpapiSecretStoreHeaderHash = (Get-FileHash $dpapiSecretStoreHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $dpapiSecretStoreImplementationHash = (Get-FileHash $dpapiSecretStoreImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $windowsHelloHeaderHash = (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $windowsHelloImplementationHash = (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     Copy-Item $icon $mainIcon -Force
@@ -181,6 +194,10 @@ try {
         -or (Get-FileHash $credentialBridgePolicy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgePolicyHash
         -or (Get-FileHash $credentialBridgeHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeHeaderHash
         -or (Get-FileHash $credentialBridgeImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash
+        -or (Get-FileHash $dpapiSecretStoreHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dpapiSecretStoreHeaderHash
+        -or (Get-FileHash $dpapiSecretStoreImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dpapiSecretStoreImplementationHash
+        -or (Get-FileHash $dpapiSecretStoreHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dpapiSecretStoreHeaderHash
+        -or (Get-FileHash $dpapiSecretStoreImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dpapiSecretStoreImplementationHash
         -or (Get-FileHash $windowsHelloHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
         -or (Get-FileHash $windowsHelloImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloImplementationHash
         -or (Get-FileHash $windowsHelloHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $windowsHelloHeaderHash
@@ -213,6 +230,8 @@ try {
         "Credential bridge policy SHA-256: $credentialBridgePolicyHash"
         "Credential bridge header SHA-256: $credentialBridgeHeaderHash"
         "Credential bridge implementation SHA-256: $credentialBridgeImplementationHash"
+        "DPAPI secret-store header SHA-256: $dpapiSecretStoreHeaderHash"
+        "DPAPI secret-store implementation SHA-256: $dpapiSecretStoreImplementationHash"
         "Windows Hello header SHA-256: $windowsHelloHeaderHash"
         "Windows Hello implementation SHA-256: $windowsHelloImplementationHash"
         "Architecture: x64"

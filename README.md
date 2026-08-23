@@ -300,9 +300,10 @@ committed item has no stored HTTP body; form submissions are never restored and
 a repeatedly crashing page cannot form an automatic recovery loop. The
 MiniBrowser now registers a fail-closed, main-frame isolated credential bridge
 with a cancellation-safe asynchronous picker boundary, but returns
-`unavailable` until its native DPAPI/Windows Hello vault and picker are
-connected. The owner-window Windows Hello helper is compiled but not invoked by
-the preview. Those pieces and the signed package remain release-gated.
+`unavailable` until its native Sync runtime and picker are connected. A bounded
+current-user DPAPI secret store and owner-window Windows Hello helper are now
+compiled but not invoked by the preview. Those pieces and the signed package
+remain release-gated.
 
 ## Encrypted backup and sync
 

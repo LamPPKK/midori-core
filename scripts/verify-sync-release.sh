@@ -720,11 +720,15 @@ case "$edition" in
     test -f platform/windows-webkit/src/XanhCredentialBridgePolicy.h
     test -f platform/windows-webkit/src/XanhCredentialBridge.h
     test -f platform/windows-webkit/src/XanhCredentialBridge.cpp
+    test -f platform/windows-webkit/src/XanhDpapiSecretStore.h
+    test -f platform/windows-webkit/src/XanhDpapiSecretStore.cpp
     test -f platform/windows-webkit/src/XanhWindowsHello.h
     test -f platform/windows-webkit/src/XanhWindowsHello.cpp
     test -f platform/windows-webkit/tests/XanhCredentialBridgePolicyTest.cpp
     test -f platform/windows-webkit/tests/windows-hello/CMakeLists.txt
     test -f platform/windows-webkit/tests/windows-hello/XanhWindowsHelloContractTest.cpp
+    test -f platform/windows-webkit/tests/dpapi-secret-store/CMakeLists.txt
+    test -f platform/windows-webkit/tests/dpapi-secret-store/XanhDpapiSecretStoreContractTest.cpp
     grep -F '+WK_EXPORT WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+WK_EXPORT bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld' \
@@ -770,7 +774,11 @@ case "$edition" in
     test -f platform/windows-webkit/tests/XanhNavigationPolicyTest.cpp
     grep -F '+    XanhCredentialBridge.cpp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    XanhDpapiSecretStore.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    XanhWindowsHello.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    crypt32' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
     grep -F '+    windowsapp' \
       platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
@@ -832,6 +840,40 @@ case "$edition" in
       platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
     grep -F 'character <= 0x1F || character == 0x7F' \
       platform/windows-webkit/src/XanhWindowsHello.cpp >/dev/null
+    grep -F 'FOLDERID_LocalAppData' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    grep -F 'CoTaskMemFree(m_value)' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    grep -F 'CRYPTPROTECT_UI_FORBIDDEN' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    if grep -F 'CRYPTPROTECT_LOCAL_MACHINE' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null; then
+      echo 'WinCairo secret storage must remain scoped to the current Windows user' >&2
+      exit 1
+    fi
+    grep -F 'SecureZeroMemory(m_value, m_size)' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    grep -F 'WaitForSingleObject(m_mutex.get(), mutexWaitMilliseconds)' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    grep -F 'maximumDirectoryEntriesToInspect = 64' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    grep -F 'FILE_FLAG_OPEN_REPARSE_POINT' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    grep -F 'FlushFileBuffers(temporary.get())' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    grep -F 'MoveFileExW(temporaryPath->c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null
+    if grep -F 'REPLACEFILE_WRITE_THROUGH' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.cpp >/dev/null; then
+      echo 'WinCairo must not use the unsupported ReplaceFileW write-through flag' >&2
+      exit 1
+    fi
+    grep -F 'maximumPlaintextBytes = 4 * 1024 * 1024' \
+      platform/windows-webkit/src/XanhDpapiSecretStore.h >/dev/null
+    grep -F 'Tampered ciphertext was accepted.' \
+      platform/windows-webkit/tests/dpapi-secret-store/XanhDpapiSecretStoreContractTest.cpp >/dev/null
+    grep -F 'A secret decrypted in the wrong slot.' \
+      platform/windows-webkit/tests/dpapi-secret-store/XanhDpapiSecretStoreContractTest.cpp >/dev/null
     grep -F '+    navigationClient.webProcessDidTerminate = webProcessDidTerminate;' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+    navigationClient.didFinishNavigation = didFinishNavigation;' \
@@ -913,11 +955,21 @@ case "$edition" in
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$credentialBridgeImplementation \$credentialBridgeImplementationDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$dpapiSecretStoreHeader \$dpapiSecretStoreHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$dpapiSecretStoreImplementation \$dpapiSecretStoreImplementationDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloHeader \$windowsHelloHeaderDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Copy-Item \$windowsHelloImplementation \$windowsHelloImplementationDestination" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F 'Credential bridge implementation SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'DPAPI secret-store implementation SHA-256:' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$dpapiSecretStoreImplementationDestination -Algorithm SHA256" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Get-FileHash \$dpapiSecretStoreImplementation -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F 'Windows Hello implementation SHA-256:' \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
@@ -946,6 +998,8 @@ case "$edition" in
     grep -F 'XanhCredentialBridgePolicyTest.cpp' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F 'platform/windows-webkit/tests/windows-hello' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'platform/windows-webkit/tests/dpapi-secret-store' \
       .github/workflows/webkit-editions.yml >/dev/null
     grep -F '| Windows WebKit/WinCairo preview | Yes' \
       docs/PORTABLE_BACKUP.md >/dev/null

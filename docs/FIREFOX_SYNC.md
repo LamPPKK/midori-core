@@ -367,11 +367,14 @@ document and renderer lifecycle changes. Its picker boundary is asynchronous,
 single-flight and lifetime-weak so Windows Hello can complete without blocking
 WebKit's UI thread; navigation, renderer termination and teardown cancel stale
 completions. The picker implementation is intentionally absent and all valid
-requests return `unavailable`; WinCairo therefore remains blocked until the
-DPAPI/Windows Hello vault, packaged native core and reviewed native picker pass
-security tests. A cancellable owner-HWND Windows Hello helper is compiled into
-the preview, but is not invoked until those dependencies exist; password access
-will remain unavailable below Windows build 22000. `scripts/verify-sync-release.sh` is a fail-closed mechanical
+requests return `unavailable`; WinCairo therefore remains blocked until its
+compiled DPAPI store and Windows Hello helper are wired to a packaged native
+core and reviewed native picker and pass security tests. The DPAPI store uses
+fixed, 4 MiB-bounded current-user slots under LocalAppData, slot-specific
+entropy, an inner SHA-256 envelope, reparse-point rejection and flushed atomic
+replacement; it has no plaintext or machine-scope fallback. Neither primitive
+is invoked by the preview yet, and password access will remain unavailable
+below Windows build 22000. `scripts/verify-sync-release.sh` is a fail-closed mechanical
 prerequisite check, not an audit substitute. Its Linux production
 mode requires evidence files for the Sync-enabled build, Secret Service,
 four-engine interoperability, data migration, Flatpak and security review;

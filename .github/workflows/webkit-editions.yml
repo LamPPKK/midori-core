@@ -125,6 +125,11 @@ jobs:
           git -C _webkit init
           git -C _webkit apply --check --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-browser-webkit.patch"
           git -C _webkit apply --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-browser-webkit.patch"
+          git -C _webkit apply --check --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-credential-bridge.patch"
+          git -C _webkit apply --ignore-space-change "$GITHUB_WORKSPACE/platform/windows-webkit/patches/xanh-credential-bridge.patch"
+          cp platform/windows-webkit/src/XanhCredentialBridgePolicy.h _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhCredentialBridge.h _webkit/Tools/MiniBrowser/win/
+          cp platform/windows-webkit/src/XanhCredentialBridge.cpp _webkit/Tools/MiniBrowser/win/
           grep -F 'OUTPUT_NAME "XanhBrowser.WebKit"' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'XanhPortableBackup.cpp' _webkit/Tools/MiniBrowser/win/CMakeLists.txt
           grep -F 'IDM_EXPORT_PORTABLE_BACKUP' _webkit/Tools/MiniBrowser/win/MainWindow.cpp
@@ -156,6 +161,17 @@ jobs:
           grep -F 'WKXanhPageCanSafelyRestoreCurrentItem(page)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
           grep -F 'WKPageReload(page)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
           grep -F 'WKPageGetIsControlledByAutomation(page)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'navigationClient.didStartProvisionalNavigation = didStartProvisionalNavigation' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'navigationClient.didCommitNavigation = didCommitNavigation' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'navigationClient.didSameDocumentNavigation = didSameDocumentNavigation' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'm_credentialBridge->rendererTerminated(page)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'GetForegroundWindow() == m_hMainWnd && IsWindowVisible(m_hMainWnd) && !IsIconic(m_hMainWnd)' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp
+          grep -F 'WKXanhUserContentControllerAddScriptMessageHandlerInWorld' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F 'WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F "if (event.isTrusted && event.isPrimary && event.button === 0) requestCredential(event.target)" _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F '!m_picker || !m_foregroundCheck || !m_foregroundCheck() || m_requestInFlight' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F '!selected || !m_foregroundCheck() || !m_state.isCurrent(*token)' _webkit/Tools/MiniBrowser/win/XanhCredentialBridge.cpp
+          grep -F 'inline constexpr size_t maximumRequestsPerDocument = 64;' _webkit/Tools/MiniBrowser/win/XanhCredentialBridgePolicy.h
           if grep -F 'm_isControlledByAutomation' _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.cpp _webkit/Tools/MiniBrowser/win/WebKitBrowserWindow.h; then
             echo 'WinCairo must read live automation state rather than a stale per-window cache' >&2
             exit 1
@@ -175,6 +191,11 @@ jobs:
             platform/windows-webkit/tests/XanhFrameStateRestorePolicyTest.cpp \
             -o /tmp/xanh-frame-state-restore-policy-test
           /tmp/xanh-frame-state-restore-policy-test
+          c++ -std=c++17 -Wall -Wextra -Werror \
+            -I _webkit/Tools/MiniBrowser/win \
+            platform/windows-webkit/tests/XanhCredentialBridgePolicyTest.cpp \
+            -o /tmp/xanh-credential-bridge-policy-test
+          /tmp/xanh-credential-bridge-policy-test
 
   windows-wincairo-portable-backup:
     runs-on: windows-latest

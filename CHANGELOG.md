@@ -195,6 +195,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   message-world propagation and deterministic per-world teardown. The host,
   vault and native Sync packaging remain release-gated; distribution notices
   now identify the exact upstream source and published Xanh delta.
+- Registered a fail-closed WinCairo credential bridge in the named world. It
+  binds bounded requests to the exact committed HTTPS document, random native
+  tab ID and per-document challenge, rejects subframes/forged fields and clears
+  request state on navigation or renderer termination. The preview still
+  returns `unavailable` until its DPAPI/Windows Hello vault is connected.
 - Added a redirect-aware WinCairo navigation-action policy that bounds and
   validates HTTP(S) before load, blocks userinfo and unsafe schemes, and only
   delegates one direct user-clicked `mailto:`/`tel:` URL per consumed gesture

@@ -716,6 +716,11 @@ case "$edition" in
       exit 1
     fi
     test -f platform/windows-webkit/patches/xanh-browser-webkit.patch
+    test -f platform/windows-webkit/patches/xanh-credential-bridge.patch
+    test -f platform/windows-webkit/src/XanhCredentialBridgePolicy.h
+    test -f platform/windows-webkit/src/XanhCredentialBridge.h
+    test -f platform/windows-webkit/src/XanhCredentialBridge.cpp
+    test -f platform/windows-webkit/tests/XanhCredentialBridgePolicyTest.cpp
     grep -F '+WK_EXPORT WKUserScriptRef WKXanhUserScriptCreateWithSourceInWorld' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+WK_EXPORT bool WKXanhUserContentControllerAddScriptMessageHandlerInWorld' \
@@ -759,6 +764,42 @@ case "$edition" in
     grep -F '+inline constexpr size_t maximumURLCharacters = 8192;' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     test -f platform/windows-webkit/tests/XanhNavigationPolicyTest.cpp
+    grep -F '+    XanhCredentialBridge.cpp' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    navigationClient.didStartProvisionalNavigation = didStartProvisionalNavigation;' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    navigationClient.didCommitNavigation = didCommitNavigation;' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    navigationClient.didSameDocumentNavigation = didSameDocumentNavigation;' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+    thisWindow.m_credentialBridge->rendererTerminated(page);' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F '+            return GetForegroundWindow() == m_hMainWnd && IsWindowVisible(m_hMainWnd) && !IsIconic(m_hMainWnd);' \
+      platform/windows-webkit/patches/xanh-credential-bridge.patch >/dev/null
+    grep -F 'WKXanhUserContentControllerAddScriptMessageHandlerInWorld' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F 'WKXanhUserContentControllerRemoveScriptMessageHandlerInWorld' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F "if (event.isTrusted && event.isPrimary && event.button === 0) requestCredential(event.target)" \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F 'WKDictionaryGetSize(dictionary) != 8' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F 'request.claimedOrigin != *claimedOrigin' \
+      platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
+    grep -F 'm_state.isCurrent(*token)' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F '!m_picker || !m_foregroundCheck || !m_foregroundCheck() || m_requestInFlight' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F '!selected || !m_foregroundCheck() || !m_state.isCurrent(*token)' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F 'm_requestInFlight' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
+    grep -F 'inline constexpr size_t maximumRequestsPerDocument = 64;' \
+      platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
+    grep -F '!m_seenRequestIDs.insert(request.requestID).second' \
+      platform/windows-webkit/src/XanhCredentialBridgePolicy.h >/dev/null
+    grep -F 'return makeReply({ { L"status", L"unavailable" }' \
+      platform/windows-webkit/src/XanhCredentialBridge.cpp >/dev/null
     grep -F '+    navigationClient.webProcessDidTerminate = webProcessDidTerminate;' \
       platform/windows-webkit/patches/xanh-browser-webkit.patch >/dev/null
     grep -F '+    navigationClient.didFinishNavigation = didFinishNavigation;' \
@@ -828,7 +869,19 @@ case "$edition" in
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F "Get-FileHash \$portableBackupImplementationDestination -Algorithm SHA256" \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
-    grep -F 'Portable-backup sources changed during the WebKit build.' \
+    grep -F 'Xanh host sources changed during the WebKit build.' \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "apply --check --ignore-space-change \$credentialBridgePatch" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "apply --reverse --check --ignore-space-change \$credentialBridgePatch" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$credentialBridgePolicy \$credentialBridgePolicyDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$credentialBridgeHeader \$credentialBridgeHeaderDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F "Copy-Item \$credentialBridgeImplementation \$credentialBridgeImplementationDestination" \
+      platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
+    grep -F 'Credential bridge implementation SHA-256:' \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
     grep -F 'ls-files --others --exclude-standard' \
       platform/windows-webkit/scripts/Build-XanhBrowserWebKit.ps1 >/dev/null
@@ -850,12 +903,18 @@ case "$edition" in
       platform/windows/tests/XanhBrowser.Core.Tests/PortableBackupTests.cs >/dev/null
     grep -F 'windows-wincairo-portable-backup:' \
       .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'patches/xanh-credential-bridge.patch' \
+      .github/workflows/webkit-editions.yml >/dev/null
+    grep -F 'XanhCredentialBridgePolicyTest.cpp' \
+      .github/workflows/webkit-editions.yml >/dev/null
     grep -F '| Windows WebKit/WinCairo preview | Yes' \
       docs/PORTABLE_BACKUP.md >/dev/null
     grep -F 'WebKit WinCairo source preview' THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_release_tag" THIRD_PARTY_NOTICES.md >/dev/null
     grep -F "$wincairo_revision" THIRD_PARTY_NOTICES.md >/dev/null
     grep -F 'platform/windows-webkit/patches/xanh-browser-webkit.patch' \
+      THIRD_PARTY_NOTICES.md >/dev/null
+    grep -F 'platform/windows-webkit/patches/xanh-credential-bridge.patch' \
       THIRD_PARTY_NOTICES.md >/dev/null
     ;;
   linux)

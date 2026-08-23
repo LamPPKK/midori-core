@@ -46,11 +46,12 @@ directory, writes engine provenance and a standard SHA-256 file, then restores
 the checkout. It refuses an output directory that already exists so stale
 runtime files cannot leak into a new artifact.
 
-The reviewed source delta also exposes **Export encrypted backup** and **Import
-encrypted backup** in the File menu. The build script temporarily copies the
-standalone CNG implementation into the pinned MiniBrowser tree, records both
-source hashes in `ENGINE.txt`, and removes the files while restoring the
-checkout. Export places the selected window first and includes up to 49 other
+The reviewed source deltas also expose **Export encrypted backup** and **Import
+encrypted backup** in the File menu and connect the validating credential
+bridge to MiniBrowser. The build script temporarily copies the standalone CNG
+codec and three credential-bridge sources into the pinned tree, records every
+source hash in `ENGINE.txt`, and removes the files while restoring the checkout.
+Export places the selected window first and includes up to 49 other
 regular HTTP(S) windows. Import authenticates and validates the complete file
 before opening any new regular windows; cookie/credential/form stores, cache
 and private state are never read into the format. Full URLs are included, so
@@ -73,11 +74,17 @@ The source delta also adds bounded Xanh-specific C APIs for main-frame user
 scripts and request/reply message handlers in the same named isolated
 `API::ContentWorld`. Invalid or overlong world/handler names fail closed, the
 handler preserves the actual source world in `WKScriptMessageRef`, and explicit
-per-world removal APIs provide deterministic teardown. This is an engine
-capability only: MiniBrowser does not register a credential handler yet, and
-the API does not open the Firefox Sync production gate without the native core,
-vault, origin/nonce validation, private-mode exclusion and Windows security
-evidence listed below.
+per-world removal APIs provide deterministic teardown. MiniBrowser now
+registers a main-frame-only credential request handler in that world. A random
+native tab ID and document challenge are bound to the exact committed,
+userinfo-free HTTPS URL; provisional navigation, same-document URL changes and
+renderer termination invalidate pending requests. The host rejects unknown or
+oversized fields, forged origins, subframes and stale request IDs, and rechecks
+the generation after a native picker returns. The committed preview
+deliberately has no credential picker callback, so every validated request
+receives `unavailable` and no secret is filled. Sync remains blocked until the
+DPAPI/Windows Hello vault, packaged native core and reviewed picker are
+connected; the validating bridge must not be treated as a substitute.
 
 The preview host also applies a navigation-action policy before WebKit loads a
 request. Bounded, credential-free HTTP(S) URLs and the narrow `about:blank` /
@@ -135,7 +142,12 @@ from the package only after a dependency-closure audit, sign all shipped PE
 files and test on clean Windows 10 and Windows 11 systems. Compile and exercise
 the isolated-world C API with forged page-world messages, duplicate handler
 names, invalid world names, navigation/process swaps and repeated teardown;
-page JavaScript must never reach the isolated handler.
+page JavaScript must never reach the isolated handler. Also run the committed
+credential-policy suite, then attach a test picker and prove forged origin/tab/
+challenge/request IDs, subframes, provisional loads, same-document navigation
+and renderer termination cannot display or fill a credential. The default
+preview must continue returning `unavailable` until the native vault gate is
+complete.
 
 The portable `.xanhbackup` session format is exposed by this preview, the WinUI
 edition and both Android Lite editions. It deliberately excludes cookies,

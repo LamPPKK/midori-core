@@ -17,13 +17,20 @@ $revision = (Get-Content (Join-Path $PSScriptRoot "../WEBKIT_REVISION") -Raw).Tr
 $releaseTag = (Get-Content (Join-Path $PSScriptRoot "../WEBKIT_RELEASE_TAG") -Raw).Trim()
 $minimumVersion = (Get-Content (Join-Path $repositoryRoot "WEBKITGTK_MIN_VERSION") -Raw).Trim()
 $patch = (Resolve-Path (Join-Path $PSScriptRoot "../patches/xanh-browser-webkit.patch")).Path
+$credentialBridgePatch = (Resolve-Path (Join-Path $PSScriptRoot "../patches/xanh-credential-bridge.patch")).Path
 $icon = (Resolve-Path (Join-Path $repositoryRoot "platform/windows/src/XanhBrowser.Windows/Assets/XanhBrowser.ico")).Path
 $portableBackupHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhPortableBackup.h")).Path
 $portableBackupImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhPortableBackup.cpp")).Path
+$credentialBridgePolicy = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridgePolicy.h")).Path
+$credentialBridgeHeader = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.h")).Path
+$credentialBridgeImplementation = (Resolve-Path (Join-Path $PSScriptRoot "../src/XanhCredentialBridge.cpp")).Path
 $mainIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/MiniBrowser.ico"
 $smallIcon = Join-Path $sourceRoot "Tools/MiniBrowser/win/small.ico"
 $portableBackupHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhPortableBackup.h"
 $portableBackupImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhPortableBackup.cpp"
+$credentialBridgePolicyDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridgePolicy.h"
+$credentialBridgeHeaderDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.h"
+$credentialBridgeImplementationDestination = Join-Path $sourceRoot "Tools/MiniBrowser/win/XanhCredentialBridge.cpp"
 
 if ($releaseTag -ne "webkitgtk-$minimumVersion") {
     throw "WinCairo release tag $releaseTag does not match the shared WebKit stable baseline $minimumVersion."
@@ -73,22 +80,28 @@ if ($initialUntrackedExitCode -ne 0 -or $initialUntracked.Count -ne 0) {
 if ($LASTEXITCODE -ne 0) {
     throw "The Xanh Browser WebKit patch does not apply to the pinned revision."
 }
-if ((Test-Path $portableBackupHeaderDestination) -or (Test-Path $portableBackupImplementationDestination)) {
-    throw "The pinned WebKit source unexpectedly contains Xanh portable-backup sources. Use a clean exact checkout."
+if ((Test-Path $portableBackupHeaderDestination) -or (Test-Path $portableBackupImplementationDestination)
+    -or (Test-Path $credentialBridgePolicyDestination) -or (Test-Path $credentialBridgeHeaderDestination)
+    -or (Test-Path $credentialBridgeImplementationDestination)) {
+    throw "The pinned WebKit source unexpectedly contains Xanh host sources. Use a clean exact checkout."
 }
 
 $mainIconBackup = [IO.Path]::GetTempFileName()
 $smallIconBackup = [IO.Path]::GetTempFileName()
 Copy-Item $mainIcon $mainIconBackup -Force
 Copy-Item $smallIcon $smallIconBackup -Force
-$copiedPortableBackupFiles = @()
+$copiedSourceFiles = @()
 $buildFailure = $null
 $cleanupFailures = [System.Collections.Generic.List[string]]::new()
 $output = $null
 $outputCreatedByThisRun = $false
 $patchApplied = $false
+$credentialBridgePatchApplied = $false
 $portableBackupHeaderHash = $null
 $portableBackupImplementationHash = $null
+$credentialBridgePolicyHash = $null
+$credentialBridgeHeaderHash = $null
+$credentialBridgeImplementationHash = $null
 
 try {
     & git -C $sourceRoot apply --ignore-space-change $patch
@@ -96,12 +109,30 @@ try {
         throw "Could not apply the Xanh Browser WebKit patch."
     }
     $patchApplied = $true
-    $copiedPortableBackupFiles += $portableBackupHeaderDestination
+    & git -C $sourceRoot apply --check --ignore-space-change $credentialBridgePatch
+    if ($LASTEXITCODE -ne 0) {
+        throw "The Xanh credential bridge patch does not apply after the reviewed WebKit patch."
+    }
+    & git -C $sourceRoot apply --ignore-space-change $credentialBridgePatch
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not apply the Xanh credential bridge patch."
+    }
+    $credentialBridgePatchApplied = $true
+    $copiedSourceFiles += $portableBackupHeaderDestination
     Copy-Item $portableBackupHeader $portableBackupHeaderDestination
-    $copiedPortableBackupFiles += $portableBackupImplementationDestination
+    $copiedSourceFiles += $portableBackupImplementationDestination
     Copy-Item $portableBackupImplementation $portableBackupImplementationDestination
+    $copiedSourceFiles += $credentialBridgePolicyDestination
+    Copy-Item $credentialBridgePolicy $credentialBridgePolicyDestination
+    $copiedSourceFiles += $credentialBridgeHeaderDestination
+    Copy-Item $credentialBridgeHeader $credentialBridgeHeaderDestination
+    $copiedSourceFiles += $credentialBridgeImplementationDestination
+    Copy-Item $credentialBridgeImplementation $credentialBridgeImplementationDestination
     $portableBackupHeaderHash = (Get-FileHash $portableBackupHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     $portableBackupImplementationHash = (Get-FileHash $portableBackupImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $credentialBridgePolicyHash = (Get-FileHash $credentialBridgePolicyDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $credentialBridgeHeaderHash = (Get-FileHash $credentialBridgeHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $credentialBridgeImplementationHash = (Get-FileHash $credentialBridgeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant()
     Copy-Item $icon $mainIcon -Force
     Copy-Item $icon $smallIcon -Force
 
@@ -130,8 +161,14 @@ try {
     if ((Get-FileHash $portableBackupHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupHeaderHash
         -or (Get-FileHash $portableBackupImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupImplementationHash
         -or (Get-FileHash $portableBackupHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupHeaderHash
-        -or (Get-FileHash $portableBackupImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupImplementationHash) {
-        throw "Portable-backup sources changed during the WebKit build. Discard this build and retry from a stable checkout."
+        -or (Get-FileHash $portableBackupImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $portableBackupImplementationHash
+        -or (Get-FileHash $credentialBridgePolicyDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgePolicyHash
+        -or (Get-FileHash $credentialBridgeHeaderDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeHeaderHash
+        -or (Get-FileHash $credentialBridgeImplementationDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash
+        -or (Get-FileHash $credentialBridgePolicy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgePolicyHash
+        -or (Get-FileHash $credentialBridgeHeader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeHeaderHash
+        -or (Get-FileHash $credentialBridgeImplementation -Algorithm SHA256).Hash.ToLowerInvariant() -ne $credentialBridgeImplementationHash) {
+        throw "Xanh host sources changed during the WebKit build. Discard this build and retry from a stable checkout."
     }
 
     $output = [IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputDirectory))
@@ -156,6 +193,9 @@ try {
         "WebKit revision: $revision"
         "Portable backup header SHA-256: $portableBackupHeaderHash"
         "Portable backup implementation SHA-256: $portableBackupImplementationHash"
+        "Credential bridge policy SHA-256: $credentialBridgePolicyHash"
+        "Credential bridge header SHA-256: $credentialBridgeHeaderHash"
+        "Credential bridge implementation SHA-256: $credentialBridgeImplementationHash"
         "Architecture: x64"
         "Built: $([DateTimeOffset]::UtcNow.ToString('O'))"
     ) | Set-Content (Join-Path $output "ENGINE.txt") -Encoding UTF8
@@ -169,18 +209,30 @@ catch {
 }
 finally {
     try {
-        foreach ($copiedFile in $copiedPortableBackupFiles) {
+        foreach ($copiedFile in $copiedSourceFiles) {
             if (Test-Path $copiedFile) {
                 try {
                     Remove-Item $copiedFile -Force
                 }
                 catch {
-                    $cleanupFailures.Add("Could not remove temporary portable-backup source $copiedFile: $($_.Exception.Message)")
+                    $cleanupFailures.Add("Could not remove temporary Xanh host source $copiedFile: $($_.Exception.Message)")
                 }
             }
         }
     }
     finally {
+        if ($credentialBridgePatchApplied) {
+            & git -C $sourceRoot apply --reverse --check --ignore-space-change $credentialBridgePatch 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                & git -C $sourceRoot apply --reverse --ignore-space-change $credentialBridgePatch
+                if ($LASTEXITCODE -ne 0) {
+                    $cleanupFailures.Add("Could not remove the reviewed Xanh credential bridge patch.")
+                }
+            }
+            else {
+                $cleanupFailures.Add("The reviewed Xanh credential bridge patch could not be removed cleanly.")
+            }
+        }
         if ($patchApplied) {
             & git -C $sourceRoot apply --reverse --check --ignore-space-change $patch 2>$null
             if ($LASTEXITCODE -eq 0) {

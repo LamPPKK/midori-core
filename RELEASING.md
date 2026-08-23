@@ -668,8 +668,13 @@ exact commit in `WEBKIT_REVISION`; do not ship a moving `main` snapshot or a
 commit older than the shared `WEBKITGTK_MIN_VERSION` security baseline.
 The source-fork isolated-world C API must compile in the Windows build and pass
 message-world, request/reply, duplicate-handler and teardown tests. Its presence
-alone is not a credential bridge: keep Sync disabled until the WinCairo host,
-vault, packaged native core and security evidence are complete.
+alone does not open Sync. The MiniBrowser host now registers the committed
+main-frame credential bridge, but its picker remains deliberately unavailable.
+Run `XanhCredentialBridgePolicyTest`, then attach a test picker and reject forged
+origin/tab/challenge/request IDs, unknown/oversized fields, subframes, stale
+provisional/same-document requests and renderer-process swaps before any native
+UI or fill. Keep Sync disabled until the DPAPI/Windows Hello vault, packaged
+native core, picker and security evidence are complete.
 The pre-load navigation-action policy must also reject overlong/malformed URLs,
 userinfo, invalid ports, script-created external navigation and every external
 redirect. Verify that only a direct user gesture can delegate bounded `mailto:`

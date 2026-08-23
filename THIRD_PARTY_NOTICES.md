@@ -53,9 +53,10 @@ authoritative.
 
 - WebKit source: <https://github.com/WebKit/WebKit>
 - Stable release: <https://webkitgtk.org/2026/08/19/webkitgtk2.52.6-released.html>
-- Xanh source delta: `platform/windows-webkit/patches/xanh-browser-webkit.patch`
+- Xanh source deltas: `platform/windows-webkit/patches/xanh-browser-webkit.patch`
+  and `platform/windows-webkit/patches/xanh-credential-bridge.patch`
 
 Any distributed WinCairo artifact must retain the applicable license texts and
-notices and provide the corresponding complete source, Xanh patch, relinking
+notices and provide the corresponding complete source, both Xanh patches, relinking
 materials where required and an SBOM for the exact shipped runtime and native
 dependency closure.

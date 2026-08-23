@@ -214,6 +214,84 @@ private func syncConfiguration() throws -> XanhSyncConfiguration {
     }
 }
 
+@Test func remoteTabsAreTypedSanitizedBoundedAndNeverOpenFallbackURLs() async throws {
+    let runtime = FakeSyncRuntime()
+    runtime.state = .connected
+    runtime.remoteDevices = [XanhRemoteTabsDevice(
+        deviceID: "phone-one",
+        name: "\u{202E}Phone\nOne",
+        kind: .mobile,
+        lastModifiedEpochMillis: 2,
+        tabs: [XanhRemoteTab(
+            id: "phone-one:0",
+            title: "Secure\u{202E}\nLogin",
+            urlHistory: [try #require(URL(string: "https://example.org/login"))],
+            iconURL: URL(string: "https://example.org/icon.png"),
+            lastUsedEpochMillis: 1,
+            isPinned: true
+        )]
+    )]
+    let coordinator = try makeCoordinator(runtime: runtime, secrets: FakeSyncSecrets())
+    _ = try await coordinator.initialize()
+
+    let devices = try await coordinator.remoteTabs()
+    #expect(devices.count == 1)
+    #expect(devices[0].displayName == "Phone One")
+    #expect(devices[0].tabs[0].displayTitle == "Secure Login")
+    #expect(devices[0].tabs[0].currentURL?.absoluteString == "https://example.org/login")
+
+    runtime.remoteDevices = [XanhRemoteTabsDevice(
+        deviceID: "unsafe",
+        name: "Unsafe",
+        kind: .desktop,
+        lastModifiedEpochMillis: 2,
+        tabs: [XanhRemoteTab(
+            id: "unsafe:0",
+            title: "Unsafe",
+            urlHistory: [try #require(URL(string: "https://user:secret@example.org/"))],
+            iconURL: nil,
+            lastUsedEpochMillis: 1,
+            isPinned: false
+        )]
+    )]
+    do {
+        _ = try await coordinator.remoteTabs()
+        Issue.record("an unsafe remote URL must not open a fallback tab")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+
+    runtime.remoteDevices = (0...XanhRemoteTabsPolicy.maximumDevices).map { index in
+        XanhRemoteTabsDevice(
+            deviceID: "device-\(index)",
+            name: "Device \(index)",
+            kind: .unknown,
+            lastModifiedEpochMillis: 0,
+            tabs: []
+        )
+    }
+    do {
+        _ = try await coordinator.remoteTabs()
+        Issue.record("more than 100 remote devices must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+
+    runtime.remoteDevices = [XanhRemoteTabsDevice(
+        deviceID: "future",
+        name: "Future device",
+        kind: .desktop,
+        lastModifiedEpochMillis: .max,
+        tabs: []
+    )]
+    do {
+        _ = try await coordinator.remoteTabs()
+        Issue.record("an out-of-range remote timestamp must fail closed")
+    } catch let error as XanhSyncContractError {
+        #expect(error == .bridgeRejected)
+    }
+}
+
 private func makeCoordinator(
     runtime: FakeSyncRuntime,
     secrets: FakeSyncSecrets,
@@ -260,6 +338,7 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
     private(set) var isVaultUnlocked = false
     private(set) var touchCredentialCalls = 0
     var credentialRecords: [XanhCredentialRecord] = []
+    var remoteDevices: [XanhRemoteTabsDevice] = []
 
     func initialize() throws -> XanhAccountState { state }
     func accountState() throws -> XanhAccountState { state }
@@ -286,7 +365,7 @@ private final class FakeSyncRuntime: XanhFirefoxSyncRuntime, @unchecked Sendable
         return syncResult
     }
 
-    func remoteTabs() throws -> [XanhRemoteTabsDevice] { [] }
+    func remoteTabs() throws -> [XanhRemoteTabsDevice] { remoteDevices }
     func vaultUnlocked() throws -> Bool { isVaultUnlocked }
     func unlockVault(localLoginsKey: String) throws {
         if failUnlock { throw XanhSyncContractError.vaultLocked }

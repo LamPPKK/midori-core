@@ -516,7 +516,11 @@ than repackaging it as a monolithic APK.
    `XANH_SYNC_SWIFT_FLAGS=-DXANH_ENABLE_FIREFOX_SYNC`, and confirm the callback
    is `xanh-browser-macos://accounts/oauth` or
    `xanh-browser-ios://accounts/oauth` for the target. Then run
-   `./scripts/verify-sync-release.sh apple`.
+   `./scripts/verify-sync-release.sh apple`. Receive tabs from multiple devices
+   and confirm the native list groups sanitized typed records by device and is
+   inert until one row is selected. Reject more than 100 devices/500 total
+   tabs, duplicate identities, unsafe current/history/icon URLs, payloads over
+   8 MiB and out-of-range timestamps without opening a home/search fallback.
 5. On macOS, iPhone and iPad, verify the native credential picker after Face
    ID/Touch ID/passcode unlock. Cover cancel/retry, exact-origin denial,
    cross-origin frames, forged or oversized messages, stale navigation,

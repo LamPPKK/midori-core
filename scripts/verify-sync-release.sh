@@ -30,6 +30,32 @@ require_evidence() {
   fi
 }
 
+verify_apple_remote_tabs() {
+  coordinator='platform/apple/Sources/XanhBrowserCore/FirefoxSyncCoordinator.swift'
+  runtime='platform/apple/App/AppleFirefoxSyncRuntime.swift'
+  settings='platform/apple/App/FirefoxSyncSettingsView.swift'
+  workspace='platform/apple/App/BrowserModel.swift'
+  browser='platform/apple/App/BrowserView.swift'
+
+  grep -F 'public struct XanhRemoteTab:' "$coordinator" >/dev/null
+  grep -F 'public static let maximumDevices = 100' "$coordinator" >/dev/null
+  grep -F 'public static let maximumTotalTabs = 500' "$coordinator" >/dev/null
+  grep -F 'public static let maximumPayloadBytes = 8 * 1_024 * 1_024' \
+    "$coordinator" >/dev/null
+  grep -F "Set(devices.map { \$0.deviceID }).count == devices.count" \
+    "$coordinator" >/dev/null
+  grep -F 'try device.tabs.enumerated().map' "$runtime" >/dev/null
+  grep -F 'ForEach(model.remoteTabs)' "$settings" >/dev/null
+  grep -F 'onOpenRemoteTab(url)' "$settings" >/dev/null
+  grep -F 'guard initialURL.map(AddressResolver.isAllowedWebURL) ?? true' \
+    "$workspace" >/dev/null
+  grep -F '_ = workspace.addTab(initialURL: url)' "$browser" >/dev/null
+  if grep -R -F 'remoteTabsSummary' platform/apple >/dev/null; then
+    echo 'Apple Remote Tabs must expose explicit typed rows, not a count-only summary' >&2
+    exit 1
+  fi
+}
+
 case "$edition" in
   source)
     test -x scripts/verify_webkit_latest.py
@@ -423,6 +449,7 @@ case "$edition" in
       platform/apple/App/BrowserView.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
+    verify_apple_remote_tabs
     test -f platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs
     grep -F 'public async Task UpdateLocalTabsAsync(' \
       platform/windows/src/XanhBrowser.Core/FirefoxSyncCoordinator.cs >/dev/null
@@ -829,6 +856,7 @@ case "$edition" in
       platform/apple/App/BrowserView.swift >/dev/null
     grep -F 'xanh-browser-macos' platform/apple/project.yml >/dev/null
     grep -F 'xanh-browser-ios' platform/apple/project.yml >/dev/null
+    verify_apple_remote_tabs
     test "${XANH_APPLE_SYNC_BRIDGE_REVIEWED:-0}" = 1
     ;;
   android)

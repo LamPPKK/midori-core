@@ -61,7 +61,10 @@ struct BrowserView: View {
             Task { await firefoxSync.handleOAuthCallback(url) }
         }
         .sheet(isPresented: $firefoxSync.isShowingSettings) {
-            FirefoxSyncSettingsView(model: firefoxSync)
+            FirefoxSyncSettingsView(model: firefoxSync) { url in
+                guard AddressResolver.isAllowedWebURL(url) else { return }
+                _ = workspace.addTab(initialURL: url)
+            }
         }
         .sheet(item: $firefoxSync.credentialSelection, onDismiss: {
             firefoxSync.cancelCredentialSelection()

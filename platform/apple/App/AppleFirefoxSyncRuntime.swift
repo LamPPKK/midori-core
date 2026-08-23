@@ -89,8 +89,36 @@ private final class AppleFirefoxSyncRuntime: XanhFirefoxSyncRuntime, @unchecked 
         )
     }
     func remoteTabs() throws -> [XanhRemoteTabsDevice] {
-        try runtime.remoteTabs().map {
-            XanhRemoteTabsDevice(name: $0.deviceName, tabCount: $0.tabs.count)
+        try runtime.remoteTabs().map { device in
+            let tabs = try device.tabs.enumerated().map { index, tab in
+                let history = try tab.urlHistory.map { value in
+                    guard let url = URL(string: value) else {
+                        throw XanhSyncContractError.bridgeRejected
+                    }
+                    return url
+                }
+                let iconURL = try tab.iconUrl.map { value in
+                    guard let url = URL(string: value) else {
+                        throw XanhSyncContractError.bridgeRejected
+                    }
+                    return url
+                }
+                return XanhRemoteTab(
+                    id: "\(device.deviceId):\(index)",
+                    title: tab.title,
+                    urlHistory: history,
+                    iconURL: iconURL,
+                    lastUsedEpochMillis: tab.lastUsedEpochMillis,
+                    isPinned: tab.isPinned
+                )
+            }
+            return XanhRemoteTabsDevice(
+                deviceID: device.deviceId,
+                name: device.deviceName,
+                kind: map(device.deviceKind),
+                lastModifiedEpochMillis: device.lastModifiedEpochMillis,
+                tabs: tabs
+            )
         }
     }
     func vaultUnlocked() throws -> Bool { try runtime.vaultUnlocked() }
@@ -172,6 +200,17 @@ private final class AppleFirefoxSyncRuntime: XanhFirefoxSyncRuntime, @unchecked 
         case .networkError: .networkError
         case .authError: .authError
         case .backedOff: .backedOff
+        }
+    }
+
+    private func map(_ kind: RemoteDeviceKind) -> XanhRemoteDeviceKind {
+        switch kind {
+        case .desktop: .desktop
+        case .mobile: .mobile
+        case .tablet: .tablet
+        case .tv: .tv
+        case .vr: .vr
+        case .unknown: .unknown
         }
     }
 }

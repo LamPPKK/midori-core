@@ -56,6 +56,11 @@ Opaque account/Sync state is stored in non-synchronizing, device-only Keychain
 items. The local Logins key additionally requires LocalAuthentication and the
 vault locks after five minutes or when the scene leaves the foreground. A
 disconnect retry preserves the original keep/delete choice across restart.
+Remote Tabs records are decoded into a bounded typed model (100 devices, 500
+total tabs and an 8 MiB aggregate payload), grouped by device and sanitized for
+native display. Unsafe URLs, duplicate identities and out-of-range timestamps
+fail closed. Receiving or refreshing the list never navigates; a regular tab is
+created only after the user chooses one specific safe HTTP(S) row.
 
 Regular tabs install a main-frame-only password-fill script in a named
 `WKContentWorld`. The page world cannot read its tab ID, per-navigation nonce

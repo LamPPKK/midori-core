@@ -3,6 +3,7 @@ import SwiftUI
 @available(iOS 26.0, macOS 26.0, *)
 struct FirefoxSyncSettingsView: View {
     @Bindable var model: FirefoxSyncViewModel
+    let onOpenRemoteTab: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -77,7 +78,48 @@ struct FirefoxSyncSettingsView: View {
                         }
 
                         Section("Tabs from other devices") {
-                            Text(model.remoteTabsSummary)
+                            Text(model.remoteTabsStatus)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            ForEach(model.remoteTabs) { device in
+                                DisclosureGroup {
+                                    ForEach(device.tabs) { tab in
+                                        Button {
+                                            guard let url = tab.currentURL,
+                                                  AddressResolver.isAllowedWebURL(url) else { return }
+                                            onOpenRemoteTab(url)
+                                            dismiss()
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                HStack {
+                                                    Text(tab.displayTitle)
+                                                        .lineLimit(1)
+                                                    if tab.isPinned {
+                                                        Image(systemName: "pin.fill")
+                                                            .accessibilityLabel("Pinned")
+                                                    }
+                                                }
+                                                if let url = tab.currentURL {
+                                                    Text(url.absoluteString)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(1)
+                                                }
+                                                Text(lastUsedLabel(tab.lastUsedEpochMillis))
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.tertiary)
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                } label: {
+                                    Label(
+                                        "\(device.displayName) (\(device.tabs.count))",
+                                        systemImage: deviceIcon(device.kind)
+                                    )
+                                }
+                            }
                             Button("Refresh remote tabs") {
                                 Task { await model.loadRemoteTabs() }
                             }
@@ -139,5 +181,24 @@ struct FirefoxSyncSettingsView: View {
         case .tabs: "Tabs"
         case .passwords: "Passwords"
         }
+    }
+
+    private func deviceIcon(_ kind: XanhRemoteDeviceKind) -> String {
+        switch kind {
+        case .desktop: "desktopcomputer"
+        case .mobile: "iphone"
+        case .tablet: "ipad"
+        case .tv: "tv"
+        case .vr: "visionpro"
+        case .unknown: "questionmark.square"
+        }
+    }
+
+    private func lastUsedLabel(_ epochMillis: Int64) -> String {
+        guard epochMillis > 0 else { return "Last used time unavailable" }
+        return Date(timeIntervalSince1970: Double(epochMillis) / 1_000).formatted(
+            date: .abbreviated,
+            time: .shortened
+        )
     }
 }

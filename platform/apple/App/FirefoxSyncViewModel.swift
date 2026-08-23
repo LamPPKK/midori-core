@@ -31,7 +31,8 @@ final class FirefoxSyncViewModel {
     var isConfirmingAccountDomain = false
     var isConfirmingDisconnect = false
     var accountDomain = ""
-    var remoteTabsSummary = "Remote tabs have not been loaded."
+    var remoteTabs: [XanhRemoteTabsDevice] = []
+    var remoteTabsStatus = "Remote tabs have not been loaded."
     var errorMessage: String?
     var credentialSelection: FirefoxCredentialSelection?
 
@@ -165,12 +166,14 @@ final class FirefoxSyncViewModel {
     func loadRemoteTabs() async {
         guard let coordinator else { return }
         do {
-            let devices = try await coordinator.remoteTabs()
-            let tabCount = devices.reduce(0) { $0 + $1.tabCount }
-            remoteTabsSummary = devices.isEmpty
+            remoteTabs = try await coordinator.remoteTabs()
+            let tabCount = remoteTabs.reduce(0) { $0 + $1.tabs.count }
+            remoteTabsStatus = remoteTabs.isEmpty
                 ? "No remote devices are available."
-                : "\(tabCount) tab(s) from \(devices.count) device(s). Remote tabs are never opened automatically."
+                : "\(tabCount) tab(s) from \(remoteTabs.count) device(s). Choose one tab to open it."
         } catch {
+            remoteTabs = []
+            remoteTabsStatus = "Remote tabs could not be loaded."
             report(error)
         }
     }
@@ -231,6 +234,8 @@ final class FirefoxSyncViewModel {
         guard let coordinator else { return }
         do {
             try await coordinator.disconnect(deleteLocal: deleteLocal)
+            remoteTabs = []
+            remoteTabsStatus = "Remote tabs have not been loaded."
             await refreshSnapshot()
         } catch {
             report(error)

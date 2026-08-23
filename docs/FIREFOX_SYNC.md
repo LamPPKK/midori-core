@@ -254,10 +254,13 @@ OS authentication/user-presence mechanism in addition to Secret Service
 storage.
 
 Apple now provides system-browser OAuth callback routing, a single-flight actor,
-engine switches, server backoff, remote-tab presentation, Keychain/
-LocalAuthentication vault state, restart-safe keep/delete disconnect intent and
-a main-frame-only isolated `WKContentWorld` credential picker that is absent
-from private tabs.
+engine switches, server backoff, and bounded typed Remote Tabs grouped by device
+behind an explicit native row choice. Its coordinator rejects more than 100
+devices/500 total tabs, duplicate identities, unsafe URL history/icon values,
+out-of-range timestamps and an aggregate payload over 8 MiB before the UI can
+open anything. It also provides Keychain/LocalAuthentication vault state,
+restart-safe keep/delete disconnect intent and a main-frame-only isolated
+`WKContentWorld` credential picker that is absent from private tabs.
 Windows provides the equivalent WinUI coordinator, single-instance protocol
 activation, DPAPI/Windows Hello persistence, a gated exact-origin WebView2
 credential picker and architecture-specific native DLL packaging input. Its
@@ -270,8 +273,8 @@ only create a regular tab after an explicit native row selection.
 Both hosts keep Mozilla-hosted mode disabled unless the
 build carries an approved client ID; HTTPS self-hosted setup remains available.
 
-The platform boundary tests currently pass locally: 34 Apple tests cover the
-contract, coordinator, navigation/recovery policy and device-only
+The platform boundary tests currently pass locally: 35 Apple tests cover the
+contract, coordinator, typed Remote Tabs, navigation/recovery policy and device-only
 Keychain/LocalAuthentication policy,
 while 70 Windows cases cover the contract, coordinator, typed Places/tabs
 boundary, P/Invoke surface and DPAPI/Windows Hello policy. The

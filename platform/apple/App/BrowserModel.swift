@@ -288,11 +288,17 @@ final class BrowserWorkspace {
         tabs.first(where: { $0.id == selectedTabID }) ?? tabs[0]
     }
 
-    func addTab(isPrivate: Bool = false) {
-        let tab = BrowserTab(isPrivate: isPrivate)
+    @discardableResult
+    func addTab(isPrivate: Bool = false, initialURL: URL? = nil) -> Bool {
+        guard initialURL.map(AddressResolver.isAllowedWebURL) ?? true else { return false }
+        let tab = BrowserTab(
+            isPrivate: isPrivate,
+            initialURL: initialURL ?? AddressResolver.defaultHomePage
+        )
         tabs.append(tab)
         selectedTabID = tab.id
         persistSession()
+        return true
     }
 
     func closeSelectedTab() {

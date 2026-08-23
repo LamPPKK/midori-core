@@ -19,13 +19,168 @@ public struct XanhNativeSyncResult: Equatable, Sendable {
     }
 }
 
-public struct XanhRemoteTabsDevice: Equatable, Sendable {
-    public let name: String
-    public let tabCount: Int
+public enum XanhRemoteDeviceKind: String, Codable, Equatable, Sendable {
+    case desktop
+    case mobile
+    case tablet
+    case tv
+    case vr
+    case unknown
+}
 
-    public init(name: String, tabCount: Int) {
+public struct XanhRemoteTab: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let urlHistory: [URL]
+    public let iconURL: URL?
+    public let lastUsedEpochMillis: Int64
+    public let isPinned: Bool
+
+    public init(
+        id: String,
+        title: String,
+        urlHistory: [URL],
+        iconURL: URL?,
+        lastUsedEpochMillis: Int64,
+        isPinned: Bool
+    ) {
+        self.id = id
+        self.title = title
+        self.urlHistory = urlHistory
+        self.iconURL = iconURL
+        self.lastUsedEpochMillis = lastUsedEpochMillis
+        self.isPinned = isPinned
+    }
+
+    public var currentURL: URL? { urlHistory.first }
+
+    public var displayTitle: String {
+        XanhRemoteTabsPolicy.sanitizedDisplayText(
+            title,
+            fallback: currentURL?.host ?? "Untitled tab",
+            maximumUTF8Bytes: XanhRemoteTabsPolicy.maximumTitleUTF8Bytes
+        )
+    }
+
+    public var isSafe: Bool {
+        guard !id.isEmpty,
+              id.utf8.count <= XanhRemoteTabsPolicy.maximumTabIdentifierUTF8Bytes,
+              XanhRemoteTabsPolicy.isSafeIdentity(id),
+              title.count <= XanhRemoteTabsPolicy.maximumTitleCharacters,
+              !urlHistory.isEmpty,
+              urlHistory.count <= XanhRemoteTabsPolicy.maximumURLHistoryEntries,
+              XanhRemoteTabsPolicy.isValidEpochMillis(lastUsedEpochMillis) else { return false }
+        guard urlHistory.allSatisfy({ AddressResolver.isAllowedWebURL($0) }) else { return false }
+        return iconURL.map { AddressResolver.isAllowedWebURL($0) } ?? true
+    }
+}
+
+public struct XanhRemoteTabsDevice: Codable, Equatable, Identifiable, Sendable {
+    public let deviceID: String
+    public let name: String
+    public let kind: XanhRemoteDeviceKind
+    public let lastModifiedEpochMillis: Int64
+    public let tabs: [XanhRemoteTab]
+
+    public init(
+        deviceID: String,
+        name: String,
+        kind: XanhRemoteDeviceKind,
+        lastModifiedEpochMillis: Int64,
+        tabs: [XanhRemoteTab]
+    ) {
+        self.deviceID = deviceID
         self.name = name
-        self.tabCount = tabCount
+        self.kind = kind
+        self.lastModifiedEpochMillis = lastModifiedEpochMillis
+        self.tabs = tabs
+    }
+
+    public var id: String { deviceID }
+
+    public var displayName: String {
+        XanhRemoteTabsPolicy.sanitizedDisplayText(
+            name,
+            fallback: "Firefox device",
+            maximumUTF8Bytes: XanhRemoteTabsPolicy.maximumDeviceNameUTF8Bytes
+        )
+    }
+
+    public var isSafe: Bool {
+        guard !deviceID.isEmpty,
+              deviceID.utf8.count <= XanhRemoteTabsPolicy.maximumDeviceIdentifierUTF8Bytes,
+              XanhRemoteTabsPolicy.isSafeIdentity(deviceID),
+              name.count <= XanhRemoteTabsPolicy.maximumDeviceNameCharacters,
+              tabs.count <= XanhRemoteTabsPolicy.maximumTabsPerDevice,
+              XanhRemoteTabsPolicy.isValidEpochMillis(lastModifiedEpochMillis) else { return false }
+        guard tabs.allSatisfy({ $0.isSafe }) else { return false }
+        return Set(tabs.map { $0.id }).count == tabs.count
+    }
+}
+
+public enum XanhRemoteTabsPolicy {
+    public static let maximumDevices = 100
+    public static let maximumTabsPerDevice = 500
+    public static let maximumTotalTabs = 500
+    public static let maximumURLHistoryEntries = 10
+    public static let maximumPayloadBytes = 8 * 1_024 * 1_024
+    public static let maximumDeviceIdentifierUTF8Bytes = 512
+    public static let maximumTabIdentifierUTF8Bytes = 1_024
+    public static let maximumDeviceNameCharacters = 512
+    public static let maximumDeviceNameUTF8Bytes = 2_048
+    public static let maximumTitleCharacters = 4_096
+    public static let maximumTitleUTF8Bytes = 4_096
+    public static let maximumEpochMillis: Int64 = 253_402_300_799_999
+
+    public static func isValidEpochMillis(_ value: Int64) -> Bool {
+        (0...maximumEpochMillis).contains(value)
+    }
+
+    public static func isSafeIdentity(_ value: String) -> Bool {
+        value.unicodeScalars.allSatisfy { scalar in
+            switch scalar.properties.generalCategory {
+            case .control, .format, .lineSeparator, .paragraphSeparator:
+                false
+            default:
+                true
+            }
+        }
+    }
+
+    public static func sanitizedDisplayText(
+        _ value: String,
+        fallback: String,
+        maximumUTF8Bytes: Int
+    ) -> String {
+        var output: [Unicode.Scalar] = []
+        var outputBytes = 0
+        var pendingSpace = false
+
+        for scalar in value.unicodeScalars {
+            if scalar.properties.isWhitespace {
+                pendingSpace = !output.isEmpty
+                continue
+            }
+            switch scalar.properties.generalCategory {
+            case .control, .format, .lineSeparator, .paragraphSeparator:
+                continue
+            default:
+                break
+            }
+            if pendingSpace {
+                guard outputBytes < maximumUTF8Bytes else { break }
+                output.append(" ")
+                outputBytes += 1
+                pendingSpace = false
+            }
+            let scalarBytes = String(scalar).utf8.count
+            guard outputBytes + scalarBytes <= maximumUTF8Bytes else { break }
+            output.append(scalar)
+            outputBytes += scalarBytes
+        }
+
+        let sanitized = String(String.UnicodeScalarView(output))
+        return sanitized.isEmpty ? fallback : sanitized
     }
 }
 
@@ -283,7 +438,26 @@ public actor XanhFirefoxSyncCoordinator {
     public func remoteTabs() throws -> [XanhRemoteTabsDevice] {
         try startOperation()
         defer { finishOperation() }
-        return try requireRuntime().remoteTabs()
+        let devices = try requireRuntime().remoteTabs()
+        guard devices.count <= XanhRemoteTabsPolicy.maximumDevices else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        let totalTabs = devices.reduce(into: 0) { $0 += $1.tabs.count }
+        guard totalTabs <= XanhRemoteTabsPolicy.maximumTotalTabs else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        guard Set(devices.map { $0.deviceID }).count == devices.count else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        guard devices.allSatisfy({ $0.isSafe }) else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        let encodedSize = try? JSONEncoder().encode(devices).count
+        guard let encodedSize,
+              encodedSize <= XanhRemoteTabsPolicy.maximumPayloadBytes else {
+            throw XanhSyncContractError.bridgeRejected
+        }
+        return devices
     }
 
     public func credentials(

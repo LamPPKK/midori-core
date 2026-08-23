@@ -34,7 +34,7 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 - Xcode 26+, Apple Developer membership, dedicated distribution certificates,
   provisioning profiles and App Store Connect records for macOS and universal
   iOS/iPadOS
-- Windows 10/11 x64 and ARM64 test systems, .NET 8, Windows App SDK 2.3.1,
+- Windows 10/11 x64 and ARM64 test systems, .NET 8, Windows App SDK 2.4.0,
   Evergreen WebView2 Runtime 151.0.4129.50+ and a dedicated Windows code-signing
   certificate
 - The four Lite signing values below, supplied through the environment or the
@@ -593,12 +593,14 @@ or the notarized distribution channel on clean devices.
 ### Windows
 
 Before building Windows artifacts, run
+`python3 scripts/verify_windows_app_sdk_latest.py` and
 `python3 scripts/verify_webview2_latest.py` with network access. The candidate
-must pin the newest stable Microsoft.Web.WebView2 SDK from the official NuGet
-index; prerelease or dynamic versions never satisfy this gate. On an isolated
-Windows test machine, confirm Runtime 150 and non-stable Beta/Dev/Canary
-channels are rejected before a controller or page is created, while Runtime
-151.0.4129.50 and newer stable Evergreen installations start normally.
+must pin the newest stable Microsoft.WindowsAppSDK and Microsoft.Web.WebView2
+packages from the official NuGet indexes; prerelease or dynamic versions never
+satisfy these gates. On an isolated Windows test machine, confirm Runtime 150
+and non-stable Beta/Dev/Canary channels are rejected before a controller or
+page is created, while Runtime 151.0.4129.50 and newer stable Evergreen
+installations start normally.
 
 1. Run the core tests and publish both architectures:
 

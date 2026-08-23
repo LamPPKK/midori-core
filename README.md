@@ -498,9 +498,10 @@ and device/security evidence pass the WPE release gate.
   back-forward state and stops if the scene leaves the foreground.
 - Windows accepts only web URLs in WebView2, disables host objects, restricts
   web messaging to the gated regular-tab credential bridge and uses the
-  Evergreen runtime for independently serviced engine updates. A scheduled
-  official-NuGet verifier rejects stale, dynamic or prerelease WebView2 SDK
-  pins; the current stable SDK baseline is 1.0.4129.50. Startup additionally
+  Evergreen runtime for independently serviced engine updates. Scheduled
+  official-NuGet verifiers reject stale, dynamic or prerelease Windows App SDK
+  and WebView2 pins; the current stable baselines are Windows App SDK 2.4.0 and
+  WebView2 SDK 1.0.4129.50. Startup additionally
   rejects non-stable channels or a Runtime older than 151.0.4129.50 before any
   page is loaded. WebView2 navigation and external handoff are bounded and
   reject userinfo, invalid hosts/ports and control-bearing input. Renderer or

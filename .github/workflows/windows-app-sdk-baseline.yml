@@ -1,0 +1,43 @@
+name: Windows App SDK stable baseline
+
+on:
+  push:
+    paths:
+      - .github/workflows/windows-app-sdk-baseline.yml
+      - scripts/verify_windows_app_sdk_latest.py
+      - scripts/tests/test_verify_windows_app_sdk_latest.py
+      - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+      - platform/windows/README.md
+      - README.md
+      - RELEASING.md
+  pull_request:
+    paths:
+      - .github/workflows/windows-app-sdk-baseline.yml
+      - scripts/verify_windows_app_sdk_latest.py
+      - scripts/tests/test_verify_windows_app_sdk_latest.py
+      - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+      - platform/windows/README.md
+      - README.md
+      - RELEASING.md
+  schedule:
+    - cron: '7 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-app-sdk-stable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test latest-stable parser and MSBuild pin policy
+        run: >-
+          python3 -B -m unittest discover -s scripts/tests
+          -p 'test_verify_windows_app_sdk_latest.py' -v
+      - name: Verify Windows edition uses latest stable Windows App SDK
+        run: python3 scripts/verify_windows_app_sdk_latest.py

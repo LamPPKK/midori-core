@@ -13,8 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
-      - run: pacman -Syu --noconfirm git cmake ninja vala gtk4 webkitgtk-6.0 libsoup3 sqlite libpeas-2 gcr-4 json-glib appstream dbus xorg-server-xvfb weston
+      - run: pacman -Syu --noconfirm git cmake ninja rustup vala gtk4 webkitgtk-6.0 libsoup3 sqlite libpeas-2 gcr-4 json-glib appstream dbus xorg-server-xvfb weston
       - uses: actions/checkout@v6
+      - name: Build the pinned native content-blocking core
+        run: |
+          rustup set profile minimal
+          rustup toolchain install 1.97.1
+          cargo +1.97.1 build --locked --release \
+            --manifest-path xanh-adblock-core/Cargo.toml
       - name: Verify pinned stable WebKitGTK baseline
         run: |
           required="$(cat WEBKITGTK_MIN_VERSION)"
@@ -22,7 +28,12 @@ jobs:
           pkg-config --atleast-version="$required" javascriptcoregtk-6.0
           pkg-config --modversion webkitgtk-6.0
           pkg-config --modversion javascriptcoregtk-6.0
-      - run: cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+      - run: >-
+          cmake -S . -B _build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=/usr
+          -DXANH_ENABLE_ADBLOCK_RUST=ON
+          -DXANH_ADBLOCK_CORE_LIBRARY="$PWD/xanh-adblock-core/target/release/libxanh_adblock_core.so"
       - run: cmake --build _build
       - run: dbus-uuidgen --ensure=/etc/machine-id
       - name: X11 test suite
@@ -42,7 +53,15 @@ jobs:
             echo 'Legacy desktop dependency detected' >&2
             exit 1
           fi
+          ldd _build/xanh-browser | grep -F 'libxanh_adblock_core.so'
       - run: DESTDIR="$PWD/_artifact" cmake --install _build
+      - name: Verify the installed application resolves the bundled blocker
+        run: |
+          native='_artifact/usr/lib/libxanh_adblock_core.so'
+          test -f "$native"
+          resolved="$(ldd _artifact/usr/bin/xanh-browser | awk '/libxanh_adblock_core\.so/{print $3}')"
+          test -n "$resolved"
+          test "$(readlink -f "$resolved")" = "$(readlink -f "$native")"
       - uses: actions/upload-artifact@v4
         with:
           name: xanh-browser-linux

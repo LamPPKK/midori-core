@@ -6,12 +6,14 @@ import WebKit
 final class BrowserNavigationPolicy: WebPage.NavigationDeciding {
     var onOpenExternalURL: ((URL) -> Void)?
     var onExplicitUserWebNavigation: (() -> Void)?
+    var isNavigationTemporarilyBlocked: (() -> Bool)?
 
     func decidePolicy(
         for action: WebPage.NavigationAction,
         preferences: inout WebPage.NavigationPreferences
     ) async -> WKNavigationActionPolicy {
         guard let url = action.request.url else { return .cancel }
+        guard isNavigationTemporarilyBlocked?() != true else { return .cancel }
         preferences.preferredHTTPSNavigationPolicy = .keepAsRequested
         #if os(macOS)
         let hasTrustedButtonActivation = action.buttonNumber >= 0
@@ -59,11 +61,21 @@ final class BrowserTab: Identifiable {
     var address: String
     var errorMessage: String?
     var externalURL: URL?
+    var adblockOperational = true
+    var adblockInstallationPending = false
     var navigationObservationGeneration = 0
     var credentialRequestHandler: ((XanhCredentialContext) async -> XanhCredentialRecord?)?
 
     @ObservationIgnored
     private let credentialBridge: BrowserCredentialBridge?
+    @ObservationIgnored
+    private let userContentController: WKUserContentController
+    @ObservationIgnored
+    private var installedAdblockRuleList: WKContentRuleList?
+    @ObservationIgnored
+    private var adblockUpdateGeneration = 0
+    @ObservationIgnored
+    private var pendingInitialURL: URL?
     @ObservationIgnored
     private var credentialNavigation: (nonce: String, documentURL: URL)?
     @ObservationIgnored
@@ -71,9 +83,14 @@ final class BrowserTab: Identifiable {
     @ObservationIgnored
     private var processRecovery = WebContentProcessRecoveryPolicy()
 
-    init(isPrivate: Bool = false, initialURL: URL = AddressResolver.defaultHomePage) {
+    init(
+        isPrivate: Bool = false,
+        initialURL: URL = AddressResolver.defaultHomePage,
+        adblockEnabled: Bool = true
+    ) {
         self.isPrivate = isPrivate
         self.address = initialURL.absoluteString
+        self.pendingInitialURL = initialURL
 
         var configuration = WebPage.Configuration()
         configuration.websiteDataStore = isPrivate ? .nonPersistent() : .default()
@@ -81,8 +98,10 @@ final class BrowserTab: Identifiable {
         configuration.applicationNameForUserAgent = "XanhBrowser/1.0"
         configuration.upgradeKnownHostsToHTTPS = true
         let bridge = isPrivate ? nil : BrowserCredentialBridge()
-        if let bridge { configuration.userContentController = bridge.userContentController }
+        let userContentController = bridge?.userContentController ?? WKUserContentController()
+        configuration.userContentController = userContentController
         self.credentialBridge = bridge
+        self.userContentController = userContentController
         let navigationPolicy = BrowserNavigationPolicy()
         self.page = WebPage(
             configuration: configuration,
@@ -95,7 +114,47 @@ final class BrowserTab: Identifiable {
         navigationPolicy.onExplicitUserWebNavigation = { [weak self] in
             self?.prepareForExplicitUserNavigation()
         }
-        page.load(initialURL)
+        navigationPolicy.isNavigationTemporarilyBlocked = { [weak self] in
+            self?.adblockInstallationPending ?? true
+        }
+        setAdblockEnabled(adblockEnabled)
+    }
+
+    func setAdblockEnabled(_ enabled: Bool) {
+        adblockUpdateGeneration &+= 1
+        let generation = adblockUpdateGeneration
+        if let installedAdblockRuleList {
+            userContentController.remove(installedAdblockRuleList)
+            self.installedAdblockRuleList = nil
+        }
+        guard enabled else {
+            adblockInstallationPending = false
+            adblockOperational = true
+            loadPendingInitialURL()
+            return
+        }
+
+        adblockInstallationPending = true
+
+        Task { @MainActor [weak self] in
+            let ruleList = await AppleAdblockContentBlocker.shared.ruleList()
+            guard let self, self.adblockUpdateGeneration == generation else { return }
+            if let ruleList {
+                self.userContentController.add(ruleList)
+                self.installedAdblockRuleList = ruleList
+                self.adblockOperational = true
+            } else {
+                self.adblockOperational = false
+            }
+            self.adblockInstallationPending = false
+            self.loadPendingInitialURL()
+        }
+    }
+
+    private func loadPendingInitialURL() {
+        guard let pendingInitialURL else { return }
+        self.pendingInitialURL = nil
+        page.load(pendingInitialURL)
     }
 
     func handleCredentialMessage(_ body: [String: Any], frameURL: URL?) {
@@ -171,9 +230,16 @@ final class BrowserTab: Identifiable {
     func submitAddress(openExternal: (URL) -> Void) {
         switch AddressResolver.resolve(address) {
         case let .web(url):
+            let isWaitingForAdblock = adblockInstallationPending
             prepareForExplicitUserNavigation()
             address = url.absoluteString
-            page.load(url)
+            if isWaitingForAdblock {
+                // The user may type before the default-on rule list finishes compiling.
+                // Replace the queued home/session URL instead of outrunning installation.
+                pendingInitialURL = url
+            } else {
+                page.load(url)
+            }
         case let .external(url):
             errorMessage = nil
             openExternal(url)
@@ -183,18 +249,21 @@ final class BrowserTab: Identifiable {
     }
 
     func goBack() {
+        guard !adblockInstallationPending else { return }
         guard let item = page.backForwardList.backList.last else { return }
         prepareForExplicitUserNavigation()
         page.load(item)
     }
 
     func goForward() {
+        guard !adblockInstallationPending else { return }
         guard let item = page.backForwardList.forwardList.first else { return }
         prepareForExplicitUserNavigation()
         page.load(item)
     }
 
     func reload() {
+        guard !adblockInstallationPending else { return }
         prepareForExplicitUserNavigation()
         page.reload()
     }
@@ -237,6 +306,7 @@ final class BrowserTab: Identifiable {
 
     @discardableResult
     func recoverPendingWebContentProcessIfPossible(isForeground: Bool) -> Bool {
+        guard !adblockInstallationPending else { return false }
         guard let request = processRecovery.takeRecoveryRequest(isForeground: isForeground) else {
             return false
         }
@@ -256,6 +326,7 @@ final class BrowserTab: Identifiable {
     }
 
     private func prepareForExplicitUserNavigation() {
+        pendingInitialURL = nil
         processRecovery.resetForExplicitUserNavigation()
         credentialNavigation = nil
         errorMessage = nil
@@ -274,12 +345,25 @@ final class BrowserWorkspace {
 
     var tabs: [BrowserTab]
     var selectedTabID: BrowserTab.ID
+    var adblockEnabled: Bool {
+        didSet {
+            guard adblockEnabled != oldValue else { return }
+            defaults.set(adblockEnabled, forKey: AdblockHostPolicy.preferenceKey)
+            tabs.forEach { $0.setAdblockEnabled(adblockEnabled) }
+        }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let initialAdblockEnabled = AdblockHostPolicy.isEnabled(
+            storedValue: defaults.object(forKey: AdblockHostPolicy.preferenceKey)
+        )
+        self.adblockEnabled = initialAdblockEnabled
         let session = BrowserSession.decode(defaults.data(forKey: Self.sessionKey))
             ?? BrowserSession(urls: [AddressResolver.defaultHomePage], selectedIndex: 0)
-        let restoredTabs = session.urls.map { BrowserTab(initialURL: $0) }
+        let restoredTabs = session.urls.map {
+            BrowserTab(initialURL: $0, adblockEnabled: initialAdblockEnabled)
+        }
         self.tabs = restoredTabs
         self.selectedTabID = restoredTabs[session.selectedIndex].id
     }
@@ -293,7 +377,8 @@ final class BrowserWorkspace {
         guard initialURL.map(AddressResolver.isAllowedWebURL) ?? true else { return false }
         let tab = BrowserTab(
             isPrivate: isPrivate,
-            initialURL: initialURL ?? AddressResolver.defaultHomePage
+            initialURL: initialURL ?? AddressResolver.defaultHomePage,
+            adblockEnabled: adblockEnabled
         )
         tabs.append(tab)
         selectedTabID = tab.id

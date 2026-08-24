@@ -56,6 +56,13 @@ struct BrowserView: View {
             openURL(externalURL)
             tab.externalURL = nil
         }
+        .onChange(of: tab.adblockInstallationPending) { _, pending in
+            if !pending {
+                tab.recoverPendingWebContentProcessIfPossible(
+                    isForeground: scenePhase == .active
+                )
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 tab.recoverPendingWebContentProcessIfPossible(isForeground: true)
@@ -164,15 +171,23 @@ struct BrowserView: View {
         HStack(spacing: 10) {
             Button("Back", systemImage: "chevron.left") { tab.goBack() }
                 .labelStyle(.iconOnly)
-                .disabled(tab.page.backForwardList.backList.isEmpty)
+                .disabled(
+                    tab.adblockInstallationPending ||
+                        tab.page.backForwardList.backList.isEmpty
+                )
             Button("Forward", systemImage: "chevron.right") { tab.goForward() }
                 .labelStyle(.iconOnly)
-                .disabled(tab.page.backForwardList.forwardList.isEmpty)
+                .disabled(
+                    tab.adblockInstallationPending ||
+                        tab.page.backForwardList.forwardList.isEmpty
+                )
             Button("Reload", systemImage: "arrow.clockwise") { tab.reload() }
                 .labelStyle(.iconOnly)
+                .disabled(tab.adblockInstallationPending)
 
             TextField("Search or enter website", text: $tab.address)
                 .textFieldStyle(.roundedBorder)
+                .disabled(tab.adblockInstallationPending)
                 .onSubmit { tab.submitAddress { openURL($0) } }
 
             Menu {
@@ -183,6 +198,14 @@ struct BrowserView: View {
                     }
                 }
                 Divider()
+                if tab.adblockOperational {
+                    Toggle("Block ads and trackers", isOn: $workspace.adblockEnabled)
+                        .help("Applies to subsequent page loads.")
+                } else {
+                    Toggle("Content blocking unavailable", isOn: .constant(false))
+                        .disabled(true)
+                        .help("Restart Xanh Browser to retry the bundled content rule list.")
+                }
                 Button("New Tab", systemImage: "plus") { workspace.addTab() }
                 Button("New Private Tab", systemImage: "hand.raised") { workspace.addTab(isPrivate: true) }
                 Button("Close Tab", systemImage: "xmark") {

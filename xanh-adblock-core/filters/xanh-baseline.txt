@@ -1,0 +1,11 @@
+! Title: Xanh Browser baseline filters
+! Homepage: https://github.com/lamppkk/xanh-browser
+! License: MPL-2.0
+! This deliberately small built-in list is a safe offline baseline, not EasyList.
+||doubleclick.net^
+||googlesyndication.com^
+||google-analytics.com^
+||adservice.google.com^
+||amazon-adsystem.com^
+||scorecardresearch.com^
+||connect.facebook.net^$third-party

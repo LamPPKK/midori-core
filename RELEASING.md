@@ -110,9 +110,13 @@ allowed historical material, never a shipping dependency or application ID.
 1. Build and run the full test suite on Linux:
 
    ```sh
+   cargo build --locked --release \
+     --manifest-path xanh-adblock-core/Cargo.toml
    cmake -S . -B _build -G Ninja \
      -DCMAKE_BUILD_TYPE=Release \
-     -DCMAKE_INSTALL_PREFIX=/usr
+     -DCMAKE_INSTALL_PREFIX=/usr \
+     -DXANH_ENABLE_ADBLOCK_RUST=ON \
+     -DXANH_ADBLOCK_CORE_LIBRARY="$PWD/xanh-adblock-core/target/release/libxanh_adblock_core.so"
    cmake --build _build
    ctest --test-dir _build --output-on-failure
    cmake --build _build --target validate-metadata
@@ -322,6 +326,15 @@ unless `XANH_LINUX_USER_PRESENCE_EVIDENCE` proves fresh OS authentication and
 
 ## 3. Build and inspect Flatpak
 
+Build the locked native blocker inside the same Linux builder environment and
+stage it at the manifest's fixed local input path:
+
+```sh
+cargo build --locked --release --manifest-path xanh-adblock-core/Cargo.toml
+install -Dm755 xanh-adblock-core/target/release/libxanh_adblock_core.so \
+  flatpak/native/libxanh_adblock_core.so
+```
+
 ```sh
 flatpak-builder --force-clean --sandbox _flatpak-build \
   flatpak/io.github.lamppkk.xanhbrowser.yml
@@ -362,14 +375,22 @@ Flatpak manifest.
    `BrowserActivityTest.rendererRecoveryIsForegroundAndOneShot` automates the
    foreground kill/recreation/repeated-crash path with the real renderer on API
    29 and newer; keep the background and System WebView matrix checks manual.
-4. Export the four `XANH_LITE_*` values and build the signed candidate:
+4. Build the pinned blocker with Rust 1.97.1 and NDK 29.0.14206865, export the
+   four `XANH_LITE_*` values, then build the signed candidate with the exact
+   native package:
 
    ```sh
-   ./gradlew --no-daemon bundleProductionRelease
+   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
+   ./scripts/build-adblock-android.sh "$PWD/_build/xanh-adblock-android"
+   ./gradlew --no-daemon \
+     -PxanhAdblockNativeDir="$PWD/_build/xanh-adblock-android" \
+     -PxanhAndroidNdkDir="$ANDROID_NDK_HOME" \
+     bundleProductionRelease
    ```
 
 Verification: `verifyReleaseSigning` must pass, the AAB must be signed by the
-Lite upload key, and a Play-generated APK must install as
+Lite upload key, `verifyAdblockNativeRelease` must accept all three exact ELF
+libraries/exports, and a Play-generated APK must install as
 `io.github.lamppkk.xanhbrowser.lite` version `1.0.0` (`10000`) on a clean
 device. A plain `bundleRelease` artifact is unsigned and must never be uploaded.
 
@@ -462,6 +483,30 @@ gates are still mandatory. Attestation prevents post-build substitution and
 binds provenance; it does not make a compromised self-hosted builder trusted,
 so the hardened dedicated runner and independent release review remain part of
 the security boundary.
+
+## Native content-blocking release gate
+
+Before enabling `xanh-adblock-core` in any signed edition, run the verifier,
+Rust tests and Clippy commands in `docs/ADBLOCK.md`. Retain the exact
+`ADBLOCK_RUST.lock`, Cargo.lock, native binary hash and SBOM. The artifact must
+include the MPL-2.0 notice/source location and must not describe Xanh as running
+uBlock Origin or full uBO semantics.
+
+Exercise the bundled baseline, one block rule, one exception, same/third-party
+classification, the disabled toggle and private-profile interception on the
+real platform engine. Optional dynamically loaded native libraries must fail
+open when missing or rejected; Linux instead treats the bundled shared library
+as a required dependency and must pass an installed-artifact launch/linkage
+smoke test. Rule compilation failures must still load the page unfiltered, and
+an invalid candidate list must retain the last-known-good engine. If a
+third-party list is shipped or downloaded, record its exact content hash,
+license, attribution, HTTPS source allowlist and bounded atomic-update evidence
+separately from the engine SBOM. Android native releases additionally require
+all supported ABIs, exact source/manifest hashes and 16 KiB ELF/page-alignment
+evidence. Apple artifacts must contain the byte-exact Rust-generated
+`xanh-adblock-baseline.json`; Windows Release artifacts must contain the
+architecture-matched DLL and Linux artifacts must resolve the installed/bundled
+shared library without an external developer path.
 
 ## 5. Validate Apple and Windows
 
@@ -619,12 +664,16 @@ and non-stable Beta/Dev/Canary channels are rejected before a controller or
 page is created, while Runtime 151.0.4129.50 and newer stable Evergreen
 installations start normally.
 
-1. Run the core tests and publish both architectures:
+1. From a Visual Studio Developer PowerShell, build the pinned blocker, run
+   the core tests and publish both architectures. Release publishing is
+   intentionally rejected unless the matching native blocker is supplied:
 
    ```powershell
+   cargo build --manifest-path xanh-adblock-core/Cargo.toml --locked --release --target x86_64-pc-windows-msvc
+   cargo build --manifest-path xanh-adblock-core/Cargo.toml --locked --release --target aarch64-pc-windows-msvc
    dotnet test platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj -c Release
-   dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64
-   dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj -c Release -r win-arm64 --self-contained true -p:Platform=ARM64
+   dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:XanhAdblockNativeDll="$PWD/xanh-adblock-core/target/x86_64-pc-windows-msvc/release/xanh_adblock_core.dll"
+   dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj -c Release -r win-arm64 --self-contained true -p:Platform=ARM64 -p:XanhAdblockNativeDll="$PWD/xanh-adblock-core/target/aarch64-pc-windows-msvc/release/xanh_adblock_core.dll"
    ```
 
 2. Test multi-tab, InPrivate, clear-data, download, permissions, external

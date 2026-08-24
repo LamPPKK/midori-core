@@ -1,0 +1,9 @@
+! Xanh Browser Lite bounded bootstrap rules
+! This Xanh-owned ABP-domain subset is replaced by the reviewed native matcher when packaged.
+||doubleclick.net^
+||googlesyndication.com^
+||google-analytics.com^
+||adservice.google.com^
+||amazon-adsystem.com^
+||scorecardresearch.com^
+||connect.facebook.net^$third-party

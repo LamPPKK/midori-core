@@ -23,6 +23,10 @@ targets:
       - App
       - Sources/XanhBrowserCore
       - Generated
+      - path: ../../THIRD_PARTY_NOTICES.md
+        buildPhase: resources
+      - path: ../../xanh-adblock-core/LICENSE
+        buildPhase: resources
     info:
       path: Config/XanhBrowser-iOS-Info.plist
       properties:
@@ -64,6 +68,10 @@ targets:
       - App
       - Sources/XanhBrowserCore
       - Generated
+      - path: ../../THIRD_PARTY_NOTICES.md
+        buildPhase: resources
+      - path: ../../xanh-adblock-core/LICENSE
+        buildPhase: resources
     info:
       path: Config/XanhBrowser-macOS-Info.plist
       properties:

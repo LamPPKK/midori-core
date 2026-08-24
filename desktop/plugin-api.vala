@@ -24,6 +24,7 @@ namespace Xanh {
     public class PluginHost : Object {
         public BrowserDatabase database { get; construct; }
         public bool adblock_enabled { get; set; }
+        public string adblock_filter_list { get; set; default = ""; }
         public string adblock_blocked_domains { get; set; default = ""; }
         public string adblock_whitelist_domains { get; set; default = ""; }
         public bool bookmarks_enabled { get; set; }

@@ -27,6 +27,9 @@ namespace Xanh {
         public string? popup_opener_uri { get; set; }
         public int64 last_popup_monotonic_us { get; set; }
         public bool pending_popup_load_finished { get; set; }
+        public bool adblock_navigation_pending { get; set; }
+        public string? pending_adblock_uri { get; set; }
+        public uint64 adblock_installed_generation { get; set; }
 
         public TabRecord (TabState state, WebKit.WebView view, Gtk.Label label,
                 WebExtensionBridge bridge, CredentialBridge? credential_bridge,
@@ -99,7 +102,12 @@ namespace Xanh {
         HashTable<WebKit.Download, bool> failed_downloads =
             new HashTable<WebKit.Download, bool> (direct_hash, direct_equal);
         WebKit.UserContentFilter? current_adblock_filter;
+        WebKit.UserContentFilter? last_good_adblock_filter;
         uint64 adblock_generation;
+        bool adblock_compile_running;
+        string? adblock_compile_failure;
+        uint64 adblock_compile_failure_generation;
+        Cancellable adblock_compile_cancellable = new Cancellable ();
 
         public BrowserWindow (Gtk.Application application, BrowserDatabase database) {
             Object (application: application, title: Config.APP_NAME, default_width: 1100, default_height: 760);
@@ -123,6 +131,9 @@ namespace Xanh {
             string? development_plugins = Environment.get_variable ("XANH_PLUGIN_DIR");
             plugins = new PluginManager (plugin_host, development_plugins);
             plugin_host.notify["adblock-enabled"].connect (refresh_adblock_filters);
+            plugin_host.notify["adblock-filter-list"].connect (refresh_adblock_filters);
+            plugin_host.notify["adblock-blocked-domains"].connect (refresh_adblock_filters);
+            plugin_host.notify["adblock-whitelist-domains"].connect (refresh_adblock_filters);
             plugin_host.notify["status-text"].connect (() => status.label = plugin_host.status_text);
             plugin_host.notify["colorful-tabs-enabled"].connect (refresh_tab_colors);
             plugin_host.page_loaded.connect ((state) => {
@@ -160,6 +171,7 @@ namespace Xanh {
             back.clicked.connect (() => {
                 var tab = active_tab ();
                 if (tab != null) {
+                    if (!adblock_navigation_ready (tab)) return;
                     begin_explicit_navigation (tab);
                     tab.view.go_back ();
                 }
@@ -170,6 +182,7 @@ namespace Xanh {
             forward.clicked.connect (() => {
                 var tab = active_tab ();
                 if (tab != null) {
+                    if (!adblock_navigation_ready (tab)) return;
                     begin_explicit_navigation (tab);
                     tab.view.go_forward ();
                 }
@@ -180,6 +193,7 @@ namespace Xanh {
             reload.clicked.connect (() => {
                 var tab = active_tab ();
                 if (tab == null) return;
+                if (!adblock_navigation_ready (tab)) return;
                 if (tab.state.recovery_uri != null) {
                     string recovery_uri = tab.state.recovery_uri;
                     begin_explicit_navigation (tab);
@@ -198,11 +212,12 @@ namespace Xanh {
                 var tab = active_tab ();
                 if (tab != null) {
                     if (AddressResolver.is_safe_external_uri (address.text)) {
+                        tab.pending_adblock_uri = null;
                         launch_external_uri (address.text);
                         return;
                     }
                     begin_explicit_navigation (tab);
-                    tab.view.load_uri (resolve_address (address.text));
+                    queue_tab_navigation (tab, resolve_address (address.text));
                 }
             });
             header.set_title_widget (address);
@@ -301,6 +316,7 @@ namespace Xanh {
             menu.append ("Reset Zoom", "win.zoom-reset");
             menu.append ("Toggle JavaScript", "win.toggle-javascript");
             menu.append ("Toggle Images", "win.toggle-images");
+            menu.append ("Block Ads and Trackers", "win.toggle-adblock");
             menu.append ("Clear Private Data", "win.clear-data");
             menu.append ("Import Legacy Profile", "win.import-profile");
             menu.append ("Firefox Sync", "win.firefox-sync");
@@ -321,12 +337,38 @@ namespace Xanh {
             add_action (action ("zoom-reset", () => set_zoom (1.0)));
             add_action (action ("toggle-javascript", toggle_javascript));
             add_action (action ("toggle-images", toggle_images));
+            var adblock_action = new SimpleAction.stateful (
+                "toggle-adblock", null,
+                new Variant.boolean (setting_enabled ("adblock-enabled", true)));
+            adblock_action.activate.connect (() => {
+                bool enabled = !adblock_action.state.get_boolean ();
+                try {
+                    database.set_setting ("adblock-enabled", enabled ? "true" : "false");
+                } catch (Error error) {
+                    warning ("Cannot persist content-blocking setting: %s", error.message);
+                    return;
+                }
+                foreach (unowned Gtk.Window window in application.get_windows ()) {
+                    var browser_window = window as BrowserWindow;
+                    if (browser_window != null)
+                        browser_window.apply_adblock_enabled (enabled);
+                }
+            });
+            add_action (adblock_action);
             add_action (action ("clear-data", confirm_clear_data));
             add_action (action ("import-profile", confirm_profile_import));
             add_action (action ("firefox-sync", () =>
                 (application as BrowserApplication)?.show_sync_settings (this)));
             add_action (action ("remote-tabs", () => show_remote_tabs.begin ()));
             add_action (action ("about", show_about));
+        }
+
+        void apply_adblock_enabled (bool enabled) {
+            var stateful = lookup_action ("toggle-adblock") as SimpleAction;
+            stateful?.set_state (new Variant.boolean (enabled));
+            plugin_host.adblock_enabled = enabled;
+            status.label = enabled && adblock_has_rules () ?
+                "Content blocking is getting ready…" : "Content blocking disabled";
         }
 
         delegate void ActionCallback ();
@@ -358,6 +400,7 @@ namespace Xanh {
             settings.enable_javascript = enabled;
             try { database.set_setting ("enable-javascript", enabled.to_string ()); }
             catch (Error error) { warning ("Cannot save JavaScript setting: %s", error.message); }
+            if (!adblock_navigation_ready (tab)) return;
             begin_explicit_navigation (tab);
             tab.view.reload ();
         }
@@ -370,6 +413,7 @@ namespace Xanh {
             settings.auto_load_images = enabled;
             try { database.set_setting ("auto-load-images", enabled.to_string ()); }
             catch (Error error) { warning ("Cannot save image setting: %s", error.message); }
+            if (!adblock_navigation_ready (tab)) return;
             begin_explicit_navigation (tab);
             tab.view.reload ();
         }
@@ -407,41 +451,58 @@ namespace Xanh {
             attach_tab (record, true);
             string target = uri == "" || uri == "about:blank" ?
                 "about:blank" : resolve_address (uri);
-            if (plugin_host.adblock_enabled && current_adblock_filter == null) {
-                load_tab_with_adblock.begin (record, target);
-            } else {
-                record.view.load_uri (target);
-            }
+            queue_tab_navigation (record, target);
         }
 
-        async void load_tab_with_adblock (TabRecord record, string target) {
+        void queue_tab_navigation (TabRecord record, string target) {
+            if (!plugin_host.adblock_enabled || !adblock_has_rules () ||
+                    (current_adblock_filter != null &&
+                        record.adblock_installed_generation == adblock_generation)) {
+                record.pending_adblock_uri = null;
+                record.view.load_uri (target);
+                return;
+            }
+            record.pending_adblock_uri = target;
+            if (record.adblock_navigation_pending) return;
+            record.adblock_navigation_pending = true;
+            load_tab_with_adblock.begin (record);
+        }
+
+        async void load_tab_with_adblock (TabRecord record) {
+            bool unavailable = false;
             var manager = record.view.get_user_content_manager ();
-            while (plugin_host.adblock_enabled && current_adblock_filter == null &&
-                    normalized_domains (plugin_host.adblock_blocked_domains).length > 0) {
+            while (plugin_host.adblock_enabled && adblock_has_rules () &&
+                    (current_adblock_filter == null ||
+                        record.adblock_installed_generation != adblock_generation)) {
                 uint64 expected_generation = adblock_generation;
                 try {
                     yield install_adblock (manager, expected_generation);
-                } catch (Error error) {
-                    warning ("Adblock filter unavailable: %s", error.message);
-                    if (tabs.lookup (record.state.id) == record) {
-                        record.view.load_uri ("about:blank");
-                        status.label = "Page blocked because content protection is unavailable";
+                    if (expected_generation == adblock_generation &&
+                            current_adblock_filter != null) {
+                        record.adblock_installed_generation = expected_generation;
                     }
-                    return;
+                } catch (Error error) {
+                    if (expected_generation != adblock_generation)
+                        continue;
+                    warning ("Adblock filter unavailable: %s", error.message);
+                    unavailable = true;
+                    break;
                 }
                 if (expected_generation == adblock_generation &&
                         current_adblock_filter == null) {
-                    record.view.load_uri ("about:blank");
-                    status.label = "Page blocked because content protection is unavailable";
-                    return;
+                    unavailable = true;
+                    break;
                 }
             }
-            if (plugin_host.adblock_enabled && current_adblock_filter != null) {
-                manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
-                manager.add_filter (current_adblock_filter);
-            }
-            if (tabs.lookup (record.state.id) == record)
+            string? target = record.pending_adblock_uri;
+            record.pending_adblock_uri = null;
+            record.adblock_navigation_pending = false;
+            if (tabs.lookup (record.state.id) == record && target != null) {
                 record.view.load_uri (target);
+                if (unavailable)
+                    status.label = "Content blocking unavailable; page loaded without it";
+            }
+            update_chrome ();
         }
 
         TabRecord create_tab (
@@ -483,8 +544,11 @@ namespace Xanh {
                     "upgrade-insecure-requests; block-all-mixed-content"
                 ) as WebKit.WebView;
             }
-            if (plugin_host.adblock_enabled && current_adblock_filter != null)
+            bool adblock_filter_attached =
+                plugin_host.adblock_enabled && current_adblock_filter != null;
+            if (adblock_filter_attached) {
                 manager.add_filter (current_adblock_filter);
+            }
             var state = new TabState ();
             state.id = next_tab_id++;
             state.private_mode = private_mode;
@@ -510,6 +574,8 @@ namespace Xanh {
             var record = new TabRecord (
                 state, view, label, bridge, credential_bridge, external_navigation_bridge);
             record.pending_popup = pending_popup;
+            if (adblock_filter_attached)
+                record.adblock_installed_generation = adblock_generation;
             if (external_navigation_bridge != null) {
                 record.external_navigation_signal =
                     external_navigation_bridge.request.connect ((external_uri, document_uri) =>
@@ -556,72 +622,159 @@ namespace Xanh {
         async void install_adblock (
                 WebKit.UserContentManager manager,
                 uint64 expected_generation) throws Error {
+            while (adblock_compile_running) {
+                SourceFunc resume = install_adblock.callback;
+                Timeout.add (10, () => {
+                    resume ();
+                    return Source.REMOVE;
+                });
+                yield;
+            }
+            if (expected_generation != adblock_generation) return;
+            if (current_adblock_filter != null) {
+                manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
+                manager.add_filter (current_adblock_filter);
+                return;
+            }
+            if (adblock_compile_failure != null &&
+                    adblock_compile_failure_generation == expected_generation) {
+                throw new IOError.FAILED (adblock_compile_failure);
+            }
+
             string filter_dir = Path.build_filename (
                 Environment.get_user_cache_dir (), "xanh-browser", "filters");
             DirUtils.create_with_parents (filter_dir, 0700);
             var store = new WebKit.UserContentFilterStore (filter_dir);
-            string[] blocked = normalized_domains (plugin_host.adblock_blocked_domains);
-            if (blocked.length == 0) {
-                if (expected_generation == adblock_generation)
-                    current_adblock_filter = null;
-                return;
-            }
-            string[] allowed = normalized_domains (plugin_host.adblock_whitelist_domains);
-            string whitelist = allowed.length > 0 ?
-                ",\"unless-domain\":" + domain_json (allowed) : "";
-            string rules = ("[{\"trigger\":{\"url-filter\":\".*\",\"if-domain\":%s%s}," +
-                "\"action\":{\"type\":\"block\"}}]").printf (domain_json (blocked), whitelist);
-            var filter = yield store.save ("xanh-builtin-adblock-v1", new Bytes (rules.data));
-            if (expected_generation != adblock_generation) return;
-            current_adblock_filter = filter;
-            manager.add_filter (filter);
-        }
+            bool native = adblock_host_is_available ();
 
-        string[] normalized_domains (string configured) {
-            string[] domains = {};
-            foreach (string raw in configured.split (",")) {
-                string domain = raw.strip ().down ();
-                if (domain.has_prefix ("*.")) domain = domain.substring (2);
-                if (domain == "" || domain.has_prefix (".") || domain.has_suffix (".")) continue;
-                bool valid = true;
-                for (int index = 0; index < domain.length; index++) {
-                    char current = domain[index];
-                    if (!(current.isalnum () || current == '.' || current == '-')) {
-                        valid = false;
-                        break;
+            adblock_compile_running = true;
+            adblock_compile_failure = null;
+            try {
+                Bytes rules;
+                if (native) {
+                    string source = AdblockSource.native_filter_list (
+                        plugin_host.adblock_filter_list,
+                        plugin_host.adblock_blocked_domains,
+                        plugin_host.adblock_whitelist_domains);
+                    if (source.strip () == "")
+                        throw new IOError.FAILED (
+                            "Adblock configuration has no effective rules");
+                    rules = yield compile_native_filter_with_retry (
+                        source, expected_generation);
+                } else {
+                    string[] blocked = AdblockSource.checked_normalized_domains (
+                        plugin_host.adblock_blocked_domains);
+                    if (blocked.length == 0)
+                        throw new IOError.FAILED (
+                            "Adblock configuration has no effective domains");
+                    string[] allowed = AdblockSource.checked_normalized_domains (
+                        plugin_host.adblock_whitelist_domains);
+                    string legacy = AdblockSource.legacy_webkit_json (blocked, allowed);
+                    rules = new Bytes (legacy.data);
+                }
+                var filter = yield store.save ("xanh-builtin-adblock-v1", rules);
+                if (expected_generation != adblock_generation) return;
+                current_adblock_filter = filter;
+                last_good_adblock_filter = filter;
+                manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
+                manager.add_filter (filter);
+            } catch (Error error) {
+                if (expected_generation == adblock_generation) {
+                    adblock_compile_failure = error.message;
+                    adblock_compile_failure_generation = expected_generation;
+                    if (last_good_adblock_filter != null) {
+                        current_adblock_filter = last_good_adblock_filter;
+                        manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
+                        manager.add_filter (last_good_adblock_filter);
+                        warning (
+                            "Cannot replace adblock filter; keeping last known good: %s",
+                            error.message);
+                        return;
                     }
                 }
-                if (valid) domains += domain;
+                throw error;
+            } finally {
+                adblock_compile_running = false;
             }
-            return domains;
         }
 
-        string domain_json (string[] domains) {
-            string json = "[";
-            for (int index = 0; index < domains.length; index++) {
-                if (index > 0) json += ",";
-                json += "\"*" + domains[index] + "\"";
+        async Bytes compile_native_filter_with_retry (
+                string source,
+                uint64 expected_generation) throws Error {
+            while (expected_generation == adblock_generation) {
+                try {
+                    return yield adblock_host_compile_async (
+                        source, adblock_compile_cancellable);
+                } catch (AdblockHostError error) {
+                    if (!(error is AdblockHostError.BUSY)) throw error;
+                }
+                SourceFunc resume = compile_native_filter_with_retry.callback;
+                Timeout.add (25, () => {
+                    resume ();
+                    return Source.REMOVE;
+                });
+                yield;
             }
-            return json + "]";
+            throw new IOError.CANCELLED (
+                "Content-blocking configuration changed while waiting to compile");
+        }
+
+        bool adblock_has_rules () {
+            if (adblock_host_is_available () &&
+                    plugin_host.adblock_filter_list.strip () != "") {
+                return true;
+            }
+            return plugin_host.adblock_blocked_domains.strip () != "";
+        }
+
+        bool adblock_navigation_ready (TabRecord? record = null) {
+            bool ready = !plugin_host.adblock_enabled ||
+                !adblock_has_rules () || adblock_compile_failure != null ||
+                (current_adblock_filter != null &&
+                    (record == null ||
+                        record.adblock_installed_generation == adblock_generation));
+            if (!ready)
+                status.label = "Content blocking is getting ready…";
+            return ready;
         }
 
         void refresh_adblock_filters () {
             cancel_pending_popups ();
+            adblock_compile_cancellable.cancel ();
+            adblock_compile_cancellable = new Cancellable ();
             adblock_generation++;
             current_adblock_filter = null;
+            adblock_compile_failure = null;
             uint64 expected_generation = adblock_generation;
+            bool should_install = plugin_host.adblock_enabled && adblock_has_rules ();
             tabs.foreach ((id, tab) => {
                 var manager = tab.view.get_user_content_manager ();
-                manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
-                if (plugin_host.adblock_enabled) {
+                if (should_install) {
                     install_adblock.begin (manager, expected_generation, (object, result) => {
-                        try { install_adblock.end (result); }
+                        try {
+                            install_adblock.end (result);
+                            if (expected_generation == adblock_generation &&
+                                    current_adblock_filter != null) {
+                                tab.adblock_installed_generation = expected_generation;
+                                status.label = "Content blocking enabled";
+                            }
+                        }
                         catch (Error error) {
                             warning ("Cannot refresh adblock filter: %s", error.message);
+                            if (expected_generation == adblock_generation &&
+                                    current_adblock_filter == null) {
+                                status.label =
+                                    "Content blocking unavailable; pages load unfiltered";
+                            }
                         }
+                        update_chrome ();
                     });
+                } else {
+                    manager.remove_filter_by_id ("xanh-builtin-adblock-v1");
                 }
             });
+            if (!should_install) last_good_adblock_filter = null;
+            update_chrome ();
         }
 
         void connect_view (TabRecord tab) {
@@ -633,7 +786,11 @@ namespace Xanh {
                 var navigation = decision as WebKit.NavigationPolicyDecision;
                 string? uri = navigation?.get_navigation_action ().get_request ().get_uri ();
                 if (AddressResolver.is_safe_navigation_uri (uri)) {
-                    decision.use ();
+                    if (uri != "about:blank" && !adblock_navigation_ready (tab)) {
+                        decision.ignore ();
+                    } else {
+                        decision.use ();
+                    }
                 } else {
                     decision.ignore ();
                 }
@@ -848,7 +1005,7 @@ namespace Xanh {
 
         bool popup_adblock_ready () {
             return !plugin_host.adblock_enabled || current_adblock_filter != null ||
-                normalized_domains (plugin_host.adblock_blocked_domains).length == 0;
+                !adblock_has_rules ();
         }
 
         void show_pending_popup (TabRecord popup) {
@@ -1133,6 +1290,12 @@ namespace Xanh {
 
         void navigate_tls_safety (TabRecord tab) {
             if (active_tab () != tab || tab.recovery.process_stopped) return;
+            if (!adblock_navigation_ready (tab)) {
+                begin_explicit_navigation (tab);
+                tab.view.load_uri ("about:blank");
+                status.label = "Unsafe TLS connection blocked";
+                return;
+            }
             begin_explicit_navigation (tab);
             if (tab.view.can_go_back ()) {
                 tab.view.go_back ();
@@ -1586,6 +1749,7 @@ namespace Xanh {
         }
 
         void begin_explicit_navigation (TabRecord tab) {
+            tab.pending_adblock_uri = null;
             cancel_pending_popups (tab);
             if (credential_picker_bridge == tab.credential_bridge)
                 cancel_credential_picker ();
@@ -1635,7 +1799,7 @@ namespace Xanh {
             if (uri == null) return;
             tab.state.recovery_uri = uri;
             status.label = "Recovering page process…";
-            tab.view.load_uri (uri);
+            queue_tab_navigation (tab, uri);
         }
 
         void show_process_stopped (TabRecord tab) {
@@ -1701,8 +1865,11 @@ namespace Xanh {
             tab.state.title = PageDataPolicy.sanitized_title (
                 tab.state.title, tab.state.uri);
             if (!address.has_focus) address.text = tab.state.uri;
-            back.sensitive = tab.view.can_go_back ();
-            forward.sensitive = tab.view.can_go_forward ();
+            bool navigation_ready = adblock_navigation_ready (tab);
+            back.sensitive = navigation_ready && tab.view.can_go_back ();
+            forward.sensitive = navigation_ready && tab.view.can_go_forward ();
+            reload.sensitive = navigation_ready;
+            address.sensitive = navigation_ready;
             progress.fraction = tab.state.progress;
             progress.visible = tab.state.progress > 0.0 && tab.state.progress < 1.0;
             title = "%s — %s".printf (tab.state.title, Config.APP_NAME);

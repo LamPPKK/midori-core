@@ -1,0 +1,6 @@
+version=0.13.3
+tag=v0.13.3
+revision=886d45dcf5283ce8eddc6d961e7dd27966ab23f2
+source=https://github.com/brave/adblock-rust
+license=MPL-2.0
+crate_checksum=f44b96a666a23c12acad7c688bfe8638a7094e7eabe765b09a6864ab991c676d

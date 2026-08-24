@@ -18,14 +18,24 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
       - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.1.0'
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.1.0' 'ndk;29.0.14206865'
+      - name: Build and verify the pinned native blocker
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.14206865
+        run: ./scripts/build-adblock-android.sh "$RUNNER_TEMP/xanh-adblock-android"
       - run: >-
           ./gradlew --no-daemon
+          -PxanhAdblockNativeDir="$RUNNER_TEMP/xanh-adblock-android"
+          -PxanhAndroidNdkDir="$ANDROID_HOME/ndk/29.0.14206865"
           :backup-core:testDebugUnitTest
           :app:lintDebug
           :app:testDebugUnitTest
           :app:assembleDebug
+          :app:verifyAdblockNativeRelease
           :app:bundleRelease
       - uses: actions/upload-artifact@v4
         with:
@@ -61,18 +71,31 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
       - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.1.0'
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.1.0' 'ndk;29.0.14206865'
+      - name: Build and verify the pinned native blocker
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.14206865
+        run: ./scripts/build-adblock-android.sh "$RUNNER_TEMP/xanh-adblock-android"
       - name: Publish the pinned Android Sync AAR to a local repository
         working-directory: _sync_android
         run: ./gradlew --no-daemon :sync-core:publishReleasePublicationToBuildRepository
       - name: Build the base-only Lite release
         run: |
-          ./gradlew --no-daemon :app:bundleRelease
+          ./gradlew --no-daemon \
+            -PxanhAdblockNativeDir="$RUNNER_TEMP/xanh-adblock-android" \
+            -PxanhAndroidNdkDir="$ANDROID_HOME/ndk/29.0.14206865" \
+            :app:verifyAdblockNativeRelease \
+            :app:bundleRelease
           cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/xanh-browser-lite-base.aab"
       - name: Build and lint the on-demand System WebView and WPE features
         run: |
           ./gradlew --no-daemon --refresh-dependencies \
+            -PxanhAdblockNativeDir="$RUNNER_TEMP/xanh-adblock-android" \
+            -PxanhAndroidNdkDir="$ANDROID_HOME/ndk/29.0.14206865" \
             -PxanhEnableSyncFeature=true \
             -PxanhSyncSelfHostedOnly=true \
             -PxanhSyncRepository="$GITHUB_WORKSPACE/_sync_android/sync-core/build/maven" \
@@ -82,6 +105,7 @@ jobs:
             :app-webkit:lintDebug \
             :sync_feature:assembleDebug \
             :sync_feature_wpe:assembleDebug \
+            :app:verifyAdblockNativeRelease \
             :app:bundleRelease \
             :app-webkit:bundleRelease
           cp app/build/outputs/bundle/release/app-release.aab \

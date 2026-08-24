@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# JNA resolves these methods by name against the reviewed xanh-adblock-core C ABI.
+-keep interface * extends com.sun.jna.Library { *; }

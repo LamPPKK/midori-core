@@ -7,6 +7,7 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.SafeBrowsingResponse
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.net.http.SslError
@@ -16,7 +17,11 @@ import androidx.annotation.RequiresApi
 @SuppressLint("MissingOnRenderProcessGone") // This client handles renderer loss below.
 internal class XanhWebViewClient(
     private val activity: BrowserActivity,
+    private val adBlockCoordinator: AdBlockCoordinator,
 ) : WebViewClient() {
+    @Volatile
+    private var sourceUrl: String? = null
+
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val uri = request.url
         return when (uri.scheme?.lowercase()) {
@@ -33,11 +38,18 @@ internal class XanhWebViewClient(
         }
     }
 
+    override fun shouldInterceptRequest(
+        view: WebView,
+        request: WebResourceRequest,
+    ): WebResourceResponse? = adBlockCoordinator.shouldIntercept(request, sourceUrl)
+
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        sourceUrl = url?.takeIf(AddressResolver::isValidWebUrl)
         activity.onPageStarted(url)
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
+        sourceUrl = url?.takeIf(AddressResolver::isValidWebUrl)
         activity.onPageChanged(url, view?.title)
     }
 

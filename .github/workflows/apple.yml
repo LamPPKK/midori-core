@@ -13,6 +13,7 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.97.1
       - name: Verify Xcode and WebKit SDK baseline
         run: |
           xcodebuild -version
@@ -30,6 +31,14 @@ jobs:
           done
       - name: Test shared Apple core
         run: swift test --package-path platform/apple
+      - name: Verify bundled content rules come from the pinned Rust core
+        run: |
+          cargo run --locked --quiet \
+            --manifest-path xanh-adblock-core/Cargo.toml \
+            --example compile_default_webkit \
+            > "$RUNNER_TEMP/xanh-adblock-baseline.json"
+          cmp "$RUNNER_TEMP/xanh-adblock-baseline.json" \
+            platform/apple/App/xanh-adblock-baseline.json
       - name: Build macOS application
         run: |
           xcodebuild \
@@ -60,6 +69,15 @@ jobs:
           test "$(plutil -extract CFBundleIdentifier raw "$ios_info")" = io.github.lamppkk.xanhbrowser
           test "$(plutil -extract CFBundleShortVersionString raw "$ios_info")" = 1.0.0
           test "$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$ios_info")" = xanh-browser-ios
+          mac_resources='_build/apple-macos/Build/Products/Release/Xanh Browser.app/Contents/Resources'
+          ios_resources='_build/apple-ios/Build/Products/Release-iphonesimulator/Xanh Browser.app'
+          for resources in "$mac_resources" "$ios_resources"
+          do
+            cmp platform/apple/App/xanh-adblock-baseline.json \
+              "$resources/xanh-adblock-baseline.json"
+            cmp THIRD_PARTY_NOTICES.md "$resources/THIRD_PARTY_NOTICES.md"
+            cmp xanh-adblock-core/LICENSE "$resources/LICENSE"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: xanh-browser-apple-unsigned

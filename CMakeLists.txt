@@ -3,6 +3,50 @@ project(xanh-browser VERSION 1.0.0 LANGUAGES C)
 
 option(XANH_ENABLE_FIREFOX_SYNC "Link the production Mozilla Application Services core" OFF)
 set(XANH_SYNC_CORE_LIBRARY "" CACHE FILEPATH "Path to libxanh_sync_core built with --features mozilla")
+option(XANH_ENABLE_ADBLOCK_RUST "Compile WebKit content filters with brave/adblock-rust" OFF)
+set(XANH_ADBLOCK_CORE_LIBRARY "" CACHE FILEPATH "Path to libxanh_adblock_core")
+set(XANH_ADBLOCK_CORE_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/xanh-adblock-core/include"
+    CACHE PATH "Directory containing xanh_adblock.h")
+
+if(XANH_ENABLE_ADBLOCK_RUST)
+    if(NOT XANH_ADBLOCK_CORE_LIBRARY)
+        message(FATAL_ERROR
+            "XANH_ENABLE_ADBLOCK_RUST requires XANH_ADBLOCK_CORE_LIBRARY")
+    endif()
+    if(NOT IS_ABSOLUTE "${XANH_ADBLOCK_CORE_LIBRARY}" OR
+            NOT EXISTS "${XANH_ADBLOCK_CORE_LIBRARY}" OR
+            IS_DIRECTORY "${XANH_ADBLOCK_CORE_LIBRARY}")
+        message(FATAL_ERROR
+            "XANH_ADBLOCK_CORE_LIBRARY must be an absolute path to an existing native library")
+    endif()
+    set(XANH_ADBLOCK_CORE_HEADER
+        "${XANH_ADBLOCK_CORE_INCLUDE_DIR}/xanh_adblock.h")
+    if(NOT EXISTS "${XANH_ADBLOCK_CORE_HEADER}" OR
+            IS_DIRECTORY "${XANH_ADBLOCK_CORE_HEADER}")
+        message(FATAL_ERROR
+            "XANH_ENABLE_ADBLOCK_RUST requires xanh_adblock.h")
+    endif()
+    file(READ "${XANH_ADBLOCK_CORE_HEADER}" XANH_ADBLOCK_CORE_HEADER_TEXT)
+    foreach(XANH_ADBLOCK_REQUIRED_SYMBOL
+            xanh_adblock_compile_webkit_json
+            xanh_adblock_core_version
+            xanh_adblock_last_error
+            xanh_adblock_string_free)
+        string(FIND "${XANH_ADBLOCK_CORE_HEADER_TEXT}"
+            "${XANH_ADBLOCK_REQUIRED_SYMBOL}" XANH_ADBLOCK_SYMBOL_INDEX)
+        if(XANH_ADBLOCK_SYMBOL_INDEX EQUAL -1)
+            message(FATAL_ERROR
+                "xanh_adblock.h is missing ${XANH_ADBLOCK_REQUIRED_SYMBOL}")
+        endif()
+    endforeach()
+    file(REAL_PATH "${XANH_ADBLOCK_CORE_LIBRARY}"
+        XANH_ADBLOCK_CORE_LIBRARY_REAL)
+    add_library(xanh-adblock-core-native SHARED IMPORTED GLOBAL)
+    set_target_properties(xanh-adblock-core-native PROPERTIES
+        IMPORTED_LOCATION "${XANH_ADBLOCK_CORE_LIBRARY_REAL}"
+        INTERFACE_INCLUDE_DIRECTORIES "${XANH_ADBLOCK_CORE_INCLUDE_DIR}")
+endif()
 
 include(GNUInstallDirs)
 include(CTest)
@@ -102,6 +146,7 @@ target_link_libraries(xanh-browser-core PRIVATE PkgConfig::XANH)
 
 vala_precompile(XANH_APP_C xanh-browser
     desktop/address-resolver.vala
+    desktop/adblock-source.vala
     desktop/web-process-recovery.vala
     desktop/popup-policy.vala
     desktop/file-upload-policy.vala
@@ -123,11 +168,13 @@ DIRECTORY desktop-app
 CUSTOM_VAPIS
     "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
     "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi"
+    "${CMAKE_CURRENT_SOURCE_DIR}/desktop/adblock-host.vapi"
     "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi"
     "${CMAKE_CURRENT_SOURCE_DIR}/desktop/external-navigation-bridge.vapi")
 
 add_executable(xanh-browser
     ${XANH_APP_C}
+    desktop/adblock-host.c
     desktop/credential-bridge.c
     desktop/external-navigation-bridge.c
     desktop/external-navigation-data.c
@@ -135,6 +182,23 @@ add_executable(xanh-browser
     desktop/sync-host.c)
 target_include_directories(xanh-browser PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/desktop")
 target_link_libraries(xanh-browser PRIVATE xanh-browser-core PkgConfig::XANH)
+
+if(XANH_ENABLE_ADBLOCK_RUST)
+    target_link_libraries(xanh-browser PRIVATE xanh-adblock-core-native)
+    target_compile_definitions(xanh-browser PRIVATE XANH_ENABLE_ADBLOCK_RUST=1)
+    get_filename_component(XANH_ADBLOCK_CORE_LIBRARY_NAME
+        "${XANH_ADBLOCK_CORE_LIBRARY}" NAME)
+    file(RELATIVE_PATH XANH_ADBLOCK_INSTALL_LIBDIR_FROM_BINDIR
+        "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_LIBDIR}")
+    set_target_properties(xanh-browser PROPERTIES
+        BUILD_RPATH "$ORIGIN"
+        INSTALL_RPATH "$ORIGIN/${XANH_ADBLOCK_INSTALL_LIBDIR_FROM_BINDIR}")
+    add_custom_command(TARGET xanh-browser POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${XANH_ADBLOCK_CORE_LIBRARY_REAL}"
+            "$<TARGET_FILE_DIR:xanh-browser>/${XANH_ADBLOCK_CORE_LIBRARY_NAME}"
+        VERBATIM)
+endif()
 
 if(XANH_ENABLE_FIREFOX_SYNC)
     if(NOT EXISTS "${XANH_SYNC_CORE_LIBRARY}")
@@ -189,6 +253,7 @@ function(add_xanh_test target)
     CUSTOM_VAPIS
         "${CMAKE_CURRENT_BINARY_DIR}/desktop/xanh-browser-core.vapi"
         "${CMAKE_CURRENT_SOURCE_DIR}/desktop/sync-host.vapi"
+        "${CMAKE_CURRENT_SOURCE_DIR}/desktop/adblock-host.vapi"
         "${CMAKE_CURRENT_SOURCE_DIR}/desktop/credential-bridge.vapi"
         "${CMAKE_CURRENT_SOURCE_DIR}/desktop/external-navigation-bridge.vapi")
     add_executable(${target} ${${target}_C})
@@ -204,6 +269,17 @@ if(BUILD_TESTING)
     target_include_directories(sync-host-test PRIVATE desktop)
     target_link_libraries(sync-host-test PRIVATE PkgConfig::XANH)
     add_test(NAME sync-host-test COMMAND sync-host-test)
+
+    add_executable(adblock-host-test
+        tests-modern/adblock-host-test.c
+        desktop/adblock-host.c)
+    target_include_directories(adblock-host-test PRIVATE desktop)
+    target_link_libraries(adblock-host-test PRIVATE PkgConfig::XANH)
+    if(XANH_ENABLE_ADBLOCK_RUST)
+        target_link_libraries(adblock-host-test PRIVATE xanh-adblock-core-native)
+        target_compile_definitions(adblock-host-test PRIVATE XANH_ENABLE_ADBLOCK_RUST=1)
+    endif()
+    add_test(NAME adblock-host-test COMMAND adblock-host-test)
 
     add_executable(webkit-version-test tests-modern/webkit-version-test.c)
     target_compile_definitions(webkit-version-test PRIVATE
@@ -231,6 +307,15 @@ if(BUILD_TESTING)
     add_xanh_test(page-data-policy-test SOURCE tests-modern/page-data-policy-test.vala)
     add_xanh_test(address-resolver-test SOURCE tests-modern/address-resolver-test.vala
         SUPPORT desktop/address-resolver.vala)
+    add_xanh_test(adblock-source-test SOURCE tests-modern/adblock-source-test.vala
+        SUPPORT desktop/adblock-source.vala)
+    add_xanh_test(adblock-host-vala-test
+        SOURCE tests-modern/adblock-host-vala-test.vala)
+    target_sources(adblock-host-vala-test PRIVATE desktop/adblock-host.c)
+    if(XANH_ENABLE_ADBLOCK_RUST)
+        target_link_libraries(adblock-host-vala-test PRIVATE xanh-adblock-core-native)
+        target_compile_definitions(adblock-host-vala-test PRIVATE XANH_ENABLE_ADBLOCK_RUST=1)
+    endif()
     add_xanh_test(popup-policy-test SOURCE tests-modern/popup-policy-test.vala
         SUPPORT desktop/address-resolver.vala desktop/popup-policy.vala)
     add_xanh_test(file-upload-policy-test SOURCE tests-modern/file-upload-policy-test.vala
@@ -262,6 +347,7 @@ if(BUILD_TESTING)
     add_xanh_test(application-smoke-test SOURCE tests-modern/application-smoke-test.vala
         SUPPORT
             desktop/address-resolver.vala
+            desktop/adblock-source.vala
             desktop/web-process-recovery.vala
             desktop/popup-policy.vala
             desktop/file-upload-policy.vala
@@ -277,10 +363,15 @@ if(BUILD_TESTING)
             desktop/browser-window.vala
             desktop/application.vala)
     target_sources(application-smoke-test PRIVATE
+        desktop/adblock-host.c
         desktop/credential-bridge.c
         desktop/external-navigation-bridge.c
         desktop/external-navigation-data.c
         desktop/sync-host.c)
+    if(XANH_ENABLE_ADBLOCK_RUST)
+        target_link_libraries(application-smoke-test PRIVATE xanh-adblock-core-native)
+        target_compile_definitions(application-smoke-test PRIVATE XANH_ENABLE_ADBLOCK_RUST=1)
+    endif()
     add_dependencies(application-smoke-test
         xanh-adblock xanh-bookmarks xanh-session xanh-colorful-tabs
         xanh-status-clock xanh-status-features)
@@ -300,6 +391,11 @@ configure_file(
 install(TARGETS xanh-browser xanh-browser-core
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+if(XANH_ENABLE_ADBLOCK_RUST)
+    install(FILES "${XANH_ADBLOCK_CORE_LIBRARY_REAL}"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        RENAME "${XANH_ADBLOCK_CORE_LIBRARY_NAME}")
+endif()
 install(FILES data-xanh/io.github.lamppkk.xanhbrowser.desktop
     DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
 install(FILES data-xanh/io.github.lamppkk.xanhbrowser.metainfo.xml
@@ -312,8 +408,11 @@ install(FILES data-xanh/io.github.lamppkk.xanhbrowser.svg
     DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
 install(FILES COPYING README.md RELEASING.md
     DESTINATION "${CMAKE_INSTALL_DOCDIR}")
-install(FILES THIRD_PARTY_NOTICES.md docs/FIREFOX_SYNC.md
+install(FILES THIRD_PARTY_NOTICES.md docs/FIREFOX_SYNC.md docs/ADBLOCK.md
     DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES xanh-adblock-core/LICENSE
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}/licenses"
+    RENAME MPL-2.0.txt)
 
 add_custom_target(validate-metadata
     COMMAND glib-compile-schemas --strict --dry-run "${CMAKE_CURRENT_SOURCE_DIR}/data-xanh"

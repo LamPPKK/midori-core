@@ -26,7 +26,8 @@ silently retain an older runtime policy.
 dotnet test tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj
 dotnet build src/XanhBrowser.Windows/XanhBrowser.Windows.csproj `
   --configuration Release `
-  -p:Platform=x64
+  -p:Platform=x64 `
+  -p:XanhAdblockNativeDll=C:\absolute\path\to\xanh_adblock_core.dll
 ```
 
 Create the self-contained verification bundle with:
@@ -37,12 +38,25 @@ dotnet publish src/XanhBrowser.Windows/XanhBrowser.Windows.csproj `
   --runtime win-x64 `
   --self-contained true `
   -p:Platform=x64 `
+  -p:XanhAdblockNativeDll=C:\absolute\path\to\xanh_adblock_core.dll `
   --output ../../_artifact/windows-x64
 ```
 
 The generated files are unsigned verification artifacts. A production build
 must be signed with the dedicated Windows code-signing certificate and tested
 against both x64 and ARM64 Evergreen WebView2 channels before distribution.
+
+## Content blocking
+
+Content blocking defaults on. Release builds fail unless they package the
+architecture-matched `xanh_adblock_core.dll` produced from the pinned Rust
+closure; CI also checks the required exports. Developer builds retain a small
+managed Xanh baseline if the DLL is missing or rejected. WebView2 phase one
+filters document-owned subresources and leaves all `Document` loads to the
+existing navigation policy because the callback cannot safely distinguish a
+top-level document from a subframe. Shared/service workers and WebSockets are
+outside this phase's claim rather than being assigned a stale tab source. This
+is intentionally narrower than uBlock Origin.
 
 ## Encrypted backup and sync
 
@@ -104,13 +118,18 @@ credential UI on navigation, tab switch, backgrounding or vault lock. HTTP,
 InPrivate and stale contexts fail before native mutation; username, password,
 field and aggregate JSON limits match the shared Rust contract.
 
-The normal unsigned verification artifact does not carry the Rust native DLL
-and therefore fails closed. Supply an architecture-matched DLL explicitly:
+Every Release artifact must carry the architecture-matched
+`xanh_adblock_core.dll`; the ordinary verification artifact intentionally does
+not carry the separately gated Firefox Sync DLL. Build the pinned blocker and
+supply both DLL properties for a Sync-enabled artifact:
 
 ```powershell
+cargo build --manifest-path ../../xanh-adblock-core/Cargo.toml --locked `
+  --release --target x86_64-pc-windows-msvc
 dotnet publish src/XanhBrowser.Windows/XanhBrowser.Windows.csproj `
   --configuration Release --runtime win-x64 --self-contained true `
   -p:Platform=x64 `
+  -p:XanhAdblockNativeDll="$PWD/../../xanh-adblock-core/target/x86_64-pc-windows-msvc/release/xanh_adblock_core.dll" `
   -p:XanhSyncNativeDll=C:\artifacts\win-x64\xanh_sync_core.dll
 ```
 

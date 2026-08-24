@@ -21,6 +21,11 @@
                 Click="NewPrivateTab_Click"
                 Icon="ProtectedDocument"
                 Label="New private tab" />
+            <AppBarToggleButton
+                x:Name="AdblockToggle"
+                Click="AdblockToggle_Click"
+                Label="Block ads"
+                ToolTipService.ToolTip="Applies to subsequent page loads." />
             <AppBarButton
                 Click="AddBookmark_Click"
                 Icon="Favorite"

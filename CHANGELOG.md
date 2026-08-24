@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added the pinned `adblock-rust` 0.13.3 native content-blocking boundary with
+  a thread-safe Rust API, stable C ABI, WebKit rule conversion, bounded inputs,
+  an offline Xanh baseline and a weekly official-tag/checksum/license verifier.
+  uBlock Origin remains a feature/syntax reference rather than an embedded
+  WebExtension runtime; phase one claims network rules, exceptions and
+  convertible cosmetic rules only.
+- Wired the core into Linux WebKitGTK, a Rust-generated Apple content-rule
+  resource, WinUI/WebView2 release DLLs, the full Android companion app and the
+  Android Lite System WebView edition through JNA. First navigations wait for
+  Apple/Linux installation; optional host fallbacks and documented
+  request-visibility limits prevent rejected native code from blanking
+  navigation, while Linux verifies its required bundled shared-library
+  dependency during packaging. The separate WPE preview remains explicitly
+  unsupported until its host exposes a reviewed content-filter API.
+
 - Added the Xanh Browser Linux application with tabs, bookmarks, history,
   downloads, private browsing and safe session recovery.
 - Added a confirmed, idempotent importer for legacy bookmarks, history and

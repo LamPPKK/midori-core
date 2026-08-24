@@ -13,6 +13,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
     private readonly bool _isPrivate;
     private readonly Uri _initialUri;
     private readonly Func<CredentialAccessContext, Task<FirefoxCredentialRecord?>>? _credentialPicker;
+    private readonly Func<IAdblockEngine?>? _adblockEngineProvider;
     private readonly string _credentialTabId = Guid.NewGuid().ToString("N");
     private bool _automaticRecoveryUsed;
     private bool _disposed;
@@ -52,10 +53,12 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         bool isPrivate,
         Uri? initialUri = null,
         Func<CredentialAccessContext, Task<FirefoxCredentialRecord?>>? credentialPicker = null,
+        Func<IAdblockEngine?>? adblockEngineProvider = null,
         bool automaticRecoveryUsed = false)
     {
         _isPrivate = isPrivate;
         _credentialPicker = credentialPicker;
+        _adblockEngineProvider = adblockEngineProvider;
         _automaticRecoveryUsed = automaticRecoveryUsed;
         _initialUri = initialUri is not null && AddressResolver.IsAllowedWebUri(initialUri)
             ? initialUri
@@ -142,9 +145,89 @@ public sealed partial class BrowserTab : UserControl, IDisposable
         sender.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
         sender.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
         sender.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
+        sender.CoreWebView2.AddWebResourceRequestedFilter(
+            "*",
+            CoreWebView2WebResourceContext.All,
+            CoreWebView2WebResourceRequestSourceKinds.Document);
+        sender.CoreWebView2.WebResourceRequested += CoreWebView2_WebResourceRequested;
         if (_credentialPicker is not null && !_isPrivate)
             sender.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
     }
+
+    private void CoreWebView2_WebResourceRequested(
+        CoreWebView2 sender,
+        CoreWebView2WebResourceRequestedEventArgs args)
+    {
+        try
+        {
+            // WebView2 does not expose enough frame identity here to distinguish a
+            // top-level document from a subframe safely. Keep all document loads
+            // navigable; filter their document-owned subresources instead.
+            if (args.ResourceContext == CoreWebView2WebResourceContext.Document)
+            {
+                return;
+            }
+            var engine = _adblockEngineProvider?.Invoke();
+            if (engine is null)
+            {
+                return;
+            }
+
+            var request = AdblockRequest.TryCreate(
+                args.Request.Uri,
+                AdblockSourceUri(args).AbsoluteUri,
+                AdblockRequestType(args.ResourceContext),
+                args.Request.Method);
+            if (request is null || !engine.ShouldBlock(request))
+            {
+                return;
+            }
+
+            args.Response = sender.Environment.CreateWebResourceResponse(
+                null,
+                403,
+                "Blocked",
+                "Cache-Control: no-store\r\nContent-Length: 0\r\n");
+        }
+        catch (Exception)
+        {
+            // Ad blocking is optional; malformed requests and engine failures fail open.
+        }
+    }
+
+    private Uri AdblockSourceUri(CoreWebView2WebResourceRequestedEventArgs args)
+    {
+        try
+        {
+            if (args.Request.Headers.Contains("Referer")
+                && Uri.TryCreate(args.Request.Headers.GetHeader("Referer"), UriKind.Absolute, out var referer)
+                && AddressResolver.IsAllowedWebUri(referer))
+            {
+                return referer;
+            }
+        }
+        catch (Exception)
+        {
+            // WebView2 may omit or withhold request headers; use the current top-level URL.
+        }
+        return _currentUri;
+    }
+
+    private static string AdblockRequestType(CoreWebView2WebResourceContext context) => context switch
+    {
+        CoreWebView2WebResourceContext.Stylesheet => "stylesheet",
+        CoreWebView2WebResourceContext.Image => "image",
+        CoreWebView2WebResourceContext.Media => "media",
+        CoreWebView2WebResourceContext.Font => "font",
+        CoreWebView2WebResourceContext.Script => "script",
+        CoreWebView2WebResourceContext.XmlHttpRequest => "xmlhttprequest",
+        CoreWebView2WebResourceContext.Fetch => "xmlhttprequest",
+        CoreWebView2WebResourceContext.TextTrack => "media",
+        CoreWebView2WebResourceContext.EventSource => "xmlhttprequest",
+        CoreWebView2WebResourceContext.Ping => "ping",
+        CoreWebView2WebResourceContext.CspViolationReport => "csp_report",
+        _ => "other",
+    };
 
     private void CoreWebView2_DocumentTitleChanged(object? sender, object args)
     {
@@ -582,6 +665,7 @@ public sealed partial class BrowserTab : UserControl, IDisposable
             BrowserWebView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
             BrowserWebView.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
             BrowserWebView.CoreWebView2.SourceChanged -= CoreWebView2_SourceChanged;
+            BrowserWebView.CoreWebView2.WebResourceRequested -= CoreWebView2_WebResourceRequested;
             if (_credentialPicker is not null && !_isPrivate)
                 BrowserWebView.CoreWebView2.WebMessageReceived -= CoreWebView2_WebMessageReceived;
             if (_credentialScriptId is not null)

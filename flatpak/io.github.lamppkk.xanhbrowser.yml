@@ -16,6 +16,8 @@ modules:
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/app
+      - -DXANH_ENABLE_ADBLOCK_RUST=ON
+      - -DXANH_ADBLOCK_CORE_LIBRARY=/run/build/xanh-browser/flatpak/native/libxanh_adblock_core.so
     sources:
       - type: dir
         path: ..

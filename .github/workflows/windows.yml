@@ -17,8 +17,10 @@ jobs:
         include:
           - platform: x64
             rid: win-x64
+            rust_target: x86_64-pc-windows-msvc
           - platform: ARM64
             rid: win-arm64
+            rust_target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -26,8 +28,27 @@ jobs:
           dotnet-version: '10.0.400'
           cache: true
           cache-dependency-path: platform/windows/**/*.csproj
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: ${{ matrix.rust_target }}
+      - name: Build pinned adblock-rust core
+        run: >-
+          cargo build
+          --manifest-path xanh-adblock-core/Cargo.toml
+          --locked
+          --release
+          --target ${{ matrix.rust_target }}
       - name: Test Windows core
         run: dotnet test platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj --configuration Release
+      - name: Exercise the built x64 DLL through the managed ABI host
+        if: matrix.platform == 'x64'
+        env:
+          XANH_ADBLOCK_TEST_NATIVE_DLL: ${{ github.workspace }}/xanh-adblock-core/target/${{ matrix.rust_target }}/release/xanh_adblock_core.dll
+        run: >-
+          dotnet test platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj
+          --configuration Release
+          --no-restore
+          --filter BuiltNativeArtifactLoadsAndBlocksBaselineWhenProvided
       - name: Publish ${{ matrix.platform }} application
         run: >-
           dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
@@ -35,6 +56,7 @@ jobs:
           --runtime ${{ matrix.rid }}
           --self-contained true
           -p:Platform=${{ matrix.platform }}
+          -p:XanhAdblockNativeDll=${{ github.workspace }}/xanh-adblock-core/target/${{ matrix.rust_target }}/release/xanh_adblock_core.dll
           --output _artifact/${{ matrix.rid }}
       - name: Verify published application
         shell: pwsh
@@ -45,6 +67,30 @@ jobs:
           if (-not $version.StartsWith('1.0.0')) { throw "Unexpected product version: $version" }
           if (Test-Path '_artifact/${{ matrix.rid }}/xanh_sync_core.dll') {
             throw 'Ordinary verification artifacts must not silently include the gated Firefox Sync runtime'
+          }
+          $adblock = '_artifact/${{ matrix.rid }}/xanh_adblock_core.dll'
+          if (-not (Test-Path $adblock)) { throw "Missing $adblock" }
+          if (-not (Test-Path '_artifact/${{ matrix.rid }}/THIRD_PARTY_NOTICES.md')) {
+            throw 'Missing third-party notices from published artifact'
+          }
+          if (-not (Test-Path '_artifact/${{ matrix.rid }}/licenses/adblock-rust-MPL-2.0.txt')) {
+            throw 'Missing adblock-rust MPL-2.0 license from published artifact'
+          }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          if (-not (Test-Path $vswhere)) { throw "Missing Visual Studio locator: $vswhere" }
+          $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $vsRoot) { throw 'Could not locate the installed MSVC tools' }
+          $dumpbin = Get-ChildItem (Join-Path $vsRoot 'VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe') |
+            Sort-Object FullName |
+            Select-Object -Last 1
+          if (-not $dumpbin) { throw "Could not locate dumpbin.exe below $vsRoot" }
+          $exports = & $dumpbin.FullName /exports $adblock | Out-String
+          foreach ($name in @(
+            'xanh_adblock_core_version',
+            'xanh_adblock_engine_create_default',
+            'xanh_adblock_engine_should_block',
+            'xanh_adblock_engine_free')) {
+            if (-not $exports.Contains($name)) { throw "Missing native adblock export: $name" }
           }
           Select-String -Path platform/windows/src/XanhBrowser.Windows/WindowsFirefoxSyncConfiguration.cs `
             -SimpleMatch 'xanh-browser-windows://accounts/oauth' | Out-Null

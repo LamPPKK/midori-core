@@ -19,6 +19,7 @@
     <XanhFxaProductionApproved Condition="'$(XanhFxaProductionApproved)' == ''">0</XanhFxaProductionApproved>
     <XanhFxaClientId Condition="'$(XanhFxaClientId)' == ''"></XanhFxaClientId>
     <XanhSyncNativeDll Condition="'$(XanhSyncNativeDll)' == ''"></XanhSyncNativeDll>
+    <XanhAdblockNativeDll Condition="'$(XanhAdblockNativeDll)' == ''"></XanhAdblockNativeDll>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
@@ -26,6 +27,16 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../XanhBrowser.Core/XanhBrowser.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\..\..\THIRD_PARTY_NOTICES.md"
+             Link="THIRD_PARTY_NOTICES.md"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\..\..\xanh-adblock-core\LICENSE"
+             Link="licenses\adblock-rust-MPL-2.0.txt"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
@@ -43,6 +54,24 @@
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup Condition="'$(XanhAdblockNativeDll)' != ''">
+    <Content Include="$(XanhAdblockNativeDll)"
+             Link="xanh_adblock_core.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="ValidateOptionalXanhAdblockPackage"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(XanhAdblockNativeDll)' != ''">
+    <Error Condition="!Exists('$(XanhAdblockNativeDll)')"
+           Text="XanhAdblockNativeDll must point to an existing architecture-matched xanh_adblock_core DLL." />
+  </Target>
+  <Target Name="RequireReleaseXanhAdblockPackage"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(Configuration)' == 'Release'">
+    <Error Condition="'$(XanhAdblockNativeDll)' == '' or !Exists('$(XanhAdblockNativeDll)')"
+           Text="Release artifacts must package an architecture-matched xanh_adblock_core DLL via XanhAdblockNativeDll." />
+  </Target>
   <Target Name="ValidateMozillaHostedFirefoxSyncPackage"
           BeforeTargets="PrepareForBuild"
           Condition="'$(XanhFirefoxSyncMozillaHosted)' == 'true'">

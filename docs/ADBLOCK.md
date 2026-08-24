@@ -1,0 +1,147 @@
+# Content blocking
+
+## Decision
+
+Xanh Browser embeds Brave's
+[`adblock-rust`](https://github.com/brave/adblock-rust) as the native rule
+engine. The pin is
+`0.13.3` / `v0.13.3` at
+`886d45dcf5283ce8eddc6d961e7dd27966ab23f2`, recorded in
+`xanh-adblock-core/ADBLOCK_RUST.lock` together with the crates.io archive
+checksum and MPL-2.0 license. The weekly verifier rejects a newer stable tag,
+tag/revision drift, a changed crate checksum, floating Cargo syntax, a changed
+feature set or stale notices.
+
+The full [uBlock Origin](https://github.com/gorhill/uBlock) extension was
+evaluated but is not embedded. uBO is a
+complete GPL-3.0 browser extension built around Chromium/Firefox extension
+APIs, background/content scripts, its own UI and a much wider dynamic-filtering
+surface. It is an excellent reference implementation and has broader blocking
+features, but porting it would require Xanh to implement and secure a second
+extension runtime across WebKitGTK, WKWebView, WebView2 and Android WebView.
+`adblock-rust` is an MPL-2.0 library with a direct request-matching API and a
+WebKit content-blocker converter, so it is the smaller and auditable embedding
+boundary for Xanh's native editions.
+
+## Shared boundary
+
+`xanh-adblock-core` builds as a Rust library, static library or C-compatible
+dynamic library. It provides:
+
+- an immutable `Send + Sync` request engine for concurrent browser callbacks;
+- bounded ABP/EasyList/uBO-style network-rule parsing;
+- block/exception, first/third-party and request-type matching;
+- conversion of compatible network and cosmetic rules to WebKit content-rule
+  JSON;
+- a stable C ABI for native platform hosts; and
+- thread-local error text so one host thread cannot consume another thread's
+  diagnostic.
+
+Cargo default features are disabled. Xanh enables
+`embedded-domain-resolver`, `full-regex-handling` and `content-blocking`, while
+deliberately omitting upstream `single-thread` mode. List changes build a new
+immutable engine and swap it only after validation; a live engine is never
+mutated in place.
+
+Inputs are bounded before parsing: filter text is at most 16 MiB, an individual
+line at most 64 KiB, effective rules at most 500,000, URLs at most 8 KiB,
+request types at most 32 bytes and methods at most 16 bytes. WebKit conversion
+is capped at 150,000 rules and 64 MiB of JSON. Invalid host input returns an
+error; browser adapters fail open for the individual request rather than
+crashing or proxying it.
+
+## Baseline and subscriptions
+
+The repository includes `filters/xanh-baseline.txt`, a deliberately small
+MPL-2.0 offline baseline maintained by Xanh. It blocks a narrow set of common ad
+and analytics hosts so a clean install has deterministic behavior without a
+network bootstrap. It is not represented as EasyList, EasyPrivacy or uBlock's
+default lists.
+
+No third-party subscription is bundled in this phase. [EasyList
+content](https://easylist.to/pages/licence.html) is
+separately dual-licensed under GPL-3.0-or-later and CC-BY-SA-3.0-or-later, so a
+future bundled snapshot or updater must record the exact source revision,
+license/attribution, content hash and update policy independently of the
+`adblock-rust` engine. An updater must also enforce HTTPS source allowlists,
+download and rule-count bounds, atomic last-known-good replacement, ETag or
+Last-Modified handling and failure backoff. Raw list text remains authoritative;
+serialized engine data is cache-only because compatibility is not guaranteed
+across engine versions.
+
+## Platform adapter rules
+
+Every adapter follows the same safety rules:
+
+1. Validate and bound the request URL, top-level source URL, type and method.
+2. Never refetch an allowed request through an application HTTP client. Doing
+   so would alter cookies, POST bodies, CORS, certificates and cache semantics.
+3. Return the engine's decision to the browser engine at its native interception
+   point. Optional dynamically discovered engines and invalid requests fail
+   open. Linux treats the bundled shared core as a required package dependency;
+   its build/install gate verifies that dependency before release, while rule
+   compilation or installation failures still load the page unfiltered.
+4. Do not log full request or private-tab URLs.
+5. Keep content blocking enabled by default but expose an explicit user toggle;
+   reload is a user-visible action after a setting change.
+6. Use the same process-wide immutable ruleset for regular and private profiles,
+   while keeping history, counters and per-site state out of private storage.
+
+The production adapters deliberately use different delivery mechanisms while
+sharing the same reviewed rules and ABI:
+
+| Edition | Delivery and interception |
+| --- | --- |
+| Linux WebKitGTK | Builds and bundles the pinned Rust shared library, converts the configured bounded ABP source off the GTK thread, and installs a `WebKitUserContentFilter` before first navigation. |
+| iOS, iPadOS, macOS | Bundles `xanh-adblock-baseline.json`, generated byte-for-byte by the pinned Rust WebKit converter. First navigation waits for WebKit to install it or explicitly fail open. A matching native compiler is only an optional macOS recovery path. |
+| Windows WinUI/WebView2 | Release builds require an architecture-matched Rust DLL. A small managed copy of the Xanh baseline remains active if the DLL is unavailable or rejected. The handler filters document-owned subresources only. |
+| Full Android app | The companion repository packages three 16-KiB-aligned Rust `.so` files and calls the C ABI through JNA. Normal/private WebViews and default/profile service-worker controllers share one process-lifetime engine, with a bounded fallback. |
+| Android Lite System WebView | Packages the same three Rust `.so` files and uses JNA for normal subresources plus the process-wide service-worker controller. Debug x86 is fallback-only; production releases exclude x86. |
+| Android Lite WPE preview | Not integrated. Published WPEView 0.3.3 exposes no safe request-interception or content-filter host API, so this preview must not claim native content blocking. A future reviewed source-fork API must install a compiled filter before first navigation. |
+
+Android WebView does not expose a reliable initiator or resource type, so its
+adapter tracks the top-level URL separately and applies a bounded type
+heuristic. Service-worker requests lack that page source and are conservatively
+classified as first-party. Initial main-frame navigation remains under the
+existing navigation policy; content blocking handles subresources.
+
+## Deliberate phase-one limits
+
+The first integration promises network blocking and exceptions plus cosmetic
+rules that survive WebKit conversion. It does not yet promise uBO-equivalent
+procedural cosmetics, scriptlets, redirect resources, CSP injection,
+`removeparam`, dynamic per-site firewall rules, CNAME uncloaking or complete
+service-worker/redirect coverage. Browser callback limitations also mean
+request-type and third-party classification can be approximate on Android.
+The WPE preview is explicitly outside the phase-one content-blocking coverage.
+WebView2 phase one deliberately excludes `Document` requests (top-level and
+subframe), shared/service-worker initiated requests and WebSockets because its
+per-tab callback cannot assign those safely to one current document. Android's
+callback sees only the first URL in a redirect chain and does not intercept
+`blob:`, `javascript:` or application-asset requests.
+
+These are explicit product limits, not silently ignored compatibility claims.
+A future feature is enabled only after the host can preserve the rule's
+semantics and has cross-platform regression coverage.
+
+## Verification and release gate
+
+Run:
+
+```sh
+python3 -B -m unittest scripts/tests/test_verify_adblock_latest.py -v
+python3 -B scripts/verify_adblock_latest.py
+cargo fmt --manifest-path xanh-adblock-core/Cargo.toml --check
+cargo test --locked --manifest-path xanh-adblock-core/Cargo.toml
+cargo clippy --locked --all-targets \
+  --manifest-path xanh-adblock-core/Cargo.toml -- -D warnings
+```
+
+A signed artifact may enable the native engine only when it includes the exact
+native library for its ABI (or the Rust-generated Apple content-rule JSON),
+`THIRD_PARTY_NOTICES.md`, MPL-2.0 license text and an SBOM for the locked Cargo
+closure. Platform release tests
+must exercise a block rule, an exception, first/third-party matching, a disabled
+toggle, private-profile interception, the platform's missing/corrupt-artifact
+policy and an atomic ruleset replacement. Android native packages additionally require all
+shipped ABIs and 16 KiB ELF/page-alignment evidence.

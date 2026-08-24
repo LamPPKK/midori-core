@@ -11,6 +11,8 @@
 		0DB09CF4B38B4F131D49EC0B /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB98C73205558CF4F34E1412 /* Bookmark.swift */; };
 		0F49D5A3C38F0A6C44D915E8 /* SecureSyncState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61584842E0D30C65C6212C82 /* SecureSyncState.swift */; };
 		14720D9567E768FB7239E11A /* FirefoxSyncContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5621DE34472A9445394E8C3B /* FirefoxSyncContract.swift */; };
+		17668D304AC2DF0F24466584 /* xanh-adblock-baseline.json in Resources */ = {isa = PBXBuildFile; fileRef = C6F66A0151048456CB20ADE8 /* xanh-adblock-baseline.json */; };
+		1ABACAEA1CF6D18BB42A4774 /* AdblockHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C24FFB417506451EC9A02B8 /* AdblockHost.swift */; };
 		1B9C102E5EE3C37A12BB51F2 /* AppleFirefoxSyncRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BEA6CFAB98F9E3E7FD85202 /* AppleFirefoxSyncRuntime.swift */; };
 		1D942D21E78B2FF247512F89 /* FirefoxSyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A0E902F84E8351D788D173C /* FirefoxSyncSettingsView.swift */; };
 		1DB62C900352197CF302FB45 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594809F854069BC05EA45F9 /* BrowserView.swift */; };
@@ -22,6 +24,7 @@
 		2ECB0126AD88E5264F31BBFB /* FirefoxSyncContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5621DE34472A9445394E8C3B /* FirefoxSyncContract.swift */; };
 		3368C26FDB64ADFA84C73728 /* FirefoxPlaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F8DB0EE8FA784757065220A /* FirefoxPlaces.swift */; };
 		43D684378C48A27584887EF3 /* FirefoxSyncViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0372C9AEFC9B07F831F257B9 /* FirefoxSyncViewModel.swift */; };
+		475C0C38979C5F62AB9FA0B0 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = BC68201D537F2F4A51DF41AC /* LICENSE */; };
 		4822D7D173F0764E391C7218 /* FirefoxSyncBindingPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */; };
 		48E13B975F096A9D87FFCC38 /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */; };
 		4DC0E34E124A7AE833A79C6D /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B540C8EF970CC11135804394 /* BrowserSession.swift */; };
@@ -29,16 +32,23 @@
 		6613EC2907AC22F0E99D4D48 /* WebContentProcessRecoveryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1BFF0DEF3D7822C6FB9DA /* WebContentProcessRecoveryPolicy.swift */; };
 		686761EC979A9C397C116114 /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB98C73205558CF4F34E1412 /* Bookmark.swift */; };
 		6A514225E7C89C76D8F1E60B /* BrowserModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9CA530C3C2E053F922CA59 /* BrowserModel.swift */; };
+		73BC3EEB6C48E194848204EC /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = BC68201D537F2F4A51DF41AC /* LICENSE */; };
 		790A752BBFBB82502345359E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6C5707A9D15C10A864537D41 /* Assets.xcassets */; };
 		81932F2A89EA18BC106D6A7A /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
+		874347BCE8946ECBFDB0C5F3 /* xanh-adblock-baseline.json in Resources */ = {isa = PBXBuildFile; fileRef = C6F66A0151048456CB20ADE8 /* xanh-adblock-baseline.json */; };
 		8EE258E982707E0ECCEEFB69 /* ExternalNavigationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE9D73F5942246919E5C9E8 /* ExternalNavigationPolicy.swift */; };
 		900D10CE058A495DAB2E1290 /* FirefoxSyncViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0372C9AEFC9B07F831F257B9 /* FirefoxSyncViewModel.swift */; };
+		9693119AA57A1016B688DC47 /* AppleAdblockContentBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC813AA3B6BDFA782C9C3F9 /* AppleAdblockContentBlocker.swift */; };
 		9D20E1406B5C633E322E6DDE /* BrowserCredentialBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */; };
+		AEF0A6F8BEBEF828D90576DD /* AdblockHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C24FFB417506451EC9A02B8 /* AdblockHost.swift */; };
 		B315813F4EE737FC2B52B0E8 /* FirefoxPasswordsLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F9BBF66073A0AA95631563 /* FirefoxPasswordsLibraryView.swift */; };
 		B62C9539A252918B878AE2C1 /* FirefoxPasswordsLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F9BBF66073A0AA95631563 /* FirefoxPasswordsLibraryView.swift */; };
+		B8021A01FE8496533F426F87 /* AppleAdblockContentBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC813AA3B6BDFA782C9C3F9 /* AppleAdblockContentBlocker.swift */; };
 		BA6B112E7A36845519A0EE9C /* FirefoxSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660CDE3438A2918EC8CD9AD0 /* FirefoxSyncCoordinator.swift */; };
 		BE9D2E23490CFD3DCAB9FF84 /* FirefoxSyncBindingPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */; };
 		C2640D548B127955DFA328FF /* BrowserCredentialBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */; };
+		CB1CF16549AED06CD2DAD0C5 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = E4E391003871B19E7966F9B0 /* THIRD_PARTY_NOTICES.md */; };
+		CC66C858C01888BF52DD6323 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = E4E391003871B19E7966F9B0 /* THIRD_PARTY_NOTICES.md */; };
 		D0035F59D418A325D33951D1 /* FirefoxPlacesLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5207C3CE089306008181AE1 /* FirefoxPlacesLibraryView.swift */; };
 		E542001C874AB4BD17586767 /* AddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */; };
 		EF3559F5A7A3CDD36DE59870 /* XanhBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33C392942764CA582BA6818 /* XanhBrowserApp.swift */; };
@@ -56,20 +66,25 @@
 		3645A06B4E7BF8BB9B1E5661 /* XanhBrowser-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "XanhBrowser-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		535F33329D0A3CB316F461C6 /* XanhBrowser-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "XanhBrowser-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5621DE34472A9445394E8C3B /* FirefoxSyncContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxSyncContract.swift; sourceTree = "<group>"; };
+		5C24FFB417506451EC9A02B8 /* AdblockHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdblockHost.swift; sourceTree = "<group>"; };
 		61584842E0D30C65C6212C82 /* SecureSyncState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureSyncState.swift; sourceTree = "<group>"; };
 		660CDE3438A2918EC8CD9AD0 /* FirefoxSyncCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxSyncCoordinator.swift; sourceTree = "<group>"; };
 		6C5707A9D15C10A864537D41 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressResolver.swift; sourceTree = "<group>"; };
 		8A0E902F84E8351D788D173C /* FirefoxSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxSyncSettingsView.swift; sourceTree = "<group>"; };
+		8BC813AA3B6BDFA782C9C3F9 /* AppleAdblockContentBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAdblockContentBlocker.swift; sourceTree = "<group>"; };
 		9F8DB0EE8FA784757065220A /* FirefoxPlaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxPlaces.swift; sourceTree = "<group>"; };
 		A33C392942764CA582BA6818 /* XanhBrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XanhBrowserApp.swift; sourceTree = "<group>"; };
 		A594809F854069BC05EA45F9 /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserView.swift; sourceTree = "<group>"; };
 		B540C8EF970CC11135804394 /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserSession.swift; sourceTree = "<group>"; };
+		BC68201D537F2F4A51DF41AC /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCredentialBridge.swift; sourceTree = "<group>"; };
 		BFE9D73F5942246919E5C9E8 /* ExternalNavigationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalNavigationPolicy.swift; sourceTree = "<group>"; };
 		C5207C3CE089306008181AE1 /* FirefoxPlacesLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxPlacesLibraryView.swift; sourceTree = "<group>"; };
+		C6F66A0151048456CB20ADE8 /* xanh-adblock-baseline.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "xanh-adblock-baseline.json"; sourceTree = "<group>"; };
 		D9E1BFF0DEF3D7822C6FB9DA /* WebContentProcessRecoveryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContentProcessRecoveryPolicy.swift; sourceTree = "<group>"; };
 		DCA56B9DBA8FE9A9EB4B1D25 /* FirefoxSyncBindingPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxSyncBindingPlaceholder.swift; sourceTree = "<group>"; };
+		E4E391003871B19E7966F9B0 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 		EB98C73205558CF4F34E1412 /* Bookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bookmark.swift; sourceTree = "<group>"; };
 		F9F9BBF66073A0AA95631563 /* FirefoxPasswordsLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirefoxPasswordsLibraryView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -97,14 +112,26 @@
 			children = (
 				CEE16800181591AB2F745B2E /* App */,
 				0F61B7B60391F6992390CBAD /* Generated */,
+				9A67EBC3C16A63EBDB50BB55 /* midori-core */,
+				41ADCAF45032550E3CB2FF64 /* xanh-adblock-core */,
 				4B1FB12272EA68A84D07C11D /* XanhBrowserCore */,
 				12F417CDAFBD830A3CA67D50 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
+		41ADCAF45032550E3CB2FF64 /* xanh-adblock-core */ = {
+			isa = PBXGroup;
+			children = (
+				BC68201D537F2F4A51DF41AC /* LICENSE */,
+			);
+			name = "xanh-adblock-core";
+			path = "../../xanh-adblock-core";
+			sourceTree = "<group>";
+		};
 		4B1FB12272EA68A84D07C11D /* XanhBrowserCore */ = {
 			isa = PBXGroup;
 			children = (
+				5C24FFB417506451EC9A02B8 /* AdblockHost.swift */,
 				7325C79C2D0BC0FE520EA3EC /* AddressResolver.swift */,
 				EB98C73205558CF4F34E1412 /* Bookmark.swift */,
 				B540C8EF970CC11135804394 /* BrowserSession.swift */,
@@ -119,9 +146,19 @@
 			path = Sources/XanhBrowserCore;
 			sourceTree = "<group>";
 		};
+		9A67EBC3C16A63EBDB50BB55 /* midori-core */ = {
+			isa = PBXGroup;
+			children = (
+				E4E391003871B19E7966F9B0 /* THIRD_PARTY_NOTICES.md */,
+			);
+			name = "midori-core";
+			path = ../..;
+			sourceTree = "<group>";
+		};
 		CEE16800181591AB2F745B2E /* App */ = {
 			isa = PBXGroup;
 			children = (
+				8BC813AA3B6BDFA782C9C3F9 /* AppleAdblockContentBlocker.swift */,
 				0BEA6CFAB98F9E3E7FD85202 /* AppleFirefoxSyncRuntime.swift */,
 				6C5707A9D15C10A864537D41 /* Assets.xcassets */,
 				BE2102689805C3B0E720486D /* BrowserCredentialBridge.swift */,
@@ -131,6 +168,7 @@
 				C5207C3CE089306008181AE1 /* FirefoxPlacesLibraryView.swift */,
 				8A0E902F84E8351D788D173C /* FirefoxSyncSettingsView.swift */,
 				0372C9AEFC9B07F831F257B9 /* FirefoxSyncViewModel.swift */,
+				C6F66A0151048456CB20ADE8 /* xanh-adblock-baseline.json */,
 				A33C392942764CA582BA6818 /* XanhBrowserApp.swift */,
 			);
 			path = App;
@@ -212,6 +250,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				FF0B71A4D695C1537C30C25B /* Assets.xcassets in Resources */,
+				475C0C38979C5F62AB9FA0B0 /* LICENSE in Resources */,
+				CB1CF16549AED06CD2DAD0C5 /* THIRD_PARTY_NOTICES.md in Resources */,
+				17668D304AC2DF0F24466584 /* xanh-adblock-baseline.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,6 +261,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				790A752BBFBB82502345359E /* Assets.xcassets in Resources */,
+				73BC3EEB6C48E194848204EC /* LICENSE in Resources */,
+				CC66C858C01888BF52DD6323 /* THIRD_PARTY_NOTICES.md in Resources */,
+				874347BCE8946ECBFDB0C5F3 /* xanh-adblock-baseline.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,7 +274,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1ABACAEA1CF6D18BB42A4774 /* AdblockHost.swift in Sources */,
 				48E13B975F096A9D87FFCC38 /* AddressResolver.swift in Sources */,
+				B8021A01FE8496533F426F87 /* AppleAdblockContentBlocker.swift in Sources */,
 				27107609FA3BC4DB8714B326 /* AppleFirefoxSyncRuntime.swift in Sources */,
 				0DB09CF4B38B4F131D49EC0B /* Bookmark.swift in Sources */,
 				9D20E1406B5C633E322E6DDE /* BrowserCredentialBridge.swift in Sources */,
@@ -256,7 +302,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AEF0A6F8BEBEF828D90576DD /* AdblockHost.swift in Sources */,
 				E542001C874AB4BD17586767 /* AddressResolver.swift in Sources */,
+				9693119AA57A1016B688DC47 /* AppleAdblockContentBlocker.swift in Sources */,
 				1B9C102E5EE3C37A12BB51F2 /* AppleFirefoxSyncRuntime.swift in Sources */,
 				686761EC979A9C397C116114 /* Bookmark.swift in Sources */,
 				C2640D548B127955DFA328FF /* BrowserCredentialBridge.swift in Sources */,

@@ -8,7 +8,8 @@ if [[ -z "$input" || ! -e "$input" ]]; then
 fi
 
 if [[ -n "${ANDROID_NDK_HOME:-}" ]]; then
-  readelf_tool="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" -type f -name llvm-readelf -perm -111 -print -quit)"
+  readelf_tool="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" \
+    \( -type f -o -type l \) -name llvm-readelf -perm -111 -print -quit)"
 else
   readelf_tool=""
 fi

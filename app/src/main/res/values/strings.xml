@@ -7,6 +7,7 @@
     <string name="reload">Reload</string>
     <string name="share">Share</string>
     <string name="desktop_site">Desktop site</string>
+    <string name="ad_blocking">Block ads &amp; trackers</string>
     <string name="downloads">Downloads</string>
     <string name="export_backup">Export encrypted backup</string>
     <string name="import_backup">Import encrypted backup</string>

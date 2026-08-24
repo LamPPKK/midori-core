@@ -22,11 +22,17 @@ public sealed partial class MainWindow : Window
     private bool _userPresenceInProgress;
     private long _historyClearGeneration;
     private ContentDialog? _activeCredentialDialog;
+    private IAdblockEngine? _adblockEngine;
+    private bool _adblockEnabled;
+    private bool _adblockInitializationAttempted;
     private bool _isClosing;
 
     public MainWindow()
     {
+        _adblockEnabled = AdblockPreference.Resolve(
+            ApplicationData.Current.LocalSettings.Values[AdblockPreference.StorageKey]);
         InitializeComponent();
+        AdblockToggle.IsChecked = _adblockEnabled;
         Title = "Xanh Browser";
         Closed += MainWindow_Closed;
         Activated += MainWindow_Activated;
@@ -34,7 +40,6 @@ public sealed partial class MainWindow : Window
         BrowserTabs.SelectionChanged += BrowserTabs_SelectionChanged;
         _vaultTimer.Tick += VaultTimer_Tick;
         _vaultTimer.Start();
-        AddTab(isPrivate: false);
     }
 
     public async void HandleFirefoxSyncCallback(Uri callback)
@@ -65,6 +70,15 @@ public sealed partial class MainWindow : Window
 
     private async void BrowserTabs_Loaded(object sender, RoutedEventArgs e)
     {
+        if (_adblockEnabled)
+        {
+            await EnsureAdblockAsync();
+        }
+        if (!_isClosing && BrowserTabs.TabItems.Count == 0)
+        {
+            // Do not let the first navigation outrun the default-on native matcher.
+            AddTab(isPrivate: false);
+        }
         try
         {
             await EnsureFirefoxSyncAsync(showConfiguration: false);
@@ -79,6 +93,34 @@ public sealed partial class MainWindow : Window
             FirefoxSyncStatus.Text = $"Sync unavailable: {error.Message}";
         }
     }
+
+    private async void AdblockToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _adblockEnabled = AdblockToggle.IsChecked == true;
+        ApplicationData.Current.LocalSettings.Values[AdblockPreference.StorageKey] = _adblockEnabled;
+        if (_adblockEnabled)
+        {
+            await EnsureAdblockAsync();
+        }
+    }
+
+    private async Task EnsureAdblockAsync()
+    {
+        if (_isClosing || _adblockEngine is not null || _adblockInitializationAttempted)
+        {
+            return;
+        }
+        _adblockInitializationAttempted = true;
+
+        // The native baseline is tiny and local. Resolve it synchronously so no tab-creation
+        // event can run while this method is suspended and outrun the default-on matcher.
+        _adblockEngine = NativeAdblockEngine.TryCreate(AppContext.BaseDirectory)
+            ?? BaselineAdblockEngine.Instance;
+        await Task.CompletedTask;
+    }
+
+    private IAdblockEngine? CurrentAdblockEngine() =>
+        _adblockEnabled ? _adblockEngine : null;
 
     private async void FirefoxSync_Click(object sender, RoutedEventArgs e)
     {
@@ -626,7 +668,11 @@ public sealed partial class MainWindow : Window
 
     private TabViewItem AddTab(bool isPrivate, Uri? initialUri = null)
     {
-        var browser = new BrowserTab(isPrivate, initialUri, ShowCredentialPickerAsync);
+        var browser = new BrowserTab(
+            isPrivate,
+            initialUri,
+            ShowCredentialPickerAsync,
+            CurrentAdblockEngine);
         var tab = new TabViewItem
         {
             Header = isPrivate ? "Private tab" : "New tab",
@@ -1466,6 +1512,7 @@ public sealed partial class MainWindow : Window
                 browser.IsPrivate,
                 args.Target,
                 ShowCredentialPickerAsync,
+                CurrentAdblockEngine,
                 automaticRecoveryUsed: true);
             browser.Dispose();
             tab.Content = replacement;
@@ -1493,6 +1540,8 @@ public sealed partial class MainWindow : Window
         {
             (item.Content as BrowserTab)?.Dispose();
         }
+        _adblockEngine?.Dispose();
+        _adblockEngine = null;
         if (coordinator is not null) await coordinator.DisposeAsync();
     }
 }

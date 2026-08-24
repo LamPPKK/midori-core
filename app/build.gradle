@@ -21,6 +21,24 @@ def uploadKeyAlias = providers.gradleProperty('xanhLiteUploadKeyAlias')
 def uploadKeyPassword = providers.gradleProperty('xanhLiteUploadKeyPassword')
     .orElse(providers.environmentVariable('XANH_LITE_KEY_PASSWORD')).orNull
 def hasUploadSigning = [uploadStoreFile, uploadStorePassword, uploadKeyAlias, uploadKeyPassword].every { it }
+def adblockNativeDir = providers.gradleProperty('xanhAdblockNativeDir')
+    .orElse(providers.environmentVariable('XANH_ADBLOCK_NATIVE_DIR')).orNull
+def adblockNdkDir = providers.gradleProperty('xanhAndroidNdkDir')
+    .orElse(providers.environmentVariable('ANDROID_NDK_HOME'))
+    .orElse(providers.environmentVariable('ANDROID_NDK_ROOT')).orNull
+def productionAdblockAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64']
+def adblockLibraryName = 'libxanh_adblock_core.so'
+def requiredAdblockSymbols = [
+    'xanh_adblock_core_version',
+    'xanh_adblock_engine_create_default',
+    'xanh_adblock_engine_should_block',
+    'xanh_adblock_engine_free',
+]
+def expectedAdblockElf = [
+    'arm64-v8a': [elfClass: 2, machine: 183, readelfMachine: 'AArch64'],
+    'armeabi-v7a': [elfClass: 1, machine: 40, readelfMachine: 'ARM'],
+    'x86_64': [elfClass: 2, machine: 62, readelfMachine: 'Advanced Micro Devices X86-64'],
+]
 
 android {
     namespace = 'io.github.lamppkk.xanhbrowser.lite'
@@ -42,9 +60,7 @@ android {
         buildConfigField 'String', 'XANH_FXA_CLIENT_ID', '"' + syncClientId.replace('"', '\\"') + '"'
         buildConfigField 'boolean', 'XANH_FXA_PRODUCTION_APPROVED', syncProductionApproved.toString()
         buildConfigField 'boolean', 'XANH_SYNC_SELF_HOSTED_ONLY', syncSelfHostedOnly.toString()
-        ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
-        }
+        buildConfigField 'boolean', 'XANH_ADBLOCK_NATIVE_PACKAGED', (adblockNativeDir != null).toString()
     }
 
     dynamicFeatures = syncFeatureEnabled ? [':sync_feature'] : []
@@ -64,12 +80,16 @@ android {
         debug {
             applicationIdSuffix = '.debug'
             versionNameSuffix = '-debug'
+            // Keep the legacy x86 emulator variant in fallback-only mode when no Rust .so exists.
+            ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86' }
         }
         release {
             minifyEnabled = true
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (hasUploadSigning) signingConfig = signingConfigs.release
+            // The Rust build publishes these three supported Android ABIs; 32-bit x86 is fallback-only.
+            ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
         }
     }
 
@@ -85,6 +105,92 @@ android {
 
     testOptions {
         unitTests.includeAndroidResources = true
+    }
+
+    sourceSets {
+        if (adblockNativeDir) main.jniLibs.srcDir file(adblockNativeDir)
+    }
+}
+
+tasks.register('verifyAdblockNativeRelease') {
+    doLast {
+        if (!adblockNativeDir) {
+            throw new GradleException(
+                'Production release requires -PxanhAdblockNativeDir (or XANH_ADBLOCK_NATIVE_DIR)'
+            )
+        }
+
+        def nativeRoot = file(adblockNativeDir)
+        if (!nativeRoot.isDirectory()) {
+            throw new GradleException("Adblock native directory does not exist: ${nativeRoot}")
+        }
+        if (!adblockNdkDir) {
+            throw new GradleException(
+                'Native verification requires -PxanhAndroidNdkDir, ANDROID_NDK_HOME, or ANDROID_NDK_ROOT'
+            )
+        }
+        def prebuiltRoot = new File(file(adblockNdkDir), 'toolchains/llvm/prebuilt')
+        def readelf = prebuiltRoot.listFiles()
+            ?.sort { left, right -> left.name <=> right.name }
+            ?.collect { host ->
+                new File(host, "bin/llvm-readelf${System.getProperty('os.name').startsWith('Windows') ? '.exe' : ''}")
+            }
+            ?.find { candidate -> candidate.isFile() }
+        if (readelf == null) {
+            throw new GradleException("Android NDK llvm-readelf is unavailable under ${prebuiltRoot}")
+        }
+
+        productionAdblockAbis.each { abi ->
+            def library = new File(new File(nativeRoot, abi), adblockLibraryName)
+            if (!library.isFile()) {
+                throw new GradleException("Missing ${adblockLibraryName} for required ABI ${abi}")
+            }
+            if (library.length() < 20 || library.length() > 64L * 1024L * 1024L) {
+                throw new GradleException("Implausible native library size for ${abi}: ${library.length()}")
+            }
+            byte[] header = library.withInputStream { stream -> stream.readNBytes(20) }
+            if (
+                header.length != 20 ||
+                header[0] != 0x7f ||
+                header[1] != 0x45 ||
+                header[2] != 0x4c ||
+                header[3] != 0x46 ||
+                header[5] != 1
+            ) {
+                throw new GradleException("Invalid ELF library for required ABI ${abi}: ${library}")
+            }
+            def expected = expectedAdblockElf[abi]
+            int machine = (header[18] & 0xff) | ((header[19] & 0xff) << 8)
+            if ((header[4] & 0xff) != expected.elfClass || machine != expected.machine) {
+                throw new GradleException(
+                    "ELF architecture mismatch for ${abi}: class=${header[4] & 0xff}, machine=${machine}"
+                )
+            }
+
+            def process = new ProcessBuilder(
+                readelf.absolutePath,
+                '-h',
+                '--dyn-syms',
+                '--wide',
+                library.absolutePath,
+            ).redirectErrorStream(true).start()
+            def readelfOutput = process.inputStream.getText('UTF-8')
+            if (process.waitFor() != 0) {
+                throw new GradleException("llvm-readelf rejected ${abi}: ${readelfOutput.take(1024)}")
+            }
+            if (!(readelfOutput =~ /(?m)^\s*Type:\s+DYN\b/)) {
+                throw new GradleException("Native library is not ET_DYN for ${abi}")
+            }
+            if (!(readelfOutput =~ /(?m)^\s*Machine:\s+${java.util.regex.Pattern.quote(expected.readelfMachine)}\s*$/)) {
+                throw new GradleException("llvm-readelf machine mismatch for ${abi}")
+            }
+            requiredAdblockSymbols.each { symbol ->
+                def quoted = java.util.regex.Pattern.quote(symbol)
+                if (!(readelfOutput =~ /(?m)^\s*\d+:\s+\S+\s+\d+\s+FUNC\s+GLOBAL\s+DEFAULT\s+\d+\s+${quoted}\s*$/)) {
+                    throw new GradleException("Missing exported adblock ABI symbol for ${abi}: ${symbol}")
+                }
+            }
+        }
     }
 }
 
@@ -117,10 +223,11 @@ tasks.register('verifyReleaseSigning') {
 
 tasks.matching { it.name == 'bundleRelease' }.configureEach {
     mustRunAfter 'verifyReleaseSigning'
+    mustRunAfter 'verifyAdblockNativeRelease'
 }
 
 tasks.register('bundleProductionRelease') {
-    dependsOn 'verifyReleaseSigning', 'bundleRelease'
+    dependsOn 'verifyReleaseSigning', 'verifyAdblockNativeRelease', 'bundleRelease'
 }
 
 dependencies {
@@ -134,6 +241,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
     implementation 'androidx.webkit:webkit:1.17.0'
     implementation 'com.google.android.material:material:1.14.0'
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'

@@ -16,6 +16,12 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Build the pinned native blocker for the Flatpak sandbox
+        run: |
+          cargo build --locked --release --manifest-path xanh-adblock-core/Cargo.toml
+          install -Dm755 xanh-adblock-core/target/release/libxanh_adblock_core.so \
+            flatpak/native/libxanh_adblock_core.so
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: xanh-browser.flatpak

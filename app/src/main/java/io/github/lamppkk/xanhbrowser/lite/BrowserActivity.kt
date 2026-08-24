@@ -65,6 +65,7 @@ class BrowserActivity : AppCompatActivity() {
     private var rendererRecoveryScheduled = false
     private var rendererRecoveryLoadPending = false
     private val syncFeature by lazy { SyncFeatureInstaller(this) }
+    private val adBlockCoordinator by lazy { AdBlockCoordinator.get(this) }
 
     private val createBackupDocument = registerForActivityResult(
         ActivityResultContracts.CreateDocument(PortableBackup.MIME_TYPE),
@@ -246,7 +247,7 @@ class BrowserActivity : AppCompatActivity() {
             }
             mobileUserAgent = settings.userAgentString
             settings.userAgentString = "$mobileUserAgent XanhBrowser/1.0"
-            webViewClient = XanhWebViewClient(this@BrowserActivity)
+            webViewClient = XanhWebViewClient(this@BrowserActivity, adBlockCoordinator)
             webChromeClient = XanhWebChromeClient(this@BrowserActivity)
             setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
                 enqueueDownload(url, userAgent, contentDisposition, mimeType)
@@ -660,6 +661,7 @@ class BrowserActivity : AppCompatActivity() {
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         menu.findItem(R.id.action_desktop_site)?.isChecked = desktopSite
+        menu.findItem(R.id.action_ad_blocking)?.isChecked = adBlockCoordinator.isEnabled()
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -683,6 +685,13 @@ class BrowserActivity : AppCompatActivity() {
         R.id.action_desktop_site -> {
             requestDesktopSite(!desktopSite)
             item.isChecked = desktopSite
+            true
+        }
+        R.id.action_ad_blocking -> {
+            val enabled = !adBlockCoordinator.isEnabled()
+            adBlockCoordinator.setEnabled(enabled)
+            item.isChecked = enabled
+            webView?.reload()
             true
         }
         R.id.action_downloads -> {

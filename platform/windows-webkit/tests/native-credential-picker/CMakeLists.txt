@@ -15,6 +15,7 @@ add_executable(XanhNativeCredentialPickerContractTest
     ../../src/XanhNativeSyncRuntime.cpp
     ../../src/XanhOAuthCallback.cpp
     ../../src/XanhWindowsHello.cpp
+    XanhNativeCredentialPickerContractTest.exe.manifest
     XanhNativeCredentialPickerContractTest.cpp
 )
 target_include_directories(XanhNativeCredentialPickerContractTest PRIVATE

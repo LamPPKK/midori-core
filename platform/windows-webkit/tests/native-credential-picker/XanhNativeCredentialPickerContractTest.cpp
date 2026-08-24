@@ -1,19 +1,11 @@
 #include "XanhNativeCredentialPicker.h"
 
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 
 namespace {
 
 unsigned assertions;
-
-void checkpoint(const char* message)
-{
-    std::cerr << "credential-picker checkpoint: " << message << std::endl;
-    std::ofstream log("credential-picker-checkpoints.log", std::ios::app);
-    log << message << '\n';
-}
 
 void expect(bool condition, const char* message)
 {
@@ -28,14 +20,12 @@ void expect(bool condition, const char* message)
 
 int main()
 {
-    checkpoint("start");
     SetEnvironmentVariableW(L"XANH_WINCAIRO_FXA_ACCOUNTS_URL", nullptr);
     SetEnvironmentVariableW(L"XANH_WINCAIRO_FXA_TOKEN_SERVER_URL", nullptr);
     SetEnvironmentVariableW(L"XANH_WINCAIRO_FXA_CLIENT_ID", nullptr);
 
     auto picker = XanhNativeCredentialPicker::shared();
     auto samePicker = XanhNativeCredentialPicker::shared();
-    checkpoint("singleton created");
     expect(picker && picker == samePicker,
         "The credential picker was not process-wide.");
 
@@ -49,7 +39,6 @@ int main()
         "The unconfigured picker did not complete exactly once.");
     expect(!returnedCredential,
         "The unconfigured picker returned a credential.");
-    checkpoint("credential request rejected");
     expect(!picker->canBeginOAuth(nullptr),
         "The unconfigured picker reported OAuth readiness.");
     expect(!picker->beginOAuth(nullptr),
@@ -65,7 +54,6 @@ int main()
         "The unconfigured picker accepted an OAuth callback.");
     expect(oauthCompletions == 0,
         "A rejected OAuth callback invoked an async completion.");
-    checkpoint("OAuth operations rejected");
     unsigned syncCompletions = 0;
     bool syncReturnedStatus = true;
     picker->syncNow(nullptr, [&](auto status) {
@@ -78,19 +66,13 @@ int main()
         "The unconfigured picker disconnected a nonexistent runtime.");
     expect(!picker->accountState(),
         "The unconfigured picker exposed an account state.");
-    checkpoint("Sync operations rejected");
 
     picker->cancel(nullptr);
     picker->applicationActivationChanged(nullptr, false, nullptr);
     expect(completions == 1,
         "Cancel or deactivation replayed a completed callback.");
-    checkpoint("deactivation handled");
-
-    std::cout << "Xanh native credential-picker behavior passed "
-              << assertions << " assertions; checking teardown\n"
-              << std::flush;
     samePicker.reset();
     picker.reset();
-    checkpoint("singleton destroyed");
-    std::cout << "Xanh native credential-picker teardown passed\n";
+    std::cout << "Xanh native credential-picker contract passed "
+              << assertions << " assertions including teardown\n";
 }

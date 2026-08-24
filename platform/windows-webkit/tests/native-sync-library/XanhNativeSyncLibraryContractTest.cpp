@@ -145,7 +145,7 @@ int wmain(int argc, wchar_t** argv)
 
         {
             auto generated = runtime->generateLocalLoginsKey();
-            expect(generated && generated->view() == "fake-logins-key",
+            expect(generated && generated->view() == "test-local-logins-key",
                 "The typed runtime did not generate a local Logins key.", assertions);
         }
 

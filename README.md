@@ -216,6 +216,9 @@ AndroidX Core is pinned to stable 1.19.0. Its published AAR requires compile
 API 37, so every Android module builds against stable Android SDK Platform
 37.1 while the shipping applications continue to target API 36.
 
+The production Android UI stack uses stable Activity 1.13.0, Annotation 1.10.0,
+AppCompat 1.8.0, Browser 1.10.0 and Material Components 1.14.0.
+
 ```sh
 ./gradlew --no-daemon \
   :backup-core:testDebugUnitTest \

@@ -197,15 +197,15 @@ tasks.register('bundleWebKitProductionRelease') {
 dependencies {
     implementation project(':backup-core')
     implementation 'com.google.android.play:feature-delivery-ktx:2.1.0'
-    implementation 'androidx.activity:activity-ktx:1.12.3'
-    implementation 'androidx.annotation:annotation:1.9.1'
-    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.activity:activity-ktx:1.13.0'
+    implementation 'androidx.annotation:annotation:1.10.0'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
     implementation 'androidx.biometric:biometric:1.1.0'
-    implementation 'androidx.browser:browser:1.9.0'
+    implementation 'androidx.browser:browser:1.10.0'
     implementation 'androidx.core:core-ktx:1.19.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
     implementation 'androidx.webkit:webkit:1.17.0'
-    implementation 'com.google.android.material:material:1.13.0'
+    implementation 'com.google.android.material:material:1.14.0'
     if (wpeForkAarPath) {
         implementation files(wpeForkAarPath)
     } else {

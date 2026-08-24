@@ -31,6 +31,8 @@ tag is `v1.0.0` and must reference the reviewed release commit.
   emulator/device matrix for API 26, 30, 33 and 36
 - AndroidX WebKit 1.17.0 resolved from Google Maven for the Lite System WebView
   artifact; do not substitute an alpha compatibility library in production
+- Stable AndroidX Activity 1.13.0, Annotation 1.10.0, AppCompat 1.8.0 and
+  Browser 1.10.0, plus Material Components 1.14.0, resolved from Google Maven
 - `flatpak-builder`, `appstreamcli`, GPG and an offline source-release key
 - Access to the Lite Play listing and its dedicated Play App Signing upload key
 - Xcode 26+, Apple Developer membership, dedicated distribution certificates,

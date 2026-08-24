@@ -30,14 +30,14 @@ dependencies {
     api 'io.github.lamppkk.xanhbrowser:xanh-sync-android:1.0.0-alpha.1'
     // Shared AndroidX UI/runtime libraries live in each base APK. Keeping them
     // compile-only here prevents duplicate classes across base and split APKs.
-    compileOnly 'androidx.activity:activity-ktx:1.12.3'
-    compileOnly 'androidx.appcompat:appcompat:1.7.1'
+    compileOnly 'androidx.activity:activity-ktx:1.13.0'
+    compileOnly 'androidx.appcompat:appcompat:1.8.0'
     compileOnly 'androidx.biometric:biometric:1.1.0'
-    compileOnly 'androidx.browser:browser:1.9.0'
+    compileOnly 'androidx.browser:browser:1.10.0'
     compileOnly 'androidx.core:core-ktx:1.19.0'
     compileOnly 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
     compileOnly 'androidx.webkit:webkit:1.17.0'
-    compileOnly 'com.google.android.material:material:1.13.0'
+    compileOnly 'com.google.android.material:material:1.14.0'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20260814'

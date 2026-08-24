@@ -310,6 +310,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   GCR 4.
 - Modernized Android builds to JDK 17, Android SDK Platform 37.1 with target
   API 36, AGP 9.3.2, Gradle 9.7.1, AndroidX and View Binding.
+- Updated the Android editions to stable Activity 1.13.0, Annotation 1.10.0,
+  AppCompat 1.8.0, Browser 1.10.0 and Material Components 1.14.0.
 - Updated Xanh Browser Lite to the stable AndroidX WebKit 1.17.0 compatibility
   layer used by the serviced System WebView edition.
 - Recreate the Lite browser after a System WebView renderer termination using

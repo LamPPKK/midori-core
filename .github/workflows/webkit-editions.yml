@@ -328,6 +328,16 @@ jobs:
         run: ctest --test-dir _build/wincairo-native-sync-library -C Release --output-on-failure
       - name: Run native credential-picker contract
         run: ctest --test-dir _build/wincairo-native-credential-picker -C Release --verbose --output-on-failure
+      - name: Show native credential-picker timeout checkpoint
+        if: failure()
+        shell: pwsh
+        run: |
+          $path = '_build/wincairo-native-credential-picker/credential-picker-checkpoints.log'
+          if (Test-Path -LiteralPath $path) {
+            Get-Content -LiteralPath $path
+          } else {
+            Write-Output 'No checkpoint file was created before the process stalled.'
+          }
 
   dependency-review:
     if: github.event_name == 'pull_request'

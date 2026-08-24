@@ -1,6 +1,7 @@
 #include "XanhNativeCredentialPicker.h"
 
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 namespace {
@@ -10,6 +11,8 @@ unsigned assertions;
 void checkpoint(const char* message)
 {
     std::cerr << "credential-picker checkpoint: " << message << std::endl;
+    std::ofstream log("credential-picker-checkpoints.log", std::ios::app);
+    log << message << '\n';
 }
 
 void expect(bool condition, const char* message)

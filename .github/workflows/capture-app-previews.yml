@@ -2,6 +2,17 @@ name: Capture app previews
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Native platform to capture
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - linux
+          - macos
+          - windows
 
 permissions:
   contents: read
@@ -9,6 +20,7 @@ permissions:
 jobs:
   linux:
     name: Linux desktop preview
+    if: inputs.platform == 'all' || inputs.platform == 'linux'
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
@@ -52,6 +64,7 @@ jobs:
 
   macos:
     name: macOS preview
+    if: inputs.platform == 'all' || inputs.platform == 'macos'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
@@ -91,7 +104,8 @@ jobs:
 
   windows:
     name: Windows preview
-    runs-on: windows-latest
+    if: inputs.platform == 'all' || inputs.platform == 'windows'
+    runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -103,16 +117,16 @@ jobs:
         run: >-
           dotnet publish platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
           --configuration Release
-          --runtime win-x64
+          --runtime win-arm64
           --self-contained true
-          -p:Platform=x64
-          --output _artifact/win-x64
+          -p:Platform=ARM64
+          --output _artifact/win-arm64
       - name: Capture the real WinUI application
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $startedAt = Get-Date
-          $publishDirectory = (Resolve-Path '_artifact/win-x64').Path
+          $publishDirectory = (Resolve-Path '_artifact/win-arm64').Path
           $executable = Join-Path $publishDirectory 'XanhBrowser.Windows.exe'
           $process = Start-Process $executable -WorkingDirectory $publishDirectory -PassThru
           for ($attempt = 0; $attempt -lt 45; $attempt++) {

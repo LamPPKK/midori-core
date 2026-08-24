@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          app='_build/apple-macos/Build/Products/Release/Xanh Browser.app'
+          app="$PWD/_build/apple-macos/Build/Products/Release/Xanh Browser.app"
           open -na "$app"
           sleep 12
           osascript <<'APPLESCRIPT'
@@ -111,11 +111,18 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $process = Start-Process '_artifact/win-x64/XanhBrowser.Windows.exe' -PassThru
+          $startedAt = Get-Date
+          $publishDirectory = (Resolve-Path '_artifact/win-x64').Path
+          $executable = Join-Path $publishDirectory 'XanhBrowser.Windows.exe'
+          $process = Start-Process $executable -WorkingDirectory $publishDirectory -PassThru
           for ($attempt = 0; $attempt -lt 45; $attempt++) {
             Start-Sleep -Seconds 1
             $process.Refresh()
-            if ($process.HasExited) { throw "Xanh Browser exited with code $($process.ExitCode)" }
+            if ($process.HasExited) {
+              Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $startedAt } `
+                -ErrorAction SilentlyContinue | Format-List * | Out-File app-preview-windows-events.txt
+              throw "Xanh Browser exited with code $($process.ExitCode)"
+            }
             if ($process.MainWindowHandle -ne 0) { break }
           }
           if ($process.MainWindowHandle -eq 0) { throw 'Xanh Browser did not create a visible window' }
@@ -149,7 +156,10 @@ jobs:
           }
           if (-not (Test-Path 'app-preview-windows.png')) { throw 'Preview was not captured' }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: app-preview-windows
-          if-no-files-found: error
-          path: app-preview-windows.png
+          if-no-files-found: warn
+          path: |
+            app-preview-windows.png
+            app-preview-windows-events.txt

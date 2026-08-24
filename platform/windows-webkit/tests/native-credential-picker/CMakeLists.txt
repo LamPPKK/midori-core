@@ -42,3 +42,5 @@ target_link_libraries(XanhNativeCredentialPickerContractTest PRIVATE
 
 add_test(NAME XanhNativeCredentialPickerContractTest
     COMMAND XanhNativeCredentialPickerContractTest)
+set_tests_properties(XanhNativeCredentialPickerContractTest PROPERTIES
+    TIMEOUT 60)

@@ -290,7 +290,6 @@ struct XanhNativeCredentialPicker::Impl {
         : storageRoot(XanhDpapiSecretStore::defaultStorageRoot())
         , store(storageRoot)
     {
-        timer = CreateThreadpoolTimer(timerFired, this, nullptr);
         initialize();
     }
 
@@ -431,7 +430,11 @@ struct XanhNativeCredentialPicker::Impl {
 
         std::wstring configuredAccountOrigin;
         auto configuration = configurationJSON(configuredAccountOrigin);
-        if (!configuration || !timer)
+        if (!configuration)
+            return;
+        if (!timer)
+            timer = CreateThreadpoolTimer(timerFired, this, nullptr);
+        if (!timer)
             return;
         auto library = XanhNativeSyncLibrary::loadFromApplicationDirectory();
         if (!library)

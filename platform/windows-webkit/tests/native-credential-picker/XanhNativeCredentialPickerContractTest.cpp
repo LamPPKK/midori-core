@@ -72,6 +72,10 @@ int main()
     expect(completions == 1,
         "Cancel or deactivation replayed a completed callback.");
 
-    std::cout << "Xanh native credential-picker contract passed "
-              << assertions << " assertions\n";
+    std::cout << "Xanh native credential-picker behavior passed "
+              << assertions << " assertions; checking teardown\n"
+              << std::flush;
+    samePicker.reset();
+    picker.reset();
+    std::cout << "Xanh native credential-picker teardown passed\n";
 }

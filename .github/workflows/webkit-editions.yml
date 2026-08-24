@@ -327,7 +327,29 @@ jobs:
       - name: Run native Sync DLL loader contract
         run: ctest --test-dir _build/wincairo-native-sync-library -C Release --output-on-failure
       - name: Run native credential-picker contract
-        run: ctest --test-dir _build/wincairo-native-credential-picker -C Release --verbose --output-on-failure
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $build = Resolve-Path '_build/wincairo-native-credential-picker'
+          $executable = Join-Path $build 'Release/XanhNativeCredentialPickerContractTest.exe'
+          $stdout = Join-Path $build 'credential-picker-stdout.log'
+          $stderr = Join-Path $build 'credential-picker-stderr.log'
+          $process = Start-Process -FilePath $executable -WorkingDirectory $build `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          if (-not $process.WaitForExit(15000)) {
+            $process.Refresh()
+            Write-Output "Credential-picker process $($process.Id) stalled before exit."
+            Get-Process -Id $process.Id | Format-List Id,ProcessName,MainWindowHandle,MainWindowTitle,Responding
+            $process.Threads | Format-Table Id,ThreadState,WaitReason,StartAddress -AutoSize
+            Get-Process | Where-Object MainWindowTitle | Format-Table Id,ProcessName,MainWindowTitle -AutoSize
+            Stop-Process -Id $process.Id -Force
+            throw 'The native credential-picker contract stalled.'
+          }
+          Get-Content -LiteralPath $stdout -ErrorAction SilentlyContinue
+          Get-Content -LiteralPath $stderr -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) {
+            throw "The native credential-picker contract exited with $($process.ExitCode)."
+          }
       - name: Show native credential-picker timeout checkpoint
         if: failure()
         shell: pwsh

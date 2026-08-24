@@ -218,11 +218,13 @@ API 37, so every Android module builds against stable Android SDK Platform
 
 The production Android UI stack uses stable Activity 1.13.0, Annotation 1.10.0,
 AppCompat 1.8.0, Browser 1.10.0 and Material Components 1.14.0.
-Its dedicated weekly baseline reads official Google Maven metadata for every
-one of those coordinates, rejects prerelease/dynamic or mixed Gradle pins, and
-validates strict dependency checksums when a repository enables them. KSP is
-checked from Maven Central by the same policy whenever its Gradle plugin is
-present.
+The weekly direct-dependency baseline reads official Google Maven and Maven
+Central metadata for that stack plus Core, Lifecycle, Biometric, Play Feature
+Delivery, AndroidX Test, JUnit and JSON. Optional Room, WorkManager,
+RecyclerView and KSP coordinates are checked whenever present. The gate rejects
+prerelease/dynamic or mixed Gradle pins and validates strict checksums when a
+repository enables them. WebKit, AGP/Gradle, WPE and Mozilla Application
+Services remain covered by their engine/toolchain-specific baselines.
 
 ```sh
 ./gradlew --no-daemon \

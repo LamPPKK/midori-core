@@ -1,4 +1,4 @@
-name: Android UI stable baseline
+name: Android direct-dependency stable baseline
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Test Android UI latest-stable policy
+      - name: Test Android direct-dependency latest-stable policy
         run: python3 -B -m unittest discover -s scripts/tests -p 'test_verify_android_ui_latest.py' -v
-      - name: Verify Android UI dependencies use official stable releases
+      - name: Verify direct Android dependencies use official stable releases
         run: python3 scripts/verify_android_ui_latest.py

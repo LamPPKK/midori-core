@@ -23,8 +23,19 @@ IGNORED_PATH_PARTS = {".git", ".gradle", "build"}
 STABLE_VERSION_PATTERN = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
 )
+DATE_VERSION_PATTERN = re.compile(r"^20[0-9]{6}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 KSP_PLUGIN_ID = "com.google.devtools.ksp"
+EXTERNALLY_GOVERNED_COORDINATES = {
+    ("androidx.webkit", "webkit"),
+    ("org.wpewebkit.wpeview", "wpeview"),
+    ("io.github.lamppkk.xanhbrowser", "xanh-sync-android"),
+    ("org.mozilla.appservices", "fxaclient"),
+    ("org.mozilla.appservices", "places"),
+    ("org.mozilla.appservices", "syncmanager"),
+    ("org.mozilla.appservices", "logins"),
+    ("org.mozilla.appservices", "tabs"),
+}
 
 
 class VerificationError(RuntimeError):
@@ -32,7 +43,7 @@ class VerificationError(RuntimeError):
 
 
 class StableRelease(NamedTuple):
-    version: tuple[int, int, int]
+    version: tuple[int, ...]
     text: str
 
 
@@ -48,6 +59,23 @@ class DependencySpec(NamedTuple):
     artifact: str
     metadata_url: str
     checksums: tuple[ArtifactRequirement, ...]
+
+
+def _standard_spec(
+    key: str,
+    group: str,
+    artifact: str,
+    extensions: tuple[str, ...],
+    repository: str = GOOGLE_MAVEN,
+) -> DependencySpec:
+    path = f"{group.replace('.', '/')}/{artifact}/maven-metadata.xml"
+    return DependencySpec(
+        key,
+        group,
+        artifact,
+        f"{repository}/{path}",
+        (ArtifactRequirement(group, artifact, extensions),),
+    )
 
 
 UI_SPECS = (
@@ -91,6 +119,49 @@ UI_SPECS = (
         ),
     ),
 )
+OPTIONAL_SPECS = (
+    _standard_spec(
+        "feature_delivery",
+        "com.google.android.play",
+        "feature-delivery-ktx",
+        ("aar", "pom"),
+    ),
+    _standard_spec("biometric", "androidx.biometric", "biometric", ("aar", "module")),
+    _standard_spec("core", "androidx.core", "core-ktx", ("aar", "module")),
+    _standard_spec(
+        "lifecycle_runtime",
+        "androidx.lifecycle",
+        "lifecycle-runtime-ktx",
+        ("module",),
+    ),
+    _standard_spec(
+        "lifecycle_process",
+        "androidx.lifecycle",
+        "lifecycle-process",
+        ("aar", "module"),
+    ),
+    _standard_spec(
+        "recyclerview", "androidx.recyclerview", "recyclerview", ("aar", "module")
+    ),
+    _standard_spec("room_runtime", "androidx.room", "room-runtime", ("module",)),
+    _standard_spec("room_ktx", "androidx.room", "room-ktx", ("aar", "module")),
+    _standard_spec(
+        "room_compiler", "androidx.room", "room-compiler", ("jar", "module")
+    ),
+    _standard_spec("room_testing", "androidx.room", "room-testing", ("module",)),
+    _standard_spec(
+        "work", "androidx.work", "work-runtime-ktx", ("aar", "module")
+    ),
+    _standard_spec(
+        "androidx_test_junit", "androidx.test.ext", "junit", ("aar", "pom")
+    ),
+    _standard_spec(
+        "espresso", "androidx.test.espresso", "espresso-core", ("aar", "pom")
+    ),
+    _standard_spec("test_runner", "androidx.test", "runner", ("aar", "pom")),
+    _standard_spec("junit4", "junit", "junit", ("jar", "pom"), MAVEN_CENTRAL),
+    _standard_spec("json", "org.json", "json", ("jar", "pom"), MAVEN_CENTRAL),
+)
 KSP_SPEC = DependencySpec(
     "ksp",
     "com.google.devtools.ksp",
@@ -110,7 +181,9 @@ KSP_SPEC = DependencySpec(
         ),
     ),
 )
-SPECS_BY_KEY = {spec.key: spec for spec in (*UI_SPECS, KSP_SPEC)}
+SPECS_BY_KEY = {
+    spec.key: spec for spec in (*UI_SPECS, *OPTIONAL_SPECS, KSP_SPEC)
+}
 
 
 def _single_child_text(parent: ET.Element, name: str) -> str:
@@ -118,6 +191,13 @@ def _single_child_text(parent: ET.Element, name: str) -> str:
     if len(children) != 1 or children[0].text is None or not children[0].text.strip():
         raise VerificationError(f"metadata must contain exactly one non-empty {name}")
     return children[0].text.strip()
+
+
+def _stable_version(value: str, spec: DependencySpec) -> tuple[int, ...] | None:
+    if spec.key == "json":
+        return (int(value),) if DATE_VERSION_PATTERN.fullmatch(value) else None
+    match = STABLE_VERSION_PATTERN.fullmatch(value)
+    return tuple(int(part) for part in match.groups()) if match else None
 
 
 def latest_stable_release(metadata: bytes, spec: DependencySpec) -> StableRelease:
@@ -147,7 +227,7 @@ def latest_stable_release(metadata: bytes, spec: DependencySpec) -> StableReleas
     if len(versions) != 1:
         raise VerificationError(f"{spec.key} metadata must contain one versions element")
 
-    stable: dict[tuple[int, int, int], str] = {}
+    stable: dict[tuple[int, ...], str] = {}
     seen: set[str] = set()
     for node in versions[0].findall("version"):
         if node.attrib or len(node):
@@ -158,10 +238,9 @@ def latest_stable_release(metadata: bytes, spec: DependencySpec) -> StableReleas
                 f"{spec.key} metadata contains an empty or duplicate version"
             )
         seen.add(value)
-        match = STABLE_VERSION_PATTERN.fullmatch(value)
-        if match is None:
+        parsed = _stable_version(value, spec)
+        if parsed is None:
             continue
-        parsed = tuple(int(part) for part in match.groups())
         stable[parsed] = value
     if not stable:
         raise VerificationError(f"{spec.key} metadata contains no stable release")
@@ -235,6 +314,18 @@ def project_dependency_pins(root: Path) -> dict[str, list[tuple[Path, str]]]:
             )
         pins[spec.key] = matches
 
+    for spec in OPTIONAL_SPECS:
+        pattern = re.compile(
+            rf"{re.escape(spec.group)}:{re.escape(spec.artifact)}:([^\s\"'`)]+)"
+        )
+        matches = [
+            (path, match.group(1))
+            for path, contents in sources
+            for match in pattern.finditer(contents)
+        ]
+        if matches:
+            pins[spec.key] = matches
+
     if any(KSP_PLUGIN_ID in contents for _, contents in sources):
         ksp_pattern = re.compile(
             r"\bid\s*(?:\(\s*)?['\"]com\.google\.devtools\.ksp['\"]\s*\)?"
@@ -249,9 +340,28 @@ def project_dependency_pins(root: Path) -> dict[str, list[tuple[Path, str]]]:
             raise VerificationError("KSP is applied but has no explicit root plugin version")
         pins[KSP_SPEC.key] = matches
 
+    tracked_coordinates = {
+        (spec.group, spec.artifact) for spec in (*UI_SPECS, *OPTIONAL_SPECS)
+    }
+    coordinate_pattern = re.compile(
+        r"\b([A-Za-z0-9_.-]+):([A-Za-z0-9_.-]+):([^\s\"'`)]+)"
+    )
+    for path, contents in sources:
+        for match in coordinate_pattern.finditer(contents):
+            coordinate = (match.group(1), match.group(2))
+            if (
+                coordinate not in tracked_coordinates
+                and coordinate not in EXTERNALLY_GOVERNED_COORDINATES
+            ):
+                raise VerificationError(
+                    f"{path} contains an untracked direct dependency: "
+                    f"{coordinate[0]}:{coordinate[1]}"
+                )
+
     for key, matches in pins.items():
+        spec = SPECS_BY_KEY[key]
         for path, version in matches:
-            if STABLE_VERSION_PATTERN.fullmatch(version) is None:
+            if _stable_version(version, spec) is None:
                 raise VerificationError(
                     f"{path} uses a non-stable or dynamic {key} pin: {version}"
                 )
@@ -388,7 +498,7 @@ def fetch_official_metadata(spec: DependencySpec) -> bytes:
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Fail when Xanh does not use the latest stable Android UI/tooling releases."
+            "Fail when Xanh does not use the latest stable direct Android dependencies."
         )
     )
     parser.add_argument(
@@ -424,10 +534,13 @@ def main() -> int:
             }
         releases = verify_project(root, metadata_by_key)
     except (OSError, VerificationError) as error:
-        print(f"Android UI/tooling latest-stable verification failed: {error}", file=sys.stderr)
+        print(
+            f"Android direct-dependency latest-stable verification failed: {error}",
+            file=sys.stderr,
+        )
         return 1
     summary = ", ".join(f"{key} {releases[key].text}" for key in sorted(releases))
-    print(f"Verified latest stable Android UI/tooling releases: {summary}")
+    print(f"Verified latest stable direct Android dependencies: {summary}")
     return 0
 
 

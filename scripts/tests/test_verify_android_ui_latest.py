@@ -17,6 +17,22 @@ VERSIONS = {
     "appcompat": "1.8.0",
     "browser": "1.10.0",
     "material": "1.14.0",
+    "feature_delivery": "2.1.0",
+    "biometric": "1.1.0",
+    "core": "1.19.0",
+    "lifecycle_runtime": "2.11.0",
+    "lifecycle_process": "2.11.0",
+    "recyclerview": "1.4.0",
+    "room_runtime": "2.8.4",
+    "room_ktx": "2.8.4",
+    "room_compiler": "2.8.4",
+    "room_testing": "2.8.4",
+    "work": "2.11.2",
+    "androidx_test_junit": "1.3.0",
+    "espresso": "3.7.0",
+    "test_runner": "1.7.0",
+    "junit4": "4.13.2",
+    "json": "20260814",
     "ksp": "2.3.11",
 }
 
@@ -32,8 +48,10 @@ def metadata(key: str, *versions: str, group: str | None = None) -> bytes:
     ).encode()
 
 
-def metadata_set(include_ksp: bool = False) -> dict[str, bytes]:
-    keys = [spec.key for spec in MODULE.UI_SPECS]
+def metadata_set(
+    include_ksp: bool = False, extra_keys: tuple[str, ...] = ()
+) -> dict[str, bytes]:
+    keys = [spec.key for spec in MODULE.UI_SPECS] + list(extra_keys)
     if include_ksp:
         keys.append("ksp")
     return {
@@ -42,8 +60,12 @@ def metadata_set(include_ksp: bool = False) -> dict[str, bytes]:
     }
 
 
-def verification_metadata(include_ksp: bool = False, bad_hash: bool = False) -> str:
-    keys = [spec.key for spec in MODULE.UI_SPECS]
+def verification_metadata(
+    include_ksp: bool = False,
+    bad_hash: bool = False,
+    extra_keys: tuple[str, ...] = (),
+) -> str:
+    keys = [spec.key for spec in MODULE.UI_SPECS] + list(extra_keys)
     if include_ksp:
         keys.append("ksp")
     components: list[str] = []
@@ -77,12 +99,13 @@ class AndroidUILatestTests(unittest.TestCase):
         *,
         include_ksp: bool = False,
         strict: bool = False,
+        extra_keys: tuple[str, ...] = (),
     ) -> Path:
         root = Path(directory)
         (root / "app").mkdir(parents=True)
         lines = [
             f'implementation "{spec.group}:{spec.artifact}:{VERSIONS[spec.key]}"'
-            for spec in MODULE.UI_SPECS
+            for spec in (*MODULE.UI_SPECS, *(MODULE.SPECS_BY_KEY[key] for key in extra_keys))
         ]
         (root / "app/build.gradle").write_text("\n".join(lines) + "\n", encoding="utf-8")
         if include_ksp:
@@ -93,12 +116,12 @@ class AndroidUILatestTests(unittest.TestCase):
         if strict:
             (root / "gradle").mkdir()
             (root / "gradle/verification-metadata.xml").write_text(
-                verification_metadata(include_ksp), encoding="utf-8"
+                verification_metadata(include_ksp, extra_keys=extra_keys), encoding="utf-8"
             )
         return root
 
     def test_selects_latest_stable_and_ignores_prereleases(self) -> None:
-        for spec in (*MODULE.UI_SPECS, MODULE.KSP_SPEC):
+        for spec in MODULE.SPECS_BY_KEY.values():
             release = MODULE.latest_stable_release(
                 metadata(spec.key, "1.0.0", "9.0.0-alpha01", VERSIONS[spec.key]), spec
             )
@@ -178,10 +201,74 @@ class AndroidUILatestTests(unittest.TestCase):
             with self.assertRaises(MODULE.VerificationError):
                 MODULE.project_dependency_pins(root)
 
+    def test_optional_direct_dependencies_are_verified_when_present(self) -> None:
+        extras = (
+            "feature_delivery",
+            "biometric",
+            "core",
+            "lifecycle_runtime",
+            "recyclerview",
+            "room_runtime",
+            "room_compiler",
+            "work",
+            "androidx_test_junit",
+            "espresso",
+            "test_runner",
+            "junit4",
+            "json",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.project(directory, extra_keys=extras)
+            releases = MODULE.verify_project(root, metadata_set(extra_keys=extras))
+            self.assertEqual(set(extras), set(releases) - {spec.key for spec in MODULE.UI_SPECS})
+            path = root / "app/build.gradle"
+            path.write_text(
+                path.read_text(encoding="utf-8").replace(
+                    "androidx.room:room-runtime:2.8.4",
+                    "androidx.room:room-runtime:2.8.3",
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(MODULE.VerificationError):
+                MODULE.verify_project(root, metadata_set(extra_keys=extras))
+
+    def test_untracked_dependency_fails_and_dedicated_families_are_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.project(directory)
+            path = root / "app/build.gradle"
+            path.write_text(
+                path.read_text(encoding="utf-8")
+                + 'implementation "com.example:untracked:1.0.0"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(MODULE.VerificationError):
+                MODULE.project_dependency_pins(root)
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.project(directory)
+            path = root / "app/build.gradle"
+            path.write_text(
+                path.read_text(encoding="utf-8")
+                + 'implementation "androidx.webkit:webkit:1.17.0"\n'
+                + 'implementation "org.mozilla.appservices:places:155.0"\n'
+                + 'implementation "org.wpewebkit.wpeview:wpeview:${wpeVersion}"\n'
+                + 'implementation "io.github.lamppkk.xanhbrowser:xanh-sync-android:1.0.0-alpha.1"\n',
+                encoding="utf-8",
+            )
+            MODULE.project_dependency_pins(root)
+
     def test_strict_gradle_checksums_cover_every_required_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = self.project(directory, include_ksp=True, strict=True)
-            MODULE.verify_project(root, metadata_set(True))
+            extras = (
+                "core",
+                "lifecycle_runtime",
+                "room_runtime",
+                "test_runner",
+                "junit4",
+            )
+            root = self.project(
+                directory, include_ksp=True, strict=True, extra_keys=extras
+            )
+            MODULE.verify_project(root, metadata_set(True, extras))
 
     def test_rejects_invalid_or_missing_strict_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

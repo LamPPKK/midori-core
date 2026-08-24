@@ -14,6 +14,7 @@ function(add_fake_sync_core target output_directory)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
     set_target_properties(${target} PROPERTIES
         OUTPUT_NAME xanh_sync_core
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${output_directory}"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${output_directory}"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${output_directory}"
     )

@@ -46,8 +46,8 @@ jobs:
             build-tools;35.0.0
             ndk;27.0.12077973
             cmake;3.31.1
-            platforms;android-36
-            build-tools;36.0.0
+            platforms;android-37.1
+            build-tools;36.1.0
       - name: Verify dedicated runner prerequisites
         run: |
           for command in git java python3 readelf ruby tar unifdef unzip; do
@@ -101,8 +101,8 @@ jobs:
             java -version 2>&1
             ./gradlew --version
             sha256sum \
-              "$ANDROID_SDK_ROOT/platforms/android-36/android.jar" \
-              "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+              "$ANDROID_SDK_ROOT/platforms/android-37.1/android.jar" \
+              "$ANDROID_SDK_ROOT/build-tools/36.1.0/aapt2"
           } > "$XANH_WPE_JOB_ROOT/evidence/xanh-host-build-environment.txt"
           cp app-webkit/build/outputs/apk/debug/app-webkit-debug.apk \
             "$XANH_WPE_JOB_ROOT/evidence/xanh-browser-lite-wpe-debug.apk"

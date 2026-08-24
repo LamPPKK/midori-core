@@ -26,7 +26,8 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 
 - Push access to this repository and access to its GitHub Actions results
 - Linux with the dependencies listed in [README.md](README.md)
-- JDK 17, Android SDK 36, AGP 9.3.1, the Gradle 9.7.1 wrapper and an
+- JDK 17, Android SDK Platform 37.1, Build Tools 36.1.0, AGP 9.3.1, the
+  Gradle 9.7.1 wrapper and an
   emulator/device matrix for API 26, 30, 33 and 36
 - AndroidX WebKit 1.17.0 resolved from Google Maven for the Lite System WebView
   artifact; do not substitute an alpha compatibility library in production
@@ -399,7 +400,7 @@ output directory. The script requires the pinned upstream Android 35 library
 toolchain, builds both arm64 and x86_64 from source, generates corresponding
 source plus a file-level CycloneDX SBOM, and runs
 `scripts/verify-android-16k.sh` before publishing its atomic evidence set. The
-consuming Xanh app must then compile with SDK 36 against the exact recorded AAR
+consuming Xanh app must then compile with SDK 37.1 against the exact recorded AAR
 checksum and the packaged APK must pass the same 16 KiB check. The manual
 `.github/workflows/wpe-android-source-build.yml` workflow encodes this lane for
 a pre-provisioned JIT runner labelled `xanh-wpe-android-ephemeral` without
@@ -438,7 +439,7 @@ commit-bound files to `scripts/verify-sync-release.sh wpe`:
   `github-attestation.sigstore.json` from the same workflow run;
 - `XANH_WPE_HOST_APK_EVIDENCE`, `XANH_WPE_HOST_TEST_APK_EVIDENCE`,
   `XANH_WPE_HOST_16K_EVIDENCE` and `XANH_WPE_HOST_TOOLCHAIN_EVIDENCE`: the exact
-  checksum-bound SDK 36 verification APK, instrumentation APK, packaged-ELF
+  checksum-bound SDK 37.1 verification APK, instrumentation APK, packaged-ELF
   report and host toolchain hashes from that attested evidence directory.
 
 These evidence paths supplement the existing fail-closed boolean gates; they

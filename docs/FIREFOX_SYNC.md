@@ -370,7 +370,7 @@ corresponding-source bundle as one atomic evidence set. The manual workflow
 builds that set without repository credentials or OIDC in a single-job
 ephemeral self-hosted runner that is destroyed after completion.
 A separate GitHub-hosted attestation job receives only the fixed checksum
-manifest and cryptographically binds the set and the exact SDK 36 host APKs to
+manifest and cryptographically binds the set and the exact SDK 37.1 host APKs to
 its repository, workflow and commit through GitHub OIDC/Sigstore. The AAR must
 still pass
 host packaging, device, interoperability and security evidence gates in

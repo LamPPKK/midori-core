@@ -177,6 +177,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   rejects preview, unsupported, floating, stale or mismatched SDK/TFM pins.
 - Updated AndroidX Lifecycle to stable 2.11.0 across the Lite, WebKit and Sync
   feature modules.
+- Updated AndroidX Core to stable 1.19.0 and moved every Android module to
+  stable SDK Platform 37.1 for compilation while retaining target API 36.
 - Replaced Apple's count-only Remote Tabs summary with bounded typed records,
   sanitized grouped device rows and explicit safe-HTTP(S) opening. Invalid or
   oversized native output now fails closed without navigating to a fallback.
@@ -283,7 +285,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Linux build orchestrator now produces a dual-ABI AAR with checksum, runtime
   provenance, 16 KiB evidence, a file-level CycloneDX SBOM and corresponding
   source archives. The manual lane validates the exact post-patch source trees
-  and archive contents and compiles and checks the SDK 36 host in an
+  and archive contents and compiles and checks the SDK 37.1 host in an
   unprivileged single-job ephemeral runner. A separate GitHub-hosted job accepts
   only the fixed checksum manifest and emits a commit-bound GitHub OIDC/Sigstore
   attestation, while production remains gated on device, signing and security
@@ -306,8 +308,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `io.github.lamppkk.xanhbrowser.lite` and version code `10000`.
 - Ported the desktop stack to GTK 4, WebKitGTK 6.0, libsoup 3, libpeas 2 and
   GCR 4.
-- Modernized Android builds to JDK 17, Android SDK 36, AGP 9.3.1, Gradle 9.7.1,
-  AndroidX and View Binding.
+- Modernized Android builds to JDK 17, Android SDK Platform 37.1 with target
+  API 36, AGP 9.3.1, Gradle 9.7.1, AndroidX and View Binding.
 - Updated Xanh Browser Lite to the stable AndroidX WebKit 1.17.0 compatibility
   layer used by the serviced System WebView edition.
 - Recreate the Lite browser after a System WebView renderer termination using

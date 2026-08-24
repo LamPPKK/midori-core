@@ -204,12 +204,17 @@ validated HTTP(S) URL instead of restoring a form body. Recovery waits until
 the Activity is foreground, runs at most once and closes a repeatedly crashing
 page instead of looping.
 
-Use JDK 17 and Android SDK 36:
+Use JDK 17, Android SDK Platform 37.1 and Build Tools 36.1.0. The apps retain
+target API 36 for the 1.0 release:
 
 The Android builds pin Android Gradle Plugin 9.3.1 and the checksum-verified
 Gradle 9.7.1 wrapper. A separate weekly baseline reads the official Google
 Maven and Gradle release endpoints and fails when either stable build-tool pin
 or the checked-in wrapper JAR/distribution checksum becomes stale.
+
+AndroidX Core is pinned to stable 1.19.0. Its published AAR requires compile
+API 37, so every Android module builds against stable Android SDK Platform
+37.1 while the shipping applications continue to target API 36.
 
 ```sh
 ./gradlew --no-daemon \
@@ -261,7 +266,7 @@ allowlisted external scheme only for a non-redirected user gesture. A
 Linux-only build orchestrator now creates a dual-ABI AAR, exact checksum,
 16 KiB report, file-level CycloneDX SBOM, toolchain/build provenance and the
 validated corresponding source archives without modifying the input checkout.
-The manual source-build workflow then compiles the SDK 36 host against that
+The manual source-build workflow then compiles the SDK 37.1 host against that
 exact AAR in an unprivileged, single-job ephemeral runner labelled
 `xanh-wpe-android-ephemeral`. A separate GitHub-hosted job downloads only the
 fixed checksum manifest and emits a commit-bound GitHub

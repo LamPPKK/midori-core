@@ -36,7 +36,12 @@ def hasUploadSigning = [uploadStoreFile, uploadStorePassword, uploadKeyAlias, up
 
 android {
     namespace = 'io.github.lamppkk.xanhbrowser.lite.webkit'
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
+    buildToolsVersion = '36.1.0'
 
     defaultConfig {
         applicationId = 'io.github.lamppkk.xanhbrowser.lite.webkit'
@@ -197,7 +202,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'androidx.biometric:biometric:1.1.0'
     implementation 'androidx.browser:browser:1.9.0'
-    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.core:core-ktx:1.19.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
     implementation 'androidx.webkit:webkit:1.17.0'
     implementation 'com.google.android.material:material:1.13.0'

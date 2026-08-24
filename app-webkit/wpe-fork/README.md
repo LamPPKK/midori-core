@@ -35,8 +35,8 @@ Maven preview and any API drift keep password filling disabled.
 
 Use a dedicated Linux builder with JDK 17 and the exact upstream toolchain:
 Android platform/build-tools 35, NDK 27.0.12077973 and CMake 3.31.1. The Xanh
-host that consumes the resulting AAR is compiled and targeted with SDK 36;
-these are separate build layers.
+host that consumes the resulting AAR is compiled with SDK Platform 37.1 and
+targets API 36; these are separate build layers.
 
 Start from a clean checkout at the exact revision:
 
@@ -88,7 +88,7 @@ workflow and release commit as enforced by `verify-sync-release.sh wpe`.
 
 The manual `WPE Android source build` workflow runs the same script on a JIT
 single-job self-hosted runner labelled `xanh-wpe-android-ephemeral`, then
-compiles the SDK 36 Xanh host and instrumentation APK against that exact
+compiles the SDK 37.1 Xanh host and instrumentation APK against that exact
 checksum and verifies the packaged host ELF files. The runner VM/container must
 be destroyed after the job and must never be reused. This build job has only
 `contents: read`, does not persist checkout credentials and cannot request an

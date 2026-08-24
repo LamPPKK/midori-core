@@ -18,7 +18,8 @@ application menu.
 
 ## Build
 
-Use JDK 17 and Android SDK 36 from the repository root:
+Use JDK 17, Android SDK Platform 37.1 and Build Tools 36.1.0 from the
+repository root. The application retains target API 36:
 
 ```sh
 ./gradlew --no-daemon \

@@ -4,7 +4,12 @@ plugins {
 
 android {
     namespace = 'io.github.lamppkk.xanhbrowser.lite.sync'
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
+    buildToolsVersion = '36.1.0'
 
     defaultConfig {
         minSdk = 26
@@ -29,7 +34,7 @@ dependencies {
     compileOnly 'androidx.appcompat:appcompat:1.7.1'
     compileOnly 'androidx.biometric:biometric:1.1.0'
     compileOnly 'androidx.browser:browser:1.9.0'
-    compileOnly 'androidx.core:core-ktx:1.17.0'
+    compileOnly 'androidx.core:core-ktx:1.19.0'
     compileOnly 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
     compileOnly 'androidx.webkit:webkit:1.17.0'
     compileOnly 'com.google.android.material:material:1.13.0'

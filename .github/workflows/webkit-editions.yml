@@ -327,7 +327,7 @@ jobs:
       - name: Run native Sync DLL loader contract
         run: ctest --test-dir _build/wincairo-native-sync-library -C Release --output-on-failure
       - name: Run native credential-picker contract
-        run: ctest --test-dir _build/wincairo-native-credential-picker -C Release --output-on-failure
+        run: ctest --test-dir _build/wincairo-native-credential-picker -C Release --verbose --output-on-failure
 
   dependency-review:
     if: github.event_name == 'pull_request'

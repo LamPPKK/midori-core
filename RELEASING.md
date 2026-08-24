@@ -83,7 +83,12 @@ GitHub source-release automation additionally requires
    and confirm every Lite/System WebView Gradle module equals the newest stable
    AndroidX WebKit version published in Google Maven. Prereleases never satisfy
    this gate.
-8. Run `python3 scripts/verify_application_services_latest.py` with network
+8. Run `python3 scripts/verify_android_ui_latest.py` with network access and
+   confirm Activity, Annotation, AppCompat, Browser and Material equal their
+   newest stable official Maven releases in every Gradle module. If KSP is
+   present it must also be the newest stable release; prerelease, dynamic,
+   inconsistent and checksum-incomplete pins fail closed.
+9. Run `python3 scripts/verify_application_services_latest.py` with network
    access and confirm the lock, Cargo dependency graph, Rust identity constants
    and third-party notice all match Mozilla's newest stable Application Services
    tag and exact official revision. Prerelease, floating and mixed revisions

@@ -71,6 +71,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added a Google Maven-backed latest-stable verifier for AndroidX WebKit. It
   rejects prerelease/dynamic or inconsistent Gradle pins, validates strict
   checksums when present and runs weekly in both Android repositories.
+- Added a separate weekly official-Maven baseline for Activity, Annotation,
+  AppCompat, Browser, Material Components and optional KSP pins. It verifies
+  every shipping Gradle occurrence and strict checksum entry where enabled.
 - Added a fail-closed Android build-tool baseline that verifies the newest
   stable AGP and Gradle releases against official metadata, the pinned
   distribution checksum and the checked-in wrapper JAR in both repositories.

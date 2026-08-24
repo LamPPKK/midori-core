@@ -1,0 +1,45 @@
+name: Android UI stable baseline
+
+on:
+  push:
+    paths:
+      - .github/workflows/android-ui-baseline.yml
+      - scripts/verify_android_ui_latest.py
+      - scripts/tests/test_verify_android_ui_latest.py
+      - build.gradle
+      - build.gradle.kts
+      - '**/build.gradle'
+      - '**/build.gradle.kts'
+      - gradle/verification-metadata.xml
+  pull_request:
+    paths:
+      - .github/workflows/android-ui-baseline.yml
+      - scripts/verify_android_ui_latest.py
+      - scripts/tests/test_verify_android_ui_latest.py
+      - build.gradle
+      - build.gradle.kts
+      - '**/build.gradle'
+      - '**/build.gradle.kts'
+      - gradle/verification-metadata.xml
+  schedule:
+    - cron: '11 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ui-stable-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Test Android UI latest-stable policy
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_verify_android_ui_latest.py' -v
+      - name: Verify Android UI dependencies use official stable releases
+        run: python3 scripts/verify_android_ui_latest.py

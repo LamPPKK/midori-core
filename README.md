@@ -218,6 +218,11 @@ API 37, so every Android module builds against stable Android SDK Platform
 
 The production Android UI stack uses stable Activity 1.13.0, Annotation 1.10.0,
 AppCompat 1.8.0, Browser 1.10.0 and Material Components 1.14.0.
+Its dedicated weekly baseline reads official Google Maven metadata for every
+one of those coordinates, rejects prerelease/dynamic or mixed Gradle pins, and
+validates strict dependency checksums when a repository enables them. KSP is
+checked from Maven Central by the same policy whenever its Gradle plugin is
+present.
 
 ```sh
 ./gradlew --no-daemon \

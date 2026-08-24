@@ -30,7 +30,7 @@ dependencies {
     compileOnly 'androidx.biometric:biometric:1.1.0'
     compileOnly 'androidx.browser:browser:1.9.0'
     compileOnly 'androidx.core:core-ktx:1.17.0'
-    compileOnly 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
+    compileOnly 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
     compileOnly 'androidx.webkit:webkit:1.17.0'
     compileOnly 'com.google.android.material:material:1.13.0'
 

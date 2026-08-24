@@ -177,6 +177,8 @@ case "$edition" in
       .github/workflows/firefox-sync-fuzz.yml >/dev/null
     grep -F 'toolchain: nightly-2026-08-20' \
       .github/workflows/firefox-sync-fuzz.yml >/dev/null
+    grep -F 'RUSTUP_TOOLCHAIN: nightly-2026-08-20' \
+      .github/workflows/firefox-sync-fuzz.yml >/dev/null
     grep -F 'uses: dtolnay/rust-toolchain@7c8d7d138f5c09cef361f8214cf96882cd029cdb' \
       .github/workflows/firefox-sync-fuzz.yml >/dev/null
     grep -F 'components: rust-src' \

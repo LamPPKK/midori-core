@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-[CCode (cheader_filename = "external-navigation-bridge.h")]
 namespace Xanh {
     [CCode (cname = "XanhExternalNavigationBridge",
-        type_id = "xanh_external_navigation_bridge_get_type ()")]
+        type_id = "xanh_external_navigation_bridge_get_type ()",
+        cheader_filename = "external-navigation-bridge.h")]
     public class ExternalNavigationBridge : GLib.Object {
         [CCode (cname = "xanh_external_navigation_bridge_new")]
         public ExternalNavigationBridge (

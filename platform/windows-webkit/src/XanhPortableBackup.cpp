@@ -17,6 +17,9 @@
 #include "XanhPortableBackup.h"
 
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif
 #include <windows.h>
 #include <bcrypt.h>
 

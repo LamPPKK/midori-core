@@ -77,7 +77,7 @@ public enum AddressResolver {
     }
 
     private static func hasValidHost(_ url: URL) -> Bool {
-        guard var host = url.host(percentEncoded: true), !host.isEmpty else { return false }
+        guard var host = canonicalASCIIHost(url) else { return false }
 
         if host.hasPrefix("[") && host.hasSuffix("]") {
             host.removeFirst()
@@ -92,9 +92,7 @@ public enum AddressResolver {
         if host.hasSuffix(".") {
             host.removeLast()
         }
-        guard !host.isEmpty,
-              host.utf8.count <= 253,
-              host.utf8.allSatisfy({ $0 < 0x80 }) else { return false }
+        guard !host.isEmpty, host.utf8.count <= 253 else { return false }
 
         let labels = host.split(separator: ".", omittingEmptySubsequences: false)
         guard !labels.isEmpty,
@@ -109,6 +107,22 @@ public enum AddressResolver {
             }
         }
         return true
+    }
+
+    private static func canonicalASCIIHost(_ url: URL) -> String? {
+        guard var host = url.host(percentEncoded: true), !host.isEmpty else { return nil }
+        if host.contains("%") || !host.utf8.allSatisfy({ $0 < 0x80 }) {
+            guard let decoded = url.host(percentEncoded: false), !decoded.isEmpty else { return nil }
+            var components = URLComponents()
+            components.scheme = "https"
+            components.host = decoded
+            guard let canonical = components.url?.host(percentEncoded: true),
+                  !canonical.contains("%"),
+                  canonical.utf8.allSatisfy({ $0 < 0x80 }) else { return nil }
+            host = canonical
+        }
+        guard host.utf8.allSatisfy({ $0 < 0x80 }) else { return nil }
+        return host.lowercased()
     }
 
     private static func isValidDNSLabel(_ label: Substring) -> Bool {

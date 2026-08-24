@@ -1575,6 +1575,7 @@ mod tests {
             .delete_credential(added.id, credential_context)
             .unwrap());
 
+        let baseline_tree_size = backend.bookmark_tree(BookmarkRoot::Unfiled).unwrap().len();
         let mut parent_guid = crate::bookmark_root_guid(BookmarkRoot::Unfiled);
         let mut top_folder_guid = None;
         for depth in 0..128 {
@@ -1594,7 +1595,7 @@ mod tests {
             parent_guid = guid;
         }
         let deep_tree = backend.bookmark_tree(BookmarkRoot::Unfiled).unwrap();
-        assert_eq!(deep_tree.len(), 129);
+        assert_eq!(deep_tree.len(), baseline_tree_size + 128);
         assert!(backend
             .delete_bookmark(top_folder_guid.unwrap(), false)
             .unwrap());

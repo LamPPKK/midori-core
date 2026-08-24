@@ -59,6 +59,7 @@ final class AddressResolverTests: XCTestCase {
 
     func testAcceptsCanonicalIDNAndIPHosts() {
         XCTAssertNotNil(AddressResolver.resolve("https://bücher.example/"))
+        XCTAssertNotNil(AddressResolver.resolve("https://b%C3%BCcher.example/"))
         XCTAssertNotNil(AddressResolver.resolve("https://127.0.0.1/"))
         XCTAssertNotNil(AddressResolver.resolve("https://[::1]/"))
         XCTAssertNotNil(AddressResolver.resolve("http://localhost:8080/"))

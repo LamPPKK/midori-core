@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-[CCode (cheader_filename = "credential-bridge.h")]
 namespace Xanh {
-    [CCode (cname = "XanhCredentialBridge", type_id = "xanh_credential_bridge_get_type ()")]
+    [CCode (cname = "XanhCredentialBridge",
+        type_id = "xanh_credential_bridge_get_type ()",
+        cheader_filename = "credential-bridge.h")]
     public class CredentialBridge : GLib.Object {
         [CCode (cname = "xanh_credential_bridge_new")]
         public CredentialBridge (

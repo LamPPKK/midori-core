@@ -72,7 +72,7 @@ jobs:
           cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/xanh-browser-lite-base.aab"
       - name: Build and lint the on-demand System WebView and WPE features
         run: |
-          ./gradlew --no-daemon \
+          ./gradlew --no-daemon --refresh-dependencies \
             -PxanhEnableSyncFeature=true \
             -PxanhSyncSelfHostedOnly=true \
             -PxanhSyncRepository="$GITHUB_WORKSPACE/_sync_android/sync-core/build/maven" \

@@ -1,8 +1,16 @@
-# Xanh Browser Lite WebKit preview
+# Xanh Browser Lite — Xanh WebView WPE preview
 
-This module is the separately installable Android WebKit edition. It keeps the
-Lite one-tab scope and uses WPE WebKit through WPEView instead of Android System
-WebView.
+This module is the separately installable Android Xanh WebView edition. It
+keeps the Lite one-tab scope and uses the WPE backend through the Xanh-owned
+`XanhWebView` widget instead of constructing Android System WebView or upstream
+WPEView directly.
+
+The common API and conformance contract live in
+[`LamPPKK/xanh-webview`](https://github.com/LamPPKK/xanh-webview). The reviewed
+engine changes are mirrored on the `xanh/webview-0.1` branch of
+[`LamPPKK/wpe-android`](https://github.com/LamPPKK/wpe-android); release builds
+still reconstruct that branch from the exact upstream revision plus the
+checked-in patch so provenance remains independently reproducible.
 
 ## Identity and baseline
 
@@ -46,13 +54,16 @@ directory, then use the generated AAR and checksum in a verification build:
   /absolute/path/to/new/xanh-wpe-build-evidence
 ./gradlew --no-daemon :app-webkit:assembleDebug \
   -PxanhWpeForkAar=/absolute/path/to/xanh-wpeview-0.3.3-webkit-2.52.6.aar \
-  -PxanhWpeForkSha256=<sha256>
+  -PxanhWpeForkSha256=<sha256> \
+  -PxanhWpeForkEvidence=/absolute/path/to/wpe-build-evidence.json
 ```
 
-`XANH_WPE_FORK_AAR` and `XANH_WPE_FORK_SHA256` are the equivalent CI
-environment variables. The checksum is mandatory whenever the local fork AAR
-override is used, and the engine-information menu then reports the locked fork
-runtime rather than the Maven preview runtime. The evidence directory also
+`XANH_WPE_FORK_AAR`, `XANH_WPE_FORK_SHA256` and `XANH_WPE_FORK_EVIDENCE` are
+the equivalent CI environment variables. The checksum and v2 evidence manifest
+are mandatory whenever the local fork AAR override is used. Gradle binds the
+AAR to the manifest's exact locked revisions, patch hashes, runtime, size and
+checksum before enabling fork-only capabilities; a path/checksum pair alone
+fails the build. The evidence directory also
 contains a 16 KiB report, CycloneDX SBOM, build environment/log, exact upstream
 WPE Android and Cerbero archives, both reviewed patches and the audited Cerbero
 corresponding-source bundle. The manual workflow adds exact host APKs. Its

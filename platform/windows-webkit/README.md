@@ -18,6 +18,15 @@ runtime. The official Windows port must be built from source, and upstream only
 supports 64-bit Windows. For that reason this edition is not an engine toggle
 inside the ARM64-capable WinUI application.
 
+This source build is the x64 WebKit laboratory backend for the common
+[`Xanh WebView`](https://github.com/LamPPKK/xanh-webview) contract. The reviewed
+delta is also published on `xanh/webview-0.1-wincairo` in the public
+[`LamPPKK/WebKit`](https://github.com/LamPPKK/WebKit) fork. Release builds still
+reconstruct it from the exact official revision plus checked-in patches so a
+moving fork branch is never the trust anchor. The planned production Windows
+backend is CEF; WinCairo remains preview-only because upstream supplies no
+supported embeddable Windows SDK or redistributable runtime.
+
 ## Build
 
 Install the current WebKit Windows prerequisites, then prepare a dedicated

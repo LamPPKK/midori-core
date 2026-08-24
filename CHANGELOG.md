@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added the `0.1.0-alpha.1` Xanh WebView embedding contract and public engine
+  forks. Android Lite and the WPE preview now construct Xanh-owned widgets;
+  WPE Android and WinCairo changes are published on pinned `xanh/*` branches,
+  while CEF is pinned as the future x64/ARM64 Windows backend. Serviced Android
+  WebView and WebView2 remain explicit migration fallbacks until their
+  replacement backends pass the documented capability gates; Apple system
+  WebKit remains the supported Apple backend.
 - Added the pinned `adblock-rust` 0.13.3 native content-blocking boundary with
   a thread-safe Rust API, stable C ABI, WebKit rule conversion, bounded inputs,
   an offline Xanh baseline and a weekly official-tag/checksum/license verifier.

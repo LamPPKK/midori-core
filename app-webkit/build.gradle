@@ -20,6 +20,9 @@ def wpeForkAarPath = providers.gradleProperty('xanhWpeForkAar')
     .orElse(providers.environmentVariable('XANH_WPE_FORK_AAR')).orNull
 def wpeForkAarSha256 = providers.gradleProperty('xanhWpeForkSha256')
     .orElse(providers.environmentVariable('XANH_WPE_FORK_SHA256')).orNull
+def wpeForkEvidencePath = providers.gradleProperty('xanhWpeForkEvidence')
+    .orElse(providers.environmentVariable('XANH_WPE_FORK_EVIDENCE')).orNull
+def wpeForkEvidenceReady = !!wpeForkAarPath && !!wpeForkAarSha256 && !!wpeForkEvidencePath
 def effectiveWpeRuntimeVersion = wpeForkAarPath
     ? file('wpe-fork/WPE_RUNTIME_VERSION').text.trim()
     : wpeRuntimeVersion
@@ -52,7 +55,9 @@ android {
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
         resValue 'string', 'wpe_view_version', wpeViewVersion
         resValue 'string', 'wpe_runtime_version', effectiveWpeRuntimeVersion
-        buildConfigField 'boolean', 'XANH_WPE_SOURCE_FORK', (!!wpeForkAarPath).toString()
+        buildConfigField 'boolean', 'XANH_WPE_SOURCE_FORK', wpeForkEvidenceReady.toString()
+        buildConfigField 'String', 'XANH_WEBVIEW_RUNTIME_VERSION',
+            '"' + effectiveWpeRuntimeVersion.replace('"', '\\"') + '"'
         buildConfigField 'boolean', 'XANH_SYNC_FEATURE_ENABLED', syncFeatureEnabled.toString()
         buildConfigField 'String', 'XANH_FXA_CLIENT_ID', '"' + syncClientId.replace('"', '\\"') + '"'
         buildConfigField 'boolean', 'XANH_FXA_PRODUCTION_APPROVED', syncProductionApproved.toString()
@@ -176,6 +181,52 @@ tasks.register('verifyWpeForkArtifact') {
             throw new GradleException(
                 "Xanh WPE fork AAR checksum mismatch: expected ${wpeForkAarSha256}, got ${actual}"
             )
+        }
+        if (!wpeForkEvidencePath) {
+            throw new GradleException(
+                'xanhWpeForkEvidence or XANH_WPE_FORK_EVIDENCE must identify the reviewed build manifest'
+            )
+        }
+        def evidenceFile = file(wpeForkEvidencePath)
+        if (!evidenceFile.isFile() || evidenceFile.length() <= 0 ||
+                evidenceFile.length() > 1024 * 1024 ||
+                java.nio.file.Files.isSymbolicLink(evidenceFile.toPath())) {
+            throw new GradleException("Xanh WPE build evidence is missing or unsafe: ${evidenceFile}")
+        }
+        def evidence = new groovy.json.JsonSlurper().parse(evidenceFile)
+        if (!(evidence instanceof Map) ||
+                evidence.schema != 'io.github.lamppkk.xanhbrowser.wpe-build-evidence.v2') {
+            throw new GradleException('Xanh WPE build evidence uses an unsupported schema')
+        }
+        def lockedRevision = file('wpe-fork/WPE_ANDROID_REVISION').text.trim()
+        def lockedCerberoRevision = file('wpe-fork/CERBERO_REVISION').text.trim()
+        def patchDigest = java.security.MessageDigest.getInstance('SHA-256')
+            .digest(file('wpe-fork/patches/xanh-isolated-bridge.patch').bytes)
+            .encodeHex().toString()
+        def cerberoPatchDigest = java.security.MessageDigest.getInstance('SHA-256')
+            .digest(file('wpe-fork/patches/cerbero-wpewebkit-2.52.6.patch').bytes)
+            .encodeHex().toString()
+        def expectedInputs = [
+            cerbero_revision: lockedCerberoRevision,
+            cerbero_source_patch_sha256: cerberoPatchDigest,
+            source_patch_sha256: patchDigest,
+            webkit_security_baseline: wpeProductionBaseline,
+            wpe_android_revision: lockedRevision,
+            wpe_runtime_version: effectiveWpeRuntimeVersion,
+            wpeview_version: wpeViewVersion,
+        ]
+        if (evidence.inputs != expectedInputs) {
+            throw new GradleException('Xanh WPE build evidence does not match the locked source inputs')
+        }
+        if (!(evidence.artifact instanceof Map) ||
+                evidence.artifact.sha256 != actual ||
+                evidence.artifact.size != artifact.length() ||
+                evidence.artifact.file != artifact.name) {
+            throw new GradleException('Xanh WPE artifact does not match its evidence record')
+        }
+        def evidenceArtifact = new File(evidenceFile.parentFile, evidence.artifact.file.toString())
+        if (artifact.canonicalFile != evidenceArtifact.canonicalFile) {
+            throw new GradleException('The configured AAR is not the artifact bound by the evidence manifest')
         }
     }
 }

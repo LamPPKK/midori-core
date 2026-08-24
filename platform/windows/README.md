@@ -11,6 +11,14 @@ or loading any page. The WebView2 latest-stable verifier also requires that
 floor's build components to match the pinned SDK, so a future SDK update cannot
 silently retain an older runtime policy.
 
+WebView2 is now an explicit migration fallback behind the
+[`Xanh WebView`](https://github.com/LamPPKK/xanh-webview) contract, not the
+long-term Xanh-owned Windows backend. The production replacement target is the
+public [`LamPPKK/cef`](https://github.com/LamPPKK/cef) fork because CEF provides
+an embeddable Chromium API for both x64 and ARM64. Cutover remains blocked on
+reproducible CEF/Chromium builds, sandbox and process-recovery conformance,
+signed packaging, notices/codecs review and parity with this WinUI edition.
+
 ## Requirements
 
 - A Microsoft-supported Windows 11 release, or a serviced Windows 10

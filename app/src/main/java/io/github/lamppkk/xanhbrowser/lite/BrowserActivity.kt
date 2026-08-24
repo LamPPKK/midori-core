@@ -221,7 +221,7 @@ class BrowserActivity : AppCompatActivity() {
 
     private fun configureWebView() {
         check(webView == null)
-        val current = WebView(this).apply {
+        val current = XanhWebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,

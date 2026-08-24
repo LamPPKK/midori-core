@@ -93,6 +93,15 @@ its separate x64 preview builds the upstream WebKit WinCairo port from a pinned
 source revision. Android Lite similarly keeps the production System WebView
 edition and adds a separate WPE WebKit preview.
 
+All editions are moving behind the Xanh-owned
+[`Xanh WebView`](https://github.com/LamPPKK/xanh-webview) API. The API has
+OS-specific backends; it is not an Android system-provider package and does not
+claim that every OS uses one rendering engine. Android WPE and Windows CEF
+cutovers stay preview-gated until their capability, architecture,
+security-update and device requirements pass; WinCairo remains the x64 WebKit
+laboratory backend. See
+[`docs/XANH_WEBVIEW.md`](docs/XANH_WEBVIEW.md) for the backend and fork policy.
+
 ## Linux desktop
 
 ### Current capabilities

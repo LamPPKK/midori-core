@@ -89,6 +89,7 @@ jobs:
           ./gradlew --no-daemon --no-build-cache
           -PxanhWpeForkAar=${{ steps.source-build.outputs.aar }}
           -PxanhWpeForkSha256=${{ steps.source-build.outputs.sha256 }}
+          -PxanhWpeForkEvidence=${{ steps.source-build.outputs.evidence-directory }}/wpe-build-evidence.json
           :app-webkit:lintDebug
           :app-webkit:testDebugUnitTest
           :app-webkit:assembleDebug

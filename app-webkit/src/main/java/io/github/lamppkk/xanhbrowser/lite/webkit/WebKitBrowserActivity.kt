@@ -436,12 +436,19 @@ class WebKitBrowserActivity : AppCompatActivity() {
             true
         }
         R.id.action_engine_information -> {
+            val engine = binding.webView.engineInfo
             AlertDialog.Builder(this)
                 .setTitle(R.string.engine_information)
                 .setMessage(
                     getString(
                         R.string.engine_information_message,
-                        getString(R.string.wpe_runtime_version),
+                        engine.apiVersion,
+                        engine.backendId,
+                        getString(
+                            if (engine.sourceFork) R.string.engine_source_fork
+                            else R.string.engine_published_preview,
+                        ),
+                        engine.runtimeVersion,
                         getString(R.string.wpe_view_version),
                     ),
                 )

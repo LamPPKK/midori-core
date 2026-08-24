@@ -5,6 +5,12 @@ preview from the published WPEView 0.3.3 artifact to the repository's current
 WPE WebKit security baseline. It is a reproducible source-build contract, not a
 prebuilt dependency and not approval to publish the edition.
 
+The same reviewed delta is published on the `xanh/webview-0.1` branch of the
+public [`LamPPKK/wpe-android`](https://github.com/LamPPKK/wpe-android) fork.
+This directory remains the release reconstruction contract: builds start from
+the exact upstream commit and apply the byte-reviewed patch instead of trusting
+a moving fork branch.
+
 ## Locked inputs
 
 - WPE Android: `WPE_ANDROID_REVISION` (the signed upstream `v0.3.3` release)

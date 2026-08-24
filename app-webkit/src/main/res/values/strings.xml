@@ -20,8 +20,10 @@
     <string name="backup_failed">Backup could not be read or written</string>
     <string name="clear_cookies">Clear cookies</string>
     <string name="cookies_cleared">Cookies cleared</string>
-    <string name="engine_information">WebKit engine information</string>
-    <string name="engine_information_message">WPE WebKit %1$s\nWPEView %2$s\n\nThis is an experimental preview. Production publishing remains blocked until the engine reaches the project security baseline and every native library supports 16 KiB pages.</string>
+    <string name="engine_information">Xanh WebView engine information</string>
+    <string name="engine_source_fork">source fork</string>
+    <string name="engine_published_preview">published preview</string>
+    <string name="engine_information_message">Xanh WebView %1$s\nBackend %2$s (%3$s)\nWPE WebKit %4$s\nWPEView %5$s\n\nThis is an experimental preview. Production publishing remains blocked until the engine reaches the project security baseline and every native library supports 16 KiB pages.</string>
     <string name="app_settings">App settings</string>
     <string name="no_app_for_link">No app can open this link</string>
     <string name="blocked_unsafe_navigation">Blocked a non-web navigation</string>

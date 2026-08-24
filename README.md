@@ -1,15 +1,30 @@
 # Xanh Browser
 
-Xanh Browser is a privacy-minded browser family built around native platform
-web engines. This repository contains the Linux desktop browser, native Apple
-and Windows editions, and the small single-tab Android edition, Xanh Browser
-Lite.
+Xanh Browser is a privacy-first browser family built around each platform's
+native web engine and interface conventions. This repository contains the
+Linux desktop browser, native Apple and Windows editions, and the compact
+single-tab Android edition, Xanh Browser Lite. The full multi-tab Android app
+lives in the companion repository linked below.
 
 > **Release status:** Linux and Android Lite 1.0.0 are release candidates. The
 > Apple, Windows and experimental WebKit editions are 1.0.0 preview
 > candidates. CI produces unsigned verification artifacts only; production
 > artifacts must not be published until the signing, device, security and store gates in
 > [RELEASING.md](RELEASING.md) are complete.
+
+## App preview
+
+<p align="center">
+  <img src="docs/images/xanh-browser-android-browsing.png" alt="Xanh Browser displaying a web page on Android" width="320">
+  <img src="docs/images/xanh-browser-android-tabs.png" alt="Xanh Browser multi-tab overview on Android" width="320">
+</p>
+
+<p align="center"><em>The full Android edition browsing and managing tabs on the current codebase.</em></p>
+
+Xanh keeps the browser chrome native while applying the same validated
+navigation, privacy boundaries, encrypted backup format and optional Firefox
+Sync architecture across its editions. Platform availability and release
+readiness are listed below.
 
 ## Editions
 

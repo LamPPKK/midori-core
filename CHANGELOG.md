@@ -309,7 +309,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ported the desktop stack to GTK 4, WebKitGTK 6.0, libsoup 3, libpeas 2 and
   GCR 4.
 - Modernized Android builds to JDK 17, Android SDK Platform 37.1 with target
-  API 36, AGP 9.3.1, Gradle 9.7.1, AndroidX and View Binding.
+  API 36, AGP 9.3.2, Gradle 9.7.1, AndroidX and View Binding.
 - Updated Xanh Browser Lite to the stable AndroidX WebKit 1.17.0 compatibility
   layer used by the serviced System WebView edition.
 - Recreate the Lite browser after a System WebView renderer termination using

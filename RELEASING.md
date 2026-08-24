@@ -26,7 +26,7 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 
 - Push access to this repository and access to its GitHub Actions results
 - Linux with the dependencies listed in [README.md](README.md)
-- JDK 17, Android SDK Platform 37.1, Build Tools 36.1.0, AGP 9.3.1, the
+- JDK 17, Android SDK Platform 37.1, Build Tools 36.1.0, AGP 9.3.2, the
   Gradle 9.7.1 wrapper and an
   emulator/device matrix for API 26, 30, 33 and 36
 - AndroidX WebKit 1.17.0 resolved from Google Maven for the Lite System WebView

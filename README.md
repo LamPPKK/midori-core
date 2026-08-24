@@ -207,7 +207,7 @@ page instead of looping.
 Use JDK 17, Android SDK Platform 37.1 and Build Tools 36.1.0. The apps retain
 target API 36 for the 1.0 release:
 
-The Android builds pin Android Gradle Plugin 9.3.1 and the checksum-verified
+The Android builds pin Android Gradle Plugin 9.3.2 and the checksum-verified
 Gradle 9.7.1 wrapper. A separate weekly baseline reads the official Google
 Maven and Gradle release endpoints and fails when either stable build-tool pin
 or the checked-in wrapper JAR/distribution checksum becomes stale.

@@ -1,0 +1,57 @@
+name: .NET stable baseline
+
+on:
+  push:
+    paths:
+      - .github/workflows/dotnet-baseline.yml
+      - .github/workflows/windows.yml
+      - .github/workflows/codeql.yml
+      - scripts/verify_dotnet_latest.py
+      - scripts/tests/test_verify_dotnet_latest.py
+      - global.json
+      - Directory.Build.props
+      - Directory.Build.targets
+      - platform/Directory.Build.props
+      - platform/Directory.Build.targets
+      - platform/windows/**/Directory.Build.props
+      - platform/windows/**/Directory.Build.targets
+      - platform/windows/src/XanhBrowser.Core/XanhBrowser.Core.csproj
+      - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+      - platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj
+  pull_request:
+    paths:
+      - .github/workflows/dotnet-baseline.yml
+      - .github/workflows/windows.yml
+      - .github/workflows/codeql.yml
+      - scripts/verify_dotnet_latest.py
+      - scripts/tests/test_verify_dotnet_latest.py
+      - global.json
+      - Directory.Build.props
+      - Directory.Build.targets
+      - platform/Directory.Build.props
+      - platform/Directory.Build.targets
+      - platform/windows/**/Directory.Build.props
+      - platform/windows/**/Directory.Build.targets
+      - platform/windows/src/XanhBrowser.Core/XanhBrowser.Core.csproj
+      - platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj
+      - platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj
+  schedule:
+    - cron: '47 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dotnet-stable-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test latest-stable parser and project pin policy
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_verify_dotnet_latest.py' -v
+      - name: Verify project uses latest supported stable .NET
+        run: python3 scripts/verify_dotnet_latest.py

@@ -35,9 +35,10 @@ tag is `v1.0.0` and must reference the reviewed release commit.
 - Xcode 26+, Apple Developer membership, dedicated distribution certificates,
   provisioning profiles and App Store Connect records for macOS and universal
   iOS/iPadOS
-- Windows 10/11 x64 and ARM64 test systems, .NET 8, Windows App SDK 2.4.0,
-  Evergreen WebView2 Runtime 151.0.4129.50+ and a dedicated Windows code-signing
-  certificate
+- Microsoft-supported Windows 11 x64 and ARM64 test systems, plus any serviced
+  Windows 10 Enterprise/LTSC/IoT editions claimed for release; .NET 10 SDK
+  10.0.400, Windows App SDK 2.4.0, Evergreen WebView2 Runtime 151.0.4129.50+
+  and a dedicated Windows code-signing certificate
 - The four Lite signing values below, supplied through the environment or the
   matching private Gradle properties
 
@@ -598,11 +599,13 @@ or the notarized distribution channel on clean devices.
 ### Windows
 
 Before building Windows artifacts, run
+`python3 scripts/verify_dotnet_latest.py`,
 `python3 scripts/verify_windows_app_sdk_latest.py` and
 `python3 scripts/verify_webview2_latest.py` with network access. The candidate
-must pin the newest stable Microsoft.WindowsAppSDK and Microsoft.Web.WebView2
-packages from the official NuGet indexes; prerelease or dynamic versions never
-satisfy these gates. On an isolated Windows test machine, confirm Runtime 150
+must pin the newest supported stable .NET SDK/TFMs plus the newest stable
+Microsoft.WindowsAppSDK and Microsoft.Web.WebView2 packages from their official
+indexes; prerelease or dynamic versions never satisfy these gates. On an
+isolated Windows test machine, confirm Runtime 150
 and non-stable Beta/Dev/Canary channels are rejected before a controller or
 page is created, while Runtime 151.0.4129.50 and newer stable Evergreen
 installations start normally.
@@ -617,8 +620,9 @@ installations start normally.
 
 2. Test multi-tab, InPrivate, clear-data, download, permissions, external
    schemes, encrypted backup import/export and recovery from a WebView2 process
-   failure on current Windows 10 and Windows 11 with current Evergreen Stable
-   Runtime. Force both renderer and browser-process exits from a committed GET,
+   failure on every claimed, Microsoft-supported Windows 11 release and
+   serviced Windows 10 Enterprise/LTSC/IoT edition with current Evergreen
+   Stable Runtime. Force both renderer and browser-process exits from a committed GET,
    then from a form POST: the first failure may replace the tab only at a
    bounded validated URL through a fresh GET, must never resubmit the body, and
    a second failure must stop rather than loop. Exercise oversized URLs,
@@ -697,8 +701,9 @@ build the exact revision in `platform/windows-webkit/WEBKIT_REVISION` with:
 
 Verify the branding patch on every revision update, run upstream WebKit tests,
 audit the copied runtime dependency closure, sign every shipped PE file and
-test navigation, TLS, download, media and process recovery on clean Windows 10
-and Windows 11 x64 systems. The generated `ENGINE.txt` and executable SHA-256
+test navigation, TLS, download, media and process recovery on clean,
+Microsoft-supported Windows 11 and serviced Windows 10 Enterprise/LTSC/IoT x64
+systems. The generated `ENGINE.txt` and executable SHA-256
 must match the reviewed build. CI must also resolve `WEBKIT_RELEASE_TAG` to the
 exact commit in `WEBKIT_REVISION`; do not ship a moving `main` snapshot or a
 commit older than the shared `WEBKITGTK_MIN_VERSION` security baseline.

@@ -172,6 +172,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Updated the WinUI edition to Windows App SDK 2.4.0 for the latest stable
   picker-focus, input and crash fixes, and added an official-NuGet verifier plus
   scheduled CI that rejects stale, dynamic or prerelease pins.
+- Updated the Windows core, tests and WinUI application to .NET 10 with exact
+  SDK 10.0.400 pinning. Added a weekly official release-index verifier that
+  rejects preview, unsupported, floating, stale or mismatched SDK/TFM pins.
 - Replaced Apple's count-only Remote Tabs summary with bounded typed records,
   sanitized grouped device rows and explicit safe-HTTP(S) opening. Invalid or
   oversized native output now fails closed without navigating to a fallback.

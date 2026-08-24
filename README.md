@@ -18,7 +18,7 @@ Lite.
 | Xanh Browser | `io.github.lamppkk.xanhbrowser` | Linux desktop | 1.0.0 |
 | Xanh Browser | `io.github.lamppkk.xanhbrowser` | iOS 26 / iPadOS 26 | 1.0.0 (`10000`) |
 | Xanh Browser | `io.github.lamppkk.xanhbrowser.macos` | macOS 26 | 1.0.0 (`10000`) |
-| Xanh Browser | `XanhBrowser.Windows` | Windows 10 2004+ (x64/ARM64) | 1.0.0 |
+| Xanh Browser | `XanhBrowser.Windows` | Windows 11 + serviced Win10 Enterprise/LTSC/IoT (x64/ARM64) | 1.0.0 |
 | Xanh Browser WebKit | `XanhBrowser.WebKit` | Windows x64 preview | 1.0.0 |
 | Xanh Browser Lite | `io.github.lamppkk.xanhbrowser.lite` | Android 8.0+ (API 26+) | 1.0.0 (`10000`) |
 | Xanh Browser Lite WebKit | `io.github.lamppkk.xanhbrowser.lite.webkit` | Android 12+ (API 31+) preview | 1.0.0 (`10000`) |
@@ -291,7 +291,7 @@ the remaining App Store signing requirements.
 The Windows edition is a native WinUI 3 application with multi-tab and
 InPrivate browsing, strict URL/scheme validation, tracking prevention and
 WebView2 host-bridge features disabled by default. See
-[`platform/windows/README.md`](platform/windows/README.md) for .NET 8 build and
+[`platform/windows/README.md`](platform/windows/README.md) for .NET 10 build and
 publish commands. A real WebKit/WinCairo x64 preview is built from a pinned
 upstream stable release commit matching the shared WebKit 2.52.6 security
 baseline and lives in
@@ -504,9 +504,9 @@ and device/security evidence pass the WPE release gate.
 - Windows accepts only web URLs in WebView2, disables host objects, restricts
   web messaging to the gated regular-tab credential bridge and uses the
   Evergreen runtime for independently serviced engine updates. Scheduled
-  official-NuGet verifiers reject stale, dynamic or prerelease Windows App SDK
-  and WebView2 pins; the current stable baselines are Windows App SDK 2.4.0 and
-  WebView2 SDK 1.0.4129.50. Startup additionally
+  official verifiers reject stale, dynamic or prerelease .NET, Windows App SDK
+  and WebView2 pins; the current stable baselines are .NET 10.0.11 / SDK
+  10.0.400, Windows App SDK 2.4.0 and WebView2 SDK 1.0.4129.50. Startup additionally
   rejects non-stable channels or a Runtime older than 151.0.4129.50 before any
   page is loaded. WebView2 navigation and external handoff are bounded and
   reject userinfo, invalid hosts/ports and control-bearing input. Renderer or
@@ -525,11 +525,15 @@ and device/security evidence pass the WPE release gate.
 ## Supported release scope
 
 The production 1.0 codebase targets Linux desktop, Android API 26–36, macOS 26,
-iOS/iPadOS 26 and Windows 10 build 19041 or newer. The Android API 31+ WPE and
-Windows x64 WinCairo variants remain preview-only until their engine-specific
-release gates pass. Signed Apple and Windows distribution remains gated until
-their platform test matrices and store/code-signing checklists pass. Android
-legacy-data import and Manifest V3 remain outside the 1.0 scope.
+iOS/iPadOS 26, Microsoft-supported Windows 11 releases and the serviced Windows
+10 Enterprise/LTSC/IoT editions listed for .NET 10. Windows build 19041 remains
+the technical TFM and Windows App SDK floor; it is not a promise of support for
+consumer Windows 10 releases outside Microsoft's .NET 10 support matrix. The
+Android API 31+ WPE and Windows x64 WinCairo variants remain preview-only until
+their engine-specific release gates pass. Signed Apple and Windows distribution
+remains gated until their platform test matrices and store/code-signing
+checklists pass. Android legacy-data import and Manifest V3 remain outside the
+1.0 scope.
 
 ## Historical baseline and license
 

@@ -107,6 +107,8 @@ case "$edition" in
   source)
     test -x scripts/verify_android_toolchain_latest.py
     test -f scripts/tests/test_verify_android_toolchain_latest.py
+    test -x scripts/verify_dotnet_latest.py
+    test -f scripts/tests/test_verify_dotnet_latest.py
     test -x scripts/verify_webkit_latest.py
     test -f scripts/tests/test_verify_webkit_latest.py
     test -x scripts/verify_androidx_webkit_latest.py
@@ -118,6 +120,7 @@ case "$edition" in
     test -x scripts/verify_application_services_latest.py
     test -f scripts/tests/test_verify_application_services_latest.py
     test -f .github/workflows/android-toolchain-baseline.yml
+    test -f .github/workflows/dotnet-baseline.yml
     test -f .github/workflows/webkit-baseline.yml
     test -f .github/workflows/webview2-baseline.yml
     test -f .github/workflows/windows-app-sdk-baseline.yml
@@ -129,6 +132,24 @@ case "$edition" in
       .github/workflows/android-toolchain-baseline.yml)" -eq 2
     test "$(grep -Fc 'gradle/wrapper/gradle-wrapper.properties' \
       .github/workflows/android-toolchain-baseline.yml)" -eq 2
+    grep -F 'python3 scripts/verify_dotnet_latest.py' \
+      .github/workflows/dotnet-baseline.yml >/dev/null
+    test "$(grep -Fc 'global.json' .github/workflows/dotnet-baseline.yml)" -eq 2
+    test "$(grep -Fc '      - platform/Directory.Build.targets' \
+      .github/workflows/dotnet-baseline.yml)" -eq 2
+    test "$(grep -Fc '      - platform/windows/**/Directory.Build.targets' \
+      .github/workflows/dotnet-baseline.yml)" -eq 2
+    grep -F '"version": "10.0.400"' global.json >/dev/null
+    grep -F '"rollForward": "disable"' global.json >/dev/null
+    grep -F '"allowPrerelease": false' global.json >/dev/null
+    grep -F '<TargetFramework>net10.0</TargetFramework>' \
+      platform/windows/src/XanhBrowser.Core/XanhBrowser.Core.csproj >/dev/null
+    grep -F '<TargetFramework>net10.0</TargetFramework>' \
+      platform/windows/tests/XanhBrowser.Core.Tests/XanhBrowser.Core.Tests.csproj >/dev/null
+    grep -F '<TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>' \
+      platform/windows/src/XanhBrowser.Windows/XanhBrowser.Windows.csproj >/dev/null
+    grep -F "dotnet-version: '10.0.400'" .github/workflows/windows.yml >/dev/null
+    grep -F "dotnet-version: '10.0.400'" .github/workflows/codeql.yml >/dev/null
     grep -F 'python3 scripts/verify_androidx_webkit_latest.py' .github/workflows/webkit-baseline.yml >/dev/null
     grep -F 'python3 scripts/verify_webview2_latest.py' .github/workflows/webview2-baseline.yml >/dev/null
     grep -F 'python3 scripts/verify_windows_app_sdk_latest.py' \
@@ -185,6 +206,8 @@ case "$edition" in
     fi
     python3 -B -m unittest discover -s scripts/tests \
       -p 'test_verify_android_toolchain_latest.py' >/dev/null
+    python3 -B -m unittest discover -s scripts/tests \
+      -p 'test_verify_dotnet_latest.py' >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webkit_latest.py' >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_androidx_webkit_latest.py' >/dev/null
     python3 -B -m unittest discover -s scripts/tests -p 'test_verify_webview2_latest.py' >/dev/null

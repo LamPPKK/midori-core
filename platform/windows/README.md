@@ -1,9 +1,10 @@
 # Xanh Browser for Windows
 
-This directory contains the native Windows edition built with WinUI 3,
+This directory contains the native Windows edition built with .NET 10, WinUI 3,
 Windows App SDK 2.4.0 and the Evergreen Microsoft Edge WebView2 Runtime. The
-project pins stable WebView2 SDK 1.0.4129.50 and verifies both dependencies
-weekly against their official NuGet flat-container indexes. At startup it
+project pins .NET SDK 10.0.400 and stable WebView2 SDK 1.0.4129.50. Weekly
+verifiers compare .NET release metadata and both Windows NuGet packages with
+their official upstream indexes. At startup it
 requests only the stable WebView2 release channel, sets the compatible-runtime
 floor and checks the actual environment version before creating a controller
 or loading any page. The WebView2 latest-stable verifier also requires that
@@ -12,9 +13,11 @@ silently retain an older runtime policy.
 
 ## Requirements
 
-- Windows 10 version 2004 (build 19041) or newer
-- Visual Studio 2022 with the WinUI application development workload, or the
-  .NET 8 SDK and matching Windows SDK
+- A Microsoft-supported Windows 11 release, or a serviced Windows 10
+  Enterprise/LTSC/IoT edition listed in the .NET 10 supported-OS matrix.
+  Build 19041 is only the technical TFM and Windows App SDK floor.
+- Visual Studio 2026 with the WinUI application development workload, or the
+  .NET 10.0.400 SDK and matching Windows SDK
 - Evergreen WebView2 Runtime 151.0.4129.50 or newer
 
 ## Build and test

@@ -1,4 +1,8 @@
-# Xanh Browser
+<p align="center">
+  <img src="docs/images/xanh-browser-logo.png" alt="Xanh Browser logo" width="128">
+</p>
+
+<h1 align="center">Xanh Browser</h1>
 
 Xanh Browser is a privacy-first browser family built around each platform's
 native web engine and interface conventions. This repository contains the
@@ -14,12 +18,54 @@ lives in the companion repository linked below.
 
 ## App preview
 
-<p align="center">
-  <img src="docs/images/xanh-browser-android-browsing.png" alt="Xanh Browser displaying a web page on Android" width="320">
-  <img src="docs/images/xanh-browser-android-tabs.png" alt="Xanh Browser multi-tab overview on Android" width="320">
-</p>
+### Desktop
 
-<p align="center"><em>The full Android edition browsing and managing tabs on the current codebase.</em></p>
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/images/xanh-browser-linux.png" alt="Xanh Browser running on Linux with GTK and WebKitGTK"><br>
+      <strong>Linux</strong>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/xanh-browser-macos.png" alt="Xanh Browser running on macOS with SwiftUI and WebKit"><br>
+      <strong>macOS</strong>
+    </td>
+    <td align="center" width="33%">
+      <strong>Windows</strong><br><br>
+      <em>Native WinUI capture requires an interactive Windows desktop. The
+      hosted verification runner builds the application but does not provide
+      a usable UI session for screenshots.</em>
+    </td>
+  </tr>
+</table>
+
+### Mobile and tablet
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <img src="docs/images/xanh-browser-ios.png" alt="Xanh Browser running on iPhone"><br>
+      <strong>iPhone</strong>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/images/xanh-browser-ipados.png" alt="Xanh Browser running on iPad"><br>
+      <strong>iPad</strong>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/images/xanh-browser-android-browsing.png" alt="Xanh Browser displaying a web page on Android"><br>
+      <strong>Android</strong>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/images/xanh-browser-android-tabs.png" alt="Xanh Browser native multi-tab overview on Android"><br>
+      <strong>Android tabs</strong>
+    </td>
+  </tr>
+</table>
+
+Every image above is a direct capture from a current native application build,
+not a product mockup. The captures use clean profiles and neutral pages, with
+no personal browsing data. The Windows card is intentionally text-only until a
+capture can be taken on an interactive Windows 11 machine.
 
 Xanh keeps the browser chrome native while applying the same validated
 navigation, privacy boundaries, encrypted backup format and optional Firefox

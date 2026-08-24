@@ -9,6 +9,7 @@ add_executable(XanhPortableBackupTests
 )
 target_compile_features(XanhPortableBackupTests PRIVATE cxx_std_17)
 target_compile_definitions(XanhPortableBackupTests PRIVATE
+    NOMINMAX
     UNICODE
     _UNICODE
     XANH_PORTABLE_BACKUP_TESTING

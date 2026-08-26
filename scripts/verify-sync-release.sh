@@ -1775,9 +1775,9 @@ case "$edition" in
       "$XANH_WPE_HOST_TOOLCHAIN_EVIDENCE"; do
       gh attestation verify "$attested_subject" \
         --bundle "$XANH_WPE_GITHUB_ATTESTATION_EVIDENCE" \
-        --repo LamPPKK/midori-core \
+        --repo LamPPKK/xanh-webkit \
         --signer-workflow \
-          github.com/LamPPKK/midori-core/.github/workflows/wpe-android-source-build.yml \
+          github.com/LamPPKK/xanh-webkit/.github/workflows/wpe-android-source-build.yml \
         --source-digest "$wpe_source_digest" >/dev/null
     done
     python3 scripts/create_wpe_build_evidence.py \

@@ -85,7 +85,21 @@ readiness are listed below.
 | Xanh Browser Lite WebKit | `io.github.lamppkk.xanhbrowser.lite.webkit` | Android 12+ (API 31+) preview | 1.0.0 (`10000`) |
 
 The full multi-tab Android edition is maintained in the
-[Xanh Browser Android repository](https://github.com/LamPPKK/midori-android).
+[Xanh Android repository](https://github.com/LamPPKK/xanh-android).
+
+## Xanh platform suite
+
+| Repository | Role |
+| --- | --- |
+| [`xanh-webkit`](https://github.com/LamPPKK/xanh-webkit) | Canonical WebKit browser behavior, desktop hosts, shared release gates and Android Lite previews |
+| [`xanh-android`](https://github.com/LamPPKK/xanh-android) | Full multi-tab Android application |
+| [`xanh-ios`](https://github.com/LamPPKK/xanh-ios) | Native SwiftUI and system WebKit application for iPhone and iPad |
+| [`xanh-docker`](https://github.com/LamPPKK/xanh-docker) | Isolated multi-tenant WPE WebKit remote-browser runtime |
+| [`xanh-tab`](https://github.com/LamPPKK/xanh-tab) | One-controller WPE WebKit appliance for constrained hardware |
+
+Each platform keeps its own native security and lifecycle boundary. Shared
+feature names do not imply identical engine binaries or that a constrained
+one-tab appliance must adopt desktop multi-tab behavior.
 
 The Apple apps use the operating system WebKit through SwiftUI `WebPage` and
 `WebView`. The production Windows app uses the Evergreen Edge WebView2 Runtime;

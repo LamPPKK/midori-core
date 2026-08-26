@@ -18,8 +18,8 @@ jobs:
       - name: Check out the reviewed Android Sync AAR source
         uses: actions/checkout@v6
         with:
-          repository: LamPPKK/midori-android
-          ref: master
+          repository: LamPPKK/xanh-android
+          ref: main
           path: _sync_android
       - name: Select the matching Android integration branch when it exists
         working-directory: _sync_android
@@ -29,7 +29,7 @@ jobs:
           if git fetch origin "$SYNC_REF"; then
             git checkout --detach FETCH_HEAD
           else
-            echo "No matching Android branch; using master"
+            echo "No matching Android branch; using main"
           fi
       - uses: actions/setup-java@v5
         with:

@@ -112,7 +112,7 @@
 			children = (
 				CEE16800181591AB2F745B2E /* App */,
 				0F61B7B60391F6992390CBAD /* Generated */,
-				9A67EBC3C16A63EBDB50BB55 /* midori-core */,
+				9A67EBC3C16A63EBDB50BB55 /* xanh-webkit */,
 				41ADCAF45032550E3CB2FF64 /* xanh-adblock-core */,
 				4B1FB12272EA68A84D07C11D /* XanhBrowserCore */,
 				12F417CDAFBD830A3CA67D50 /* Products */,
@@ -146,12 +146,12 @@
 			path = Sources/XanhBrowserCore;
 			sourceTree = "<group>";
 		};
-		9A67EBC3C16A63EBDB50BB55 /* midori-core */ = {
+		9A67EBC3C16A63EBDB50BB55 /* xanh-webkit */ = {
 			isa = PBXGroup;
 			children = (
 				E4E391003871B19E7966F9B0 /* THIRD_PARTY_NOTICES.md */,
 			);
-			name = "midori-core";
+			name = "xanh-webkit";
 			path = ../..;
 			sourceTree = "<group>";
 		};

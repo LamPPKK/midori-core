@@ -3,7 +3,7 @@
 This runbook covers Xanh Browser for Linux, Apple and Windows, Xanh Browser
 Lite for Android, and the two experimental WebKit variants.
 The full Android edition has a separate checklist in the
-[Android repository](https://github.com/LamPPKK/midori-android/blob/codex/xanh-browser-modernization/RELEASING.md).
+[Android repository](https://github.com/LamPPKK/xanh-android/blob/main/RELEASING.md).
 
 Do not publish a production artifact while any required gate below is missing.
 
@@ -477,7 +477,7 @@ The WPE gate rehashes the complete evidence set, reconstructs the AAR inventory
 and CycloneDX document, opens and audits all source archives, binds generated
 paths to one directory, reruns the ELF alignment verifier against the recorded
 AAR and host APK, and verifies the GitHub attestation against the exact release
-commit and `LamPPKK/midori-core` signer workflow. This verification APK remains
+commit and `LamPPKK/xanh-webkit` signer workflow. This verification APK remains
 non-production evidence; the signed production artifact and device/security
 gates are still mandatory. Attestation prevents post-build substitution and
 binds provenance; it does not make a compromised self-hosted builder trusted,
@@ -556,12 +556,12 @@ For Lite, first publish the reviewed Android AAR to a private/local Maven
 repository, then build the on-demand splits explicitly:
 
 ```sh
-./gradlew -p ../midori-android \
+./gradlew -p ../xanh-android \
   :sync-core:publishReleasePublicationToBuildRepository
 ./gradlew \
   -PxanhEnableSyncFeature=true \
   -PxanhSyncSelfHostedOnly=true \
-  -PxanhSyncRepository=../midori-android/sync-core/build/maven \
+  -PxanhSyncRepository=../xanh-android/sync-core/build/maven \
   :sync-feature-common:lintDebug \
   :app:bundleRelease :app-webkit:bundleRelease
 ./scripts/verify-lite-sync-size.sh \
